@@ -30,9 +30,9 @@ function getArrivalRange(level: number): { min: number; max: number } {
   return { min, max };
 }
 
-// 装修/设备升级数值的自检
-console.assert(getTableCount(1) === TABLE_COUNT_BASE, "1 级应为基础餐位数");
-console.assert(getTableCount(3) === TABLE_COUNT_BASE + 2, "每级应 +1 餐位");
+// 装潢升级数值的自检
+console.assert(getTableCount(1) === TABLE_COUNT_BASE, "1 级应为基础雅座数");
+console.assert(getTableCount(3) === TABLE_COUNT_BASE + 2, "每级应 +1 雅座");
 console.assert(getUpgradeCost(1) === UPGRADE_BASE_COST, "1 级升级花费应为基础花费");
 console.assert(getUpgradeCost(2) > getUpgradeCost(1), "升级花费应随等级递增");
 console.assert(
@@ -46,7 +46,7 @@ interface Table {
   departAt: number;
 }
 
-class RestaurantScene extends Phaser.Scene {
+class TavernScene extends Phaser.Scene {
   private coins = STARTING_COINS;
   private inventory = STARTING_INVENTORY;
   private level = 1;
@@ -60,7 +60,7 @@ class RestaurantScene extends Phaser.Scene {
   private tableTexts: Phaser.GameObjects.Text[] = [];
 
   constructor() {
-    super("restaurant");
+    super("tavern");
   }
 
   create() {
@@ -69,7 +69,7 @@ class RestaurantScene extends Phaser.Scene {
       departAt: 0,
     }));
 
-    this.add.text(20, 20, "餐厅经营", { fontSize: "32px", color: "#ffffff" });
+    this.add.text(20, 20, "酒楼经营", { fontSize: "32px", color: "#ffffff" });
 
     this.coinsText = this.add.text(20, 80, "", { fontSize: "22px", color: "#ffd700" });
     this.inventoryText = this.add.text(20, 110, "", { fontSize: "22px", color: "#9fe870" });
@@ -88,13 +88,13 @@ class RestaurantScene extends Phaser.Scene {
         padding: { x: 10, y: 8 },
       })
       .setInteractive({ useHandCursor: true })
-      .on("pointerdown", () => this.upgradeRestaurant());
+      .on("pointerdown", () => this.upgradeTavern());
 
     this.add
       .text(
         20,
         this.scale.height - 80,
-        `采购食材（花费 ${PURCHASE_COST} 金币 → +${PURCHASE_AMOUNT} 库存）`,
+        `采购灵材（花费 ${PURCHASE_COST} 灵石 → +${PURCHASE_AMOUNT} 灵材）`,
         {
           fontSize: "18px",
           color: "#ffffff",
@@ -114,7 +114,7 @@ class RestaurantScene extends Phaser.Scene {
       if (table.occupied && time >= table.departAt) {
         table.occupied = false;
         this.coins += REVENUE_PER_CUSTOMER;
-        this.hintText.setText(`顾客离店，收入 +${REVENUE_PER_CUSTOMER}`);
+        this.hintText.setText(`食客离店，收入 +${REVENUE_PER_CUSTOMER} 灵石`);
         this.refreshHud();
       }
     }
@@ -133,24 +133,24 @@ class RestaurantScene extends Phaser.Scene {
     const freeTable = this.tables.find((table) => !table.occupied);
 
     if (!freeTable) {
-      this.hintText.setText("顾客到店：餐位已满，顾客离开");
+      this.hintText.setText("食客到店：雅座已满，食客离开");
       return;
     }
     if (this.inventory <= 0) {
-      this.hintText.setText("顾客到店：食材不足，顾客离开");
+      this.hintText.setText("食客到店：灵材不足，食客离开");
       return;
     }
 
     this.inventory -= 1;
     freeTable.occupied = true;
     freeTable.departAt = this.time.now + CUSTOMER_STAY_MS;
-    this.hintText.setText("顾客到店，已入座用餐");
+    this.hintText.setText("食客到店，已入座用膳");
     this.refreshHud();
   }
 
   private purchaseInventory() {
     if (this.coins < PURCHASE_COST) {
-      this.hintText.setText("金币不足，无法采购");
+      this.hintText.setText("灵石不足，无法采购");
       return;
     }
     this.coins -= PURCHASE_COST;
@@ -158,10 +158,10 @@ class RestaurantScene extends Phaser.Scene {
     this.refreshHud();
   }
 
-  private upgradeRestaurant() {
+  private upgradeTavern() {
     const cost = getUpgradeCost(this.level);
     if (this.coins < cost) {
-      this.hintText.setText("金币不足，无法升级餐厅");
+      this.hintText.setText("灵石不足，无法装潢升级");
       return;
     }
     this.coins -= cost;
@@ -173,19 +173,19 @@ class RestaurantScene extends Phaser.Scene {
         color: "#ffffff",
       }),
     );
-    this.hintText.setText(`餐厅升级到 ${this.level} 级，餐位 +1`);
+    this.hintText.setText(`酒楼装潢升级到 ${this.level} 级，雅座 +1`);
     this.refreshHud();
   }
 
   private refreshHud() {
-    this.coinsText.setText(`金币：${this.coins}`);
-    this.inventoryText.setText(`库存：${this.inventory}`);
-    this.levelText.setText(`餐厅等级：${this.level}`);
+    this.coinsText.setText(`灵石：${this.coins}`);
+    this.inventoryText.setText(`灵材：${this.inventory}`);
+    this.levelText.setText(`酒楼等级：${this.level}`);
     this.upgradeButton.setText(
-      `升级餐厅（花费 ${getUpgradeCost(this.level)} 金币 → 等级+1，餐位+1，到店更快）`,
+      `装潢升级（花费 ${getUpgradeCost(this.level)} 灵石 → 等级+1，雅座+1，到店更快）`,
     );
     this.tables.forEach((table, i) => {
-      this.tableTexts[i].setText(`餐位 ${i + 1}：${table.occupied ? "用餐中" : "空闲"}`);
+      this.tableTexts[i].setText(`雅座 ${i + 1}：${table.occupied ? "用膳中" : "空闲"}`);
     });
   }
 }
@@ -196,5 +196,5 @@ new Phaser.Game({
   width: 720,
   height: 1280,
   backgroundColor: "#2d2d2d",
-  scene: [RestaurantScene],
+  scene: [TavernScene],
 });

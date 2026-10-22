@@ -1,6 +1,6 @@
 ---
 name: run-app
-description: Launch the Phaser restaurant game's Vite dev server and drive it with a headless browser to verify a change actually works (not just builds). Use when asked to run, verify, or screenshot this game, or before reporting a gameplay/UI change as done for anything beyond a trivial text/style tweak.
+description: Launch the Phaser xianxia-tavern game's Vite dev server and drive it with a headless browser to verify a change actually works (not just builds). Use when asked to run, verify, or screenshot this game, or before reporting a gameplay/UI change as done for anything beyond a trivial text/style tweak.
 ---
 
 # Running & verifying this game
@@ -69,7 +69,7 @@ before ("parent-directory symlink resolution changed").
   canvas-local `(x, y)` is at screen `(x + marginX, y + marginY)`. Getting this wrong
   produces a click that silently does nothing (the most common failure mode here).
 - **Money/branching logic changes need a real wait, not just a screenshot of the initial
-  state.** Customers arrive on a random 2–5s (shrinking with restaurant level) timer and
+  state.** Customers arrive on a random 2–5s (shrinking with tavern level) timer and
   stay ~3s — wait at least that long between screenshots to see a full
   arrival→seat→departure→revenue cycle, and check the HUD numbers add up (not just that
   text appeared).
