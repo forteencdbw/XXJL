@@ -1,4 +1,5 @@
 import Phaser from "phaser";
+import { loadAudioSettings, playSfx, setBgmMuted, setSfxMuted, startBgm } from "./audio";
 
 // ===== 数值（占位，先验证手感）=====
 const TABLE_COUNT_BASE = 3;
@@ -252,7 +253,10 @@ class ProgressButton {
         sy = p.y;
       })
       .on("pointerup", (p: Phaser.Input.Pointer) => {
-        if (Math.hypot(p.x - sx, p.y - sy) < 12) onClick();
+        if (Math.hypot(p.x - sx, p.y - sy) < 12) {
+          playSfx("click");
+          onClick();
+        }
       });
   }
 
@@ -391,6 +395,10 @@ class TavernScene extends Phaser.Scene {
 
   private nextArrivalAt = 0;
   private lastCallTriggered = false;
+  private sfxMuted = false;
+  private bgmMuted = false;
+  private sfxButton!: TapText;
+  private bgmButton!: TapText;
   private hireHawkerButton!: TapText;
   private serveButton!: ProgressButton;
   private hireServerButton!: TapText;
@@ -602,8 +610,23 @@ class TavernScene extends Phaser.Scene {
     this.queueText = this.addUiText(250, 36, "", "17px", "#e0b0ff");
     this.sessionText = this.addUiText(16, 62, "", "14px", "#a8d8ff");
     this.lineText = this.addUiText(16, 82, "", "13px", "#ff9d9d");
-    this.chronicleText = this.addUiText(400, 62, "", "13px", "#cccccc");
+    this.chronicleText = this.addUiText(370, 82, "", "13px", "#cccccc");
     this.tableTitle = this.addUiText(16, 108, "雅座", "13px", "#bbbbbb");
+
+    const audio = loadAudioSettings();
+    this.sfxMuted = audio.sfxMuted;
+    this.bgmMuted = audio.bgmMuted;
+    this.sfxButton = this.addUiButton(560, 8, () => {
+      this.sfxMuted = !this.sfxMuted;
+      setSfxMuted(this.sfxMuted);
+      this.refreshAudioButtons();
+    });
+    this.bgmButton = this.addUiButton(560, 36, () => {
+      this.bgmMuted = !this.bgmMuted;
+      setBgmMuted(this.bgmMuted);
+      this.refreshAudioButtons();
+    });
+    this.refreshAudioButtons();
     this.tableTitle.setVisible(false);
 
     // 营业中就地按钮（世界坐标，贴在门口/桌区/厨房）
@@ -643,7 +666,10 @@ class TavernScene extends Phaser.Scene {
         sy = p.y;
       })
       .on("pointerup", (p: Phaser.Input.Pointer) => {
-        if (Math.hypot(p.x - sx, p.y - sy) < 12) onClick();
+        if (Math.hypot(p.x - sx, p.y - sy) < 12) {
+          playSfx("click");
+          onClick();
+        }
       });
   }
 
@@ -675,7 +701,10 @@ class TavernScene extends Phaser.Scene {
         sy = p.y;
       })
       .on("pointerup", (p: Phaser.Input.Pointer) => {
-        if (Math.hypot(p.x - sx, p.y - sy) < 12) t.onTap();
+        if (Math.hypot(p.x - sx, p.y - sy) < 12) {
+          playSfx("click");
+          t.onTap();
+        }
       }) as TapText;
     t.onTap = onClick;
     return t;
@@ -770,6 +799,7 @@ class TavernScene extends Phaser.Scene {
 
     this.booths.forEach((booth, index) => {
       if (booth.state === "cooking" && time >= booth.cookDoneAt) {
+        playSfx("cook");
         booth.state = "dining";
         booth.departAt = time + DINING_MS;
         this.log("出餐完毕，食客开始用膳");
@@ -790,6 +820,7 @@ class TavernScene extends Phaser.Scene {
         const leaver = booth.patronChar;
         booth.patronChar = undefined;
         leaver?.walkTo(440, ACTOR_Y, 500, () => leaver.destroy());
+        playSfx("coin");
         this.coins += price;
         this.sessionServed += 1;
         this.sessionRevenue += price;
@@ -1000,6 +1031,8 @@ class TavernScene extends Phaser.Scene {
       this.sessionEndsAt = this.time.now + SESSION_DURATION_MS;
       this.nextArrivalAt = this.time.now + getArrivalInterval(this.level, this.staffLevel.hawker);
       this.lastCallTriggered = false;
+      playSfx("open");
+      startBgm();
       this.log("开张大吉，今日营业开始");
 
       this.cameras.main.fadeIn(450, 0, 0, 0);
@@ -1028,6 +1061,7 @@ class TavernScene extends Phaser.Scene {
       booth.cookingDriver = null;
       booth.currentDish = null;
     });
+    playSfx("close");
     this.log("打烊，今日营业结束");
     // 镜头暂留营业视角，等玩家在结算面板点「打烊」后再拉远过渡
     this.buildSettlementOverlay();
@@ -1148,6 +1182,11 @@ class TavernScene extends Phaser.Scene {
     });
   }
 
+  private refreshAudioButtons() {
+    this.sfxButton?.setText(this.sfxMuted ? "音效：关" : "音效：开");
+    this.bgmButton?.setText(this.bgmMuted ? "音乐：关" : "音乐：开");
+  }
+
   private setGender(gender: "male" | "female") {
     this.playerGender = gender;
     this.playerChar.setBodyColor(gender === "male" ? 0x4a7ab8 : 0xc86a9e);
@@ -1202,6 +1241,7 @@ class TavernScene extends Phaser.Scene {
     char.walkTo(QUEUE_X + this.queue.length * QUEUE_GAP, ACTOR_Y, 700);
     this.queue.push({ expiresAt: time + QUEUE_PATIENCE_MS, char });
     this.staffChars.hawker?.pulse();
+    playSfx("arrival");
     this.log("一位食客来到门前排起队");
   }
 
@@ -1273,6 +1313,7 @@ class TavernScene extends Phaser.Scene {
     if (!progress || time < progress.startedAt + progress.duration) return progress;
     const booth = this.booths[progress.boothIndex];
     if (booth) {
+      playSfx("seat");
       booth.state = "awaitingCook";
       this.log(driver === "player" ? "你领食客入座雅座，等候烹饪" : "跑堂伙计领食客入座雅座");
     }
@@ -1388,6 +1429,7 @@ class TavernScene extends Phaser.Scene {
     }
 
     const roleName = { hawker: "迎客", server: "跑堂", cook: "灶上", buyer: "采买" }[role];
+    playSfx("upgrade");
     this.log(`雇到一位${roleName}伙计，此后自动运作`);
     const hireButton = {
       hawker: this.hireHawkerButton,
@@ -1407,6 +1449,7 @@ class TavernScene extends Phaser.Scene {
     this.coins -= cost;
     this.staffLevel[role] += 1;
     const roleName = { hawker: "迎客", server: "跑堂", cook: "灶上", buyer: "采买" }[role];
+    playSfx("upgrade");
     this.log(`${roleName}伙计升至 ${this.staffLevel[role]} 级，手脚更利索了`);
   }
 
