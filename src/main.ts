@@ -414,13 +414,10 @@ class TavernScene extends Phaser.Scene {
   private bgmMuted = false;
   private sfxButton!: TapText;
   private bgmButton!: TapText;
-  private hireHawkerButton!: TapText;
+  private staffButton!: TapText;
   private serveButton!: ProgressButton;
-  private hireServerButton!: TapText;
   private cookButton!: Phaser.GameObjects.Text;
-  private hireCookButton!: TapText;
   private purchaseButton!: ProgressButton;
-  private hireBuyerButton!: TapText;
   private upgradeButton!: TapText;
   private startButton!: TapText;
 
@@ -652,12 +649,9 @@ class TavernScene extends Phaser.Scene {
     this.startButton = this.addUiButton(230, 1194, () => this.onStartButton());
 
     // 打烊期的经营按钮（屏幕左侧竖排）
-    this.hireHawkerButton = this.addUiButton(16, 700, () => this.hireStaff("hawker"));
-    this.hireServerButton = this.addUiButton(16, 760, () => this.hireStaff("server"));
-    this.hireCookButton = this.addUiButton(16, 820, () => this.hireStaff("cook"));
-    this.hireBuyerButton = this.addUiButton(16, 880, () => this.hireStaff("buyer"));
-    this.upgradeButton = this.addUiButton(16, 940, () => this.upgradeTavern());
-    this.genderButton = this.addUiButton(16, 1000, () => this.toggleGender());
+    this.staffButton = this.addUiButton(16, 700, () => this.buildStaffOverlay());
+    this.upgradeButton = this.addUiButton(16, 760, () => this.upgradeTavern());
+    this.genderButton = this.addUiButton(16, 820, () => this.toggleGender());
 
     this.buildBoothVisuals();
     this.positionUi(false);
@@ -1103,6 +1097,67 @@ class TavernScene extends Phaser.Scene {
     });
   }
 
+  /** 二级页面：伙计列表，未雇佣的可在此雇佣，已雇佣的显示等级/熟练/日薪。 */
+  private buildStaffOverlay() {
+    this.destroyOverlay();
+    const cam = this.cameras.main;
+    const layer = this.add.container(cam.scrollX, cam.scrollY).setDepth(100);
+    layer.add(this.add.rectangle(0, 0, SCREEN_W, SCREEN_H, 0x000000, 0.92).setOrigin(0, 0));
+    layer.add(this.add.text(40, 70, "伙计", { fontSize: "30px", color: "#ffffff" }));
+
+    const defs: { role: StaffRole; name: string; cost: number; desc: string }[] = [
+      { role: "hawker", name: "迎客", cost: HIRE_COST_HAWKER, desc: "加速顾客到店" },
+      { role: "server", name: "跑堂", cost: HIRE_COST_SERVER, desc: "自动招待入座" },
+      { role: "cook", name: "灶上", cost: HIRE_COST_COOK, desc: "自动烹饪" },
+      { role: "buyer", name: "采买", cost: HIRE_COST_BUYER, desc: "打烊自动补货 + 采购优惠" },
+    ];
+
+    defs.forEach((d, i) => {
+      const y = 160 + i * 110;
+      const level = this.staffLevel[d.role];
+      if (level > 0) {
+        layer.add(this.add.text(50, y, `${d.name} Lv${level}`, { fontSize: "22px", color: "#ffffff" }));
+        layer.add(
+          this.add.text(
+            50,
+            y + 36,
+            `熟练 ${this.staffExp[d.role] % EXP_PER_LEVEL}/${EXP_PER_LEVEL} · 日薪 ${getStaffWage(d.role, level)} 灵石`,
+            { fontSize: "16px", color: "#bbbbbb" },
+          ),
+        );
+      } else {
+        layer.add(this.add.text(50, y, `${d.name}（未雇佣）`, { fontSize: "22px", color: "#888888" }));
+        layer.add(this.add.text(50, y + 36, d.desc, { fontSize: "16px", color: "#bbbbbb" }));
+        const btn = this.add
+          .text(400, y + 4, `雇 ${d.cost} 灵石`, {
+            fontSize: "18px",
+            color: "#ffffff",
+            backgroundColor: "#3a5a3a",
+            padding: { x: 14, y: 8 },
+          })
+          .setInteractive({ useHandCursor: true })
+          .on("pointerup", () => {
+            playSfx("click");
+            this.hireStaff(d.role);
+            this.buildStaffOverlay();
+          });
+        layer.add(btn);
+      }
+    });
+
+    const close = this.add
+      .text(40, 660, "关闭", {
+        fontSize: "20px",
+        color: "#ffffff",
+        backgroundColor: "#3a3a3a",
+        padding: { x: 16, y: 10 },
+      })
+      .setInteractive({ useHandCursor: true })
+      .on("pointerup", () => this.destroyOverlay());
+    layer.add(close);
+    this.overlay = layer;
+  }
+
   private buildSettlementOverlay() {
     this.destroyOverlay();
     const cam = this.cameras.main;
@@ -1183,10 +1238,7 @@ class TavernScene extends Phaser.Scene {
 
     this.serveButton.setVisible(isOpen);
     this.cookButton.setVisible(isOpen);
-    this.hireHawkerButton.setVisible(!isOpen);
-    this.hireServerButton.setVisible(!isOpen);
-    this.hireCookButton.setVisible(!isOpen);
-    this.hireBuyerButton.setVisible(!isOpen);
+    this.staffButton.setVisible(!isOpen);
     this.upgradeButton.setVisible(!isOpen);
     this.genderButton.setVisible(!isOpen);
 
@@ -1473,13 +1525,7 @@ class TavernScene extends Phaser.Scene {
     const roleName = { hawker: "迎客", server: "跑堂", cook: "灶上", buyer: "采买" }[role];
     playSfx("upgrade");
     this.log(`雇到一位${roleName}伙计，此后自动运作`);
-    const hireButton = {
-      hawker: this.hireHawkerButton,
-      server: this.hireServerButton,
-      cook: this.hireCookButton,
-      buyer: this.hireBuyerButton,
-    }[role];
-    hireButton.onTap = () => {};
+
   }
 
   /** 打烊时给每位在职伙计加熟练度，满了自动升级。 */
@@ -1631,32 +1677,14 @@ class TavernScene extends Phaser.Scene {
 
     this.serveButton.setVisible(open);
     this.cookButton.setVisible(open);
-    this.hireHawkerButton.setVisible(!open);
-    this.hireServerButton.setVisible(!open);
-    this.hireCookButton.setVisible(!open);
-    this.hireBuyerButton.setVisible(!open);
+    this.staffButton.setVisible(!open);
     this.upgradeButton.setVisible(!open);
     this.purchaseButton.setVisible(true);
 
-    this.hireHawkerButton.setText(
-      this.staffLevel.hawker > 0
-        ? `迎客 Lv${this.staffLevel.hawker} · 熟练 ${this.staffExp.hawker % EXP_PER_LEVEL}/${EXP_PER_LEVEL}`
-        : `雇迎客伙计（${HIRE_COST_HAWKER} 灵石 → 加速顾客到店）`,
-    );
+    this.staffButton.setText("伙计");
 
     this.serveButton.setLabel("招待入座");
-    this.hireServerButton.setText(
-      this.staffLevel.server > 0
-        ? `跑堂 Lv${this.staffLevel.server} · 熟练 ${this.staffExp.server % EXP_PER_LEVEL}/${EXP_PER_LEVEL}`
-        : `雇跑堂伙计（${HIRE_COST_SERVER} 灵石 → 自动招待）`,
-    );
-
     this.cookButton.setText("动手烹饪");
-    this.hireCookButton.setText(
-      this.staffLevel.cook > 0
-        ? `灶上 Lv${this.staffLevel.cook} · 熟练 ${this.staffExp.cook % EXP_PER_LEVEL}/${EXP_PER_LEVEL}`
-        : `雇灶上伙计（${HIRE_COST_COOK} 灵石 → 自动烹饪）`,
-    );
 
     const purchasePriceLabel = getPurchasePrice(this.staffLevel.buyer, open);
     this.purchaseButton.setLabel(
@@ -1664,12 +1692,6 @@ class TavernScene extends Phaser.Scene {
         ? `紧急采购（${purchasePriceLabel} 灵石 → +${PURCHASE_AMOUNT} 灵材）`
         : `采购灵材（${purchasePriceLabel} 灵石 → +${PURCHASE_AMOUNT} 灵材）`,
     );
-    this.hireBuyerButton.setText(
-      this.staffLevel.buyer > 0
-        ? `采买 Lv${this.staffLevel.buyer} · 熟练 ${this.staffExp.buyer % EXP_PER_LEVEL}/${EXP_PER_LEVEL}`
-        : `雇采买伙计（${HIRE_COST_BUYER} 灵石 → 打烊自动补货 + 采购优惠）`,
-    );
-
     const unlockedNext = DISHES.find((d) => d.unlockLevel === this.level + 1);
     this.upgradeButton.setText(
       unlockedNext
