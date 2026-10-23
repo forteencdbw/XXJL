@@ -39,8 +39,13 @@ const COOK_FLOOR_MS = 500;
 
 const STAFF_SPEED_PENALTY = 1.6;
 const STAFF_LEVEL_SPEEDUP = { hawker: 0.86, server: 0.94, cook: 0.9 } as const;
-const STAFF_UPGRADE_BASE_COST = { hawker: 10, server: 12, cook: 15, buyer: 12 } as const;
-const STAFF_UPGRADE_COST_MULTIPLIER = 1.6;
+
+// 熟练度：每回合 +1，每 3 点升一级，最高 4 级
+const EXP_PER_LEVEL = 3;
+const MAX_STAFF_LEVEL = 4;
+// 各岗位基础日薪，每高一级涨 30%
+const STAFF_BASE_WAGE = { hawker: 5, server: 8, cook: 10, buyer: 6 } as const;
+const WAGE_PER_LEVEL = 1.3;
 
 const COLOR_PLAYER = 0xffa94d;
 const COLOR_STAFF = 0x4da6ff;
@@ -129,9 +134,16 @@ function getArrivalInterval(tavernLevel: number, hawkerLevel: number): number {
   return Math.max(ARRIVAL_FLOOR_MS, base * hawkerFactor - (tavernLevel - 1) * ARRIVAL_TAVERN_SHRINK_MS);
 }
 
-function getStaffUpgradeCost(role: StaffRole, level: number): number {
-  return Math.round(STAFF_UPGRADE_BASE_COST[role] * Math.pow(STAFF_UPGRADE_COST_MULTIPLIER, level - 1));
+/** 熟练度点数换算等级：每 3 点一级，最高 4 级。 */
+function getStaffLevel(exp: number): number {
+  return Math.min(MAX_STAFF_LEVEL, 1 + Math.floor(exp / EXP_PER_LEVEL));
 }
+
+/** 日薪 = 岗位基础日薪 × 1.3^(等级-1)。 */
+function getStaffWage(role: StaffRole, level: number): number {
+  return Math.round(STAFF_BASE_WAGE[role] * Math.pow(WAGE_PER_LEVEL, Math.max(level, 1) - 1));
+}
+
 /** 采买伙计提供采购折扣，每级 -8%，最多 -50%。 */
 function getPurchaseDiscount(buyerLevel: number): number {
   return Math.min(PURCHASE_DISCOUNT_CAP, PURCHASE_DISCOUNT_PER_LEVEL * Math.max(buyerLevel, 0));
@@ -355,6 +367,7 @@ class TavernScene extends Phaser.Scene {
   private booths: Booth[] = [];
   private queue: QueuedPatron[] = [];
   private staffLevel: StaffLevels = { hawker: 0, server: 0, cook: 0, buyer: 0 };
+  private staffExp: StaffLevels = { hawker: 0, server: 0, cook: 0, buyer: 0 };
   private chronicleLines: string[] = [];
 
   private gameState: GameState = "closed";
@@ -397,6 +410,7 @@ class TavernScene extends Phaser.Scene {
   private lastCallTriggered = false;
   /** HUD 上显示的灵石数，收益到账时从这里滚动到真实值。 */
   private displayedCoins = STARTING_COINS;
+  private lastWages: { role: StaffRole; level: number; wage: number }[] = [];
   private sfxMuted = false;
   private bgmMuted = false;
   private sfxButton!: TapText;
@@ -1069,6 +1083,8 @@ class TavernScene extends Phaser.Scene {
     });
     playSfx("close");
     this.log("打烊，今日营业结束");
+    this.gainStaffExperience();
+    this.lastWages = this.settleWages();
     // 镜头暂留营业视角，等玩家在结算面板点「打烊」后再拉远过渡
     this.buildSettlementOverlay();
   }
@@ -1094,17 +1110,40 @@ class TavernScene extends Phaser.Scene {
     const cam = this.cameras.main;
     const layer = this.add.container(cam.scrollX, cam.scrollY).setDepth(100);
     layer.add(this.add.rectangle(0, 0, SCREEN_W, SCREEN_H, 0x000000, 0.92).setOrigin(0, 0));
-    layer.add(this.add.text(40, 200, "今日营业结束", { fontSize: "32px", color: "#ffffff" }));
-    const lines = [
+    layer.add(this.add.text(40, 90, "今日营业结束", { fontSize: "32px", color: "#ffffff" }));
+
+    const roleName = { hawker: "迎客", server: "跑堂", cook: "灶上", buyer: "采买" } as const;
+    let y = 170;
+    if (this.lastWages.length > 0) {
+      layer.add(this.add.text(40, y, "伙计工钱", { fontSize: "18px", color: "#aaaaaa" }));
+      y += 34;
+      for (const w of this.lastWages) {
+        layer.add(
+          this.add.text(56, y, `${roleName[w.role]} Lv${w.level} · 日薪 ${w.wage} 灵石`, {
+            fontSize: "19px",
+            color: "#e8e8e8",
+          }),
+        );
+        y += 30;
+      }
+      y += 10;
+    }
+
+    const totalWage = this.lastWages.reduce((sum, w) => sum + w.wage, 0);
+    const summary = [
       `服务食客：${this.sessionServed} 位`,
       `总收益：${this.sessionRevenue} 灵石`,
+      `工资合计：${totalWage} 灵石`,
+      `净收益：${this.sessionRevenue - totalWage} 灵石`,
       `流失食客：${this.sessionLost} 位`,
     ];
-    lines.forEach((line, i) => {
-      layer.add(this.add.text(40, 320 + i * 60, line, { fontSize: "24px", color: "#e8e8e8" }));
+    summary.forEach((line) => {
+      layer.add(this.add.text(40, y, line, { fontSize: "21px", color: "#e8e8e8" }));
+      y += 40;
     });
+
     const close = this.add
-      .text(40, 620, "打烊", {
+      .text(40, Math.min(y + 40, 1150), "打烊", {
         fontSize: "22px",
         color: "#ffffff",
         backgroundColor: "#3f5a7a",
@@ -1446,21 +1485,36 @@ class TavernScene extends Phaser.Scene {
       cook: this.hireCookButton,
       buyer: this.hireBuyerButton,
     }[role];
-    hireButton.onTap = () => this.upgradeStaff(role);
+    hireButton.onTap = () => {};
   }
 
-  private upgradeStaff(role: StaffRole) {
-    const cost = getStaffUpgradeCost(role, this.staffLevel[role]);
-    if (this.coins < cost) {
-      this.log("灵石不足，无法提升伙计等级");
-      return;
+  /** 打烊时给每位在职伙计加熟练度，满了自动升级。 */
+  private gainStaffExperience() {
+    const roles: StaffRole[] = ["hawker", "server", "cook", "buyer"];
+    for (const role of roles) {
+      if (this.staffLevel[role] <= 0) continue;
+      this.staffExp[role] += 1;
+      const nextLevel = getStaffLevel(this.staffExp[role]);
+      if (nextLevel > this.staffLevel[role]) {
+        this.staffLevel[role] = nextLevel;
+        const roleName = { hawker: "迎客", server: "跑堂", cook: "灶上", buyer: "采买" }[role];
+        this.log(`${roleName}伙计熟练度攒满，升到 ${nextLevel} 级`);
+      }
     }
-    this.coins -= cost;
+  }
+
+  /** 按当前等级结算当日工资，灵石不够则扣到 0 为止。 */
+  private settleWages(): { role: StaffRole; level: number; wage: number }[] {
+    const roles: StaffRole[] = ["hawker", "server", "cook", "buyer"];
+    const details = roles
+      .filter((role) => this.staffLevel[role] > 0)
+      .map((role) => ({ role, level: this.staffLevel[role], wage: getStaffWage(role, this.staffLevel[role]) }));
+    const total = details.reduce((sum, d) => sum + d.wage, 0);
+    const paid = Math.min(total, this.coins);
+    this.coins -= paid;
     this.displayedCoins = this.coins;
-    this.staffLevel[role] += 1;
-    const roleName = { hawker: "迎客", server: "跑堂", cook: "灶上", buyer: "采买" }[role];
-    playSfx("upgrade");
-    this.log(`${roleName}伙计升至 ${this.staffLevel[role]} 级，手脚更利索了`);
+    if (paid < total) this.log(`灵石不足，只付了 ${paid}/${total} 灵石工钱`);
+    return details;
   }
 
   private log(text: string) {
@@ -1629,27 +1683,21 @@ class TavernScene extends Phaser.Scene {
 
     this.hireHawkerButton.setText(
       this.staffLevel.hawker > 0
-        ? `升级迎客伙计（${getStaffUpgradeCost("hawker", this.staffLevel.hawker)} 灵石 → ${this.staffLevel.hawker}→${
-            this.staffLevel.hawker + 1
-          } 级，到店更快）`
+        ? `迎客 Lv${this.staffLevel.hawker} · 熟练 ${this.staffExp.hawker % EXP_PER_LEVEL}/${EXP_PER_LEVEL}`
         : `雇迎客伙计（${HIRE_COST_HAWKER} 灵石 → 加速顾客到店）`,
     );
 
     this.serveButton.setLabel("招待入座");
     this.hireServerButton.setText(
       this.staffLevel.server > 0
-        ? `升级跑堂伙计（${getStaffUpgradeCost("server", this.staffLevel.server)} 灵石 → ${this.staffLevel.server}→${
-            this.staffLevel.server + 1
-          } 级）`
+        ? `跑堂 Lv${this.staffLevel.server} · 熟练 ${this.staffExp.server % EXP_PER_LEVEL}/${EXP_PER_LEVEL}`
         : `雇跑堂伙计（${HIRE_COST_SERVER} 灵石 → 自动招待）`,
     );
 
     this.cookButton.setText("动手烹饪");
     this.hireCookButton.setText(
       this.staffLevel.cook > 0
-        ? `升级灶上伙计（${getStaffUpgradeCost("cook", this.staffLevel.cook)} 灵石 → ${this.staffLevel.cook}→${
-            this.staffLevel.cook + 1
-          } 级）`
+        ? `灶上 Lv${this.staffLevel.cook} · 熟练 ${this.staffExp.cook % EXP_PER_LEVEL}/${EXP_PER_LEVEL}`
         : `雇灶上伙计（${HIRE_COST_COOK} 灵石 → 自动烹饪）`,
     );
 
@@ -1661,9 +1709,7 @@ class TavernScene extends Phaser.Scene {
     );
     this.hireBuyerButton.setText(
       this.staffLevel.buyer > 0
-        ? `升级采买伙计（${getStaffUpgradeCost("buyer", this.staffLevel.buyer)} 灵石 → ${this.staffLevel.buyer}→${
-            this.staffLevel.buyer + 1
-          } 级，采购 -${Math.round(getPurchaseDiscount(this.staffLevel.buyer + 1) * 100)}%）`
+        ? `采买 Lv${this.staffLevel.buyer} · 熟练 ${this.staffExp.buyer % EXP_PER_LEVEL}/${EXP_PER_LEVEL}`
         : `雇采买伙计（${HIRE_COST_BUYER} 灵石 → 打烊自动补货 + 采购优惠）`,
     );
 
