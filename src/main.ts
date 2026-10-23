@@ -53,19 +53,20 @@ const TAVERN_W = 360;
 const CAMERA_PAN_MS = 600;
 const SKY_TRANSITION_MS = 2000;
 
-// 酒楼内部布局（世界坐标）
-const KITCHEN_Y = 330;
-const TABLE_ROW_Y = 610;
-const TABLE_ROW_GAP = 150;
-const DOOR_Y = 1120;
-const QUEUE_Y = 1200;
-const PLAYER_HOME = { x: 0, y: 960 };
-const HAWKER_HOME = { x: -150, y: 1000 };
-const SERVER_HOME = { x: 150, y: 880 };
-const COOK_HOME = { x: -150, y: 360 };
-const HAWK_SPOT = { x: -70, y: 1080 };
-const SERVE_SPOT = { x: 0, y: 880 };
-const COOK_SPOT = { x: 0, y: 390 };
+// 酒楼内部布局（侧视图，世界坐标）
+const FLOOR_Y = 1010; // 地面线
+const ACTOR_Y = FLOOR_Y - 34; // 角色脚踩地面的中心高度
+const TABLE_X_MIN = -175;
+const TABLE_X_MAX = 145;
+const QUEUE_X = 330;
+const PLAYER_HOME = { x: 0, y: ACTOR_Y };
+const HAWKER_HOME = { x: 280, y: ACTOR_Y };
+const SERVER_HOME = { x: 120, y: ACTOR_Y };
+const COOK_HOME = { x: -290, y: ACTOR_Y };
+const HAWK_SPOT = { x: 250, y: ACTOR_Y };
+const SERVE_SPOT = { x: 20, y: ACTOR_Y };
+const COOK_SPOT = { x: -230, y: ACTOR_Y };
+const DOOR_X = 320;
 
 const SKY_STOPS = [
   { t: 0, color: 0xa8d8ff }, // 清晨
@@ -180,6 +181,7 @@ interface Booth {
 interface BoothVisual {
   bg: Phaser.GameObjects.Rectangle;
   label: Phaser.GameObjects.Text;
+  legs: Phaser.GameObjects.Rectangle[];
 }
 interface QueuedPatron {
   expiresAt: number;
@@ -282,11 +284,10 @@ class Character extends Phaser.GameObjects.Container {
     this.hairArc.setFillStyle(color);
   }
 
-  /** 操作中的占位动画：缩放脉冲 + 上下浮动。 */
+  /** 操作中的占位动画：竖向缩放脉冲 + 上下浮动（不碰 scaleX，避免破坏朝向翻转）。 */
   pulse() {
     this.scene.tweens.add({
       targets: this,
-      scaleX: 1.16,
       scaleY: 1.16,
       duration: 110,
       yoyo: true,
@@ -304,6 +305,8 @@ class Character extends Phaser.GameObjects.Container {
   }
 
   walkTo(x: number, y: number, duration: number, onComplete?: () => void) {
+    if (x < this.x - 2) this.setScale(-1, 1);
+    else if (x > this.x + 2) this.setScale(1, 1);
     this.scene.tweens.add({
       targets: this,
       x,
@@ -451,32 +454,38 @@ class TavernScene extends Phaser.Scene {
     this.playerChar.setVisible(false);
   }
 
-  /** 酒楼内部：后墙、地板、厨房灶台、门洞、两侧窗户（窗户颜色随昼夜变）。 */
+  /** 酒楼内部（侧视图）：背景墙、地面、左侧厨房灶台、右侧门口、两侧窗户。 */
   private drawInterior(gfx: Phaser.GameObjects.Graphics) {
     gfx.clear();
+    // 背景墙
     gfx.fillStyle(0x6b5240, 1);
-    gfx.fillRect(-360, 0, 720, 500);
+    gfx.fillRect(-360, 0, 720, FLOOR_Y);
+    // 地面
     gfx.fillStyle(0x8a6a4a, 1);
-    gfx.fillRect(-360, 500, 720, 780);
+    gfx.fillRect(-360, FLOOR_Y, 720, 1280 - FLOOR_Y);
+    gfx.lineStyle(3, 0x5a4028, 1);
+    gfx.lineBetween(-360, FLOOR_Y, 360, FLOOR_Y);
 
-    gfx.lineStyle(2, 0x74563a, 1);
-    for (let y = 540; y < 1120; y += 60) gfx.lineBetween(-360, y, 360, y);
-
-    // 厨房灶台
+    // 左侧厨房：灶台（侧视）
     gfx.fillStyle(0x9a9a9a, 1);
-    gfx.fillRect(-280, KITCHEN_Y - 75, 560, 110);
+    gfx.fillRect(-345, 880, 150, 130);
     gfx.fillStyle(0x6a6a6a, 1);
-    gfx.fillRect(-260, KITCHEN_Y - 55, 520, 70);
-    gfx.fillStyle(0xff7a3a, 0.9);
-    gfx.fillCircle(-120, KITCHEN_Y + 20, 14);
-    gfx.fillCircle(0, KITCHEN_Y + 20, 14);
-    gfx.fillCircle(120, KITCHEN_Y + 20, 14);
+    gfx.fillRect(-335, 860, 130, 30);
+    // 锅和火
+    gfx.fillStyle(0x4a4a4a, 1);
+    gfx.fillRect(-305, 840, 70, 24);
+    gfx.fillStyle(0xff7a3a, 0.95);
+    gfx.fillCircle(-290, 852, 9);
+    gfx.fillCircle(-255, 852, 9);
 
-    // 门洞
-    gfx.fillStyle(0x3a2a1e, 1);
-    gfx.fillRect(-140, DOOR_Y - 110, 280, 90);
+    // 右侧门口
+    gfx.fillStyle(0xd9b45a, 1);
+    gfx.fillRect(DOOR_X - 95, 790, 190, 30);
     gfx.fillStyle(0x241610, 1);
-    gfx.fillRect(-125, DOOR_Y - 20, 250, 190);
+    gfx.fillRect(DOOR_X - 80, 820, 160, FLOOR_Y - 820);
+    // 门外地面延伸
+    gfx.fillStyle(0x6a5a44, 1);
+    gfx.fillRect(DOOR_X + 80, FLOOR_Y, 360 - DOOR_X - 80, 1280 - FLOOR_Y);
   }
 
   /** 窗户（随时间变色），单独保存以便 updateSky 调整。 */
@@ -484,8 +493,8 @@ class TavernScene extends Phaser.Scene {
 
   private buildWindows() {
     const positions = [
-      { x: -300, y: 180 },
-      { x: 300, y: 180 },
+      { x: -110, y: 330 },
+      { x: 110, y: 330 },
     ];
     for (const p of positions) {
       const w = this.add.rectangle(p.x, p.y, 90, 110, 0x74bdf7).setDepth(1).setStrokeStyle(4, 0x4a3324);
@@ -615,17 +624,37 @@ class TavernScene extends Phaser.Scene {
     this.booths.forEach((_, i) => this.addBoothVisual(i));
   }
 
-  private addBoothVisual(i: number) {
-    const col = i % 3;
-    const row = Math.floor(i / 3);
-    const x = -220 + col * 220;
-    const y = TABLE_ROW_Y + row * TABLE_ROW_GAP;
-    const bg = this.add.rectangle(x, y, 170, 110, 0x3a3a3a).setDepth(2).setStrokeStyle(2, 0x6a5a4a);
-    const label = this.add.text(x - 78, y - 46, "", { fontSize: "12px", color: "#ffffff" }).setDepth(3);
+  private addBoothVisual(_i: number) {
+    const bg = this.add.rectangle(0, 0, 80, 16, 0x6a4a2a).setDepth(2).setStrokeStyle(2, 0x8a6a4a);
+    const legs = [
+      this.add.rectangle(0, 0, 7, 32, 0x4a3420).setDepth(1),
+      this.add.rectangle(0, 0, 7, 32, 0x4a3420).setDepth(1),
+    ];
+    const label = this.add.text(0, 0, "", { fontSize: "11px", color: "#ffffff" }).setDepth(3);
     const visible = this.gameState === "open";
-    bg.setVisible(visible);
-    label.setVisible(visible);
-    this.boothVisuals.push({ bg, label });
+    [bg, label, ...legs].forEach((o) => o.setVisible(visible));
+    this.boothVisuals.push({ bg, label, legs });
+    this.relayoutTables();
+  }
+
+  /** 桌子在同一地面上横向均分，数量越多越窄。 */
+  private relayoutTables() {
+    const total = Math.max(this.booths.length, 1);
+    const width = Math.min(84, 320 / total);
+    this.boothVisuals.forEach((v, i) => {
+      const x = total === 1 ? (TABLE_X_MIN + TABLE_X_MAX) / 2 : TABLE_X_MIN + (i * (TABLE_X_MAX - TABLE_X_MIN)) / (total - 1);
+      v.bg.setPosition(x, FLOOR_Y - 48).setSize(width, 16);
+      v.legs[0].setPosition(x - width / 2 + 10, FLOOR_Y - 30);
+      v.legs[1].setPosition(x + width / 2 - 10, FLOOR_Y - 30);
+      v.label.setPosition(x - width / 2 + 2, FLOOR_Y - 92);
+    });
+  }
+
+  private tablePosition(index: number): { x: number; y: number } {
+    const total = Math.max(this.booths.length, 1);
+    const x =
+      total === 1 ? (TABLE_X_MIN + TABLE_X_MAX) / 2 : TABLE_X_MIN + (index * (TABLE_X_MAX - TABLE_X_MIN)) / (total - 1);
+    return { x, y: ACTOR_Y };
   }
 
   // ===== 状态机 =====
@@ -654,7 +683,7 @@ class TavernScene extends Phaser.Scene {
     this.queue = this.queue.filter((patron) => {
       if (time >= patron.expiresAt) {
         this.sessionLost += 1;
-        patron.char.walkTo(0, DOOR_Y + 220, 400, () => patron.char.destroy());
+        patron.char.walkTo(440, ACTOR_Y, 400, () => patron.char.destroy());
         this.log("一位食客候得不耐，拂袖离去");
         return false;
       }
@@ -687,7 +716,7 @@ class TavernScene extends Phaser.Scene {
         booth.currentDish = null;
         const leaver = booth.patronChar;
         booth.patronChar = undefined;
-        leaver?.walkTo(0, DOOR_Y + 220, 500, () => leaver.destroy());
+        leaver?.walkTo(440, ACTOR_Y, 500, () => leaver.destroy());
         this.coins += price;
         this.sessionServed += 1;
         this.sessionRevenue += price;
@@ -974,6 +1003,7 @@ class TavernScene extends Phaser.Scene {
     this.boothVisuals.forEach((v) => {
       v.bg.setVisible(isOpen);
       v.label.setVisible(isOpen);
+      v.legs.forEach((l) => l.setVisible(isOpen));
     });
 
     this.hawkButton.setVisible(isOpen);
@@ -1085,7 +1115,7 @@ class TavernScene extends Phaser.Scene {
       this.sessionLost += 1;
       this.log("门外已候满，吆喝不出新客");
     } else {
-      const char = new Character(this, -90 + this.queue.length * 90, QUEUE_Y, 0xc0a080, 0x2b2b2b);
+      const char = new Character(this, QUEUE_X + this.queue.length * 8, ACTOR_Y - this.queue.length * 10, 0xc0a080, 0x2b2b2b);
       char.setVisible(this.gameState === "open");
       this.queue.push({ expiresAt: time + QUEUE_PATIENCE_MS, char });
       this.log(driver === "player" ? "你吆喝一声，食客上门排队" : "迎客伙计招来一位食客排队");
@@ -1125,9 +1155,8 @@ class TavernScene extends Phaser.Scene {
     this.moveActorTo(driver, "seat", Math.min(400, progress.duration));
 
     // 顾客从门口走向桌子，移动时长与招待进度同步
-    const col = boothIndex % 3;
-    const row = Math.floor(boothIndex / 3);
-    patron.char.walkTo(-220 + col * 220, TABLE_ROW_Y + row * TABLE_ROW_GAP + 52, progress.duration);
+    const table = this.tablePosition(boothIndex);
+    patron.char.walkTo(table.x, table.y, progress.duration);
     booth.patronChar = patron.char;
   }
 
@@ -1155,7 +1184,7 @@ class TavernScene extends Phaser.Scene {
       booth.state = "empty";
       const leaver = booth.patronChar;
       booth.patronChar = undefined;
-      leaver?.walkTo(0, DOOR_Y + 220, 400, () => leaver.destroy());
+      leaver?.walkTo(440, ACTOR_Y, 400, () => leaver.destroy());
       this.sessionLost += 1;
       this.log("灵材不足，食客离开");
       return;
