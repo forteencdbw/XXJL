@@ -45,10 +45,10 @@ const COLOR_STAFF = 0x4da6ff;
 const SCREEN_W = 720;
 const SCREEN_H = 1280;
 
-// 世界坐标：内部场景在 x=0，外观酒楼在 x=EXTERIOR_X
-const EXTERIOR_X = 2000;
+// 世界坐标：内部场景在 x=0，外观酒楼在左侧（镜头向左平移过去）
+const EXTERIOR_X = -2000;
 const CAMERA_OPEN_X = 0; // 营业：正视内部
-const CAMERA_CLOSED_X = 1640; // 打烊：外观在屏幕右侧露左半
+const CAMERA_CLOSED_X = -2360; // 打烊：外观在屏幕右侧露左半
 const TAVERN_W = 360;
 const CAMERA_PAN_MS = 600;
 const SKY_TRANSITION_MS = 2000;
