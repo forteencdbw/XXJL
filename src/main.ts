@@ -44,13 +44,28 @@ const COLOR_STAFF = 0x4da6ff;
 // ===== 视觉/布局 =====
 const SCREEN_W = 720;
 const SCREEN_H = 1280;
+
+// 世界坐标：内部场景在 x=0，外观酒楼在 x=EXTERIOR_X
+const EXTERIOR_X = 2000;
+const CAMERA_OPEN_X = 0; // 营业：正视内部
+const CAMERA_CLOSED_X = 1640; // 打烊：外观在屏幕右侧露左半
 const TAVERN_W = 360;
-const CAMERA_OPEN_X = 360; // 营业：可见 [0,720]，酒楼在屏幕左侧露右半边
-const CAMERA_CLOSED_X = -360; // 打烊：可见 [-720,0]，酒楼在屏幕右侧露左半边
-const UI_OFFSET_OPEN = 180; // 营业时操作区整体右移，让出左侧酒楼
-const UI_W = 480;
 const CAMERA_PAN_MS = 600;
 const SKY_TRANSITION_MS = 2000;
+
+// 酒楼内部布局（世界坐标）
+const KITCHEN_Y = 330;
+const TABLE_ROW_Y = 610;
+const TABLE_ROW_GAP = 150;
+const DOOR_Y = 1120;
+const QUEUE_Y = 1200;
+const PLAYER_HOME = { x: 0, y: 960 };
+const HAWKER_HOME = { x: -150, y: 1000 };
+const SERVER_HOME = { x: 150, y: 880 };
+const COOK_HOME = { x: -150, y: 360 };
+const HAWK_SPOT = { x: -70, y: 1080 };
+const SERVE_SPOT = { x: 0, y: 880 };
+const COOK_SPOT = { x: 0, y: 390 };
 
 const SKY_STOPS = [
   { t: 0, color: 0xa8d8ff }, // 清晨
@@ -160,6 +175,7 @@ interface Booth {
   cookStartedAt: number;
   cookDoneAt: number;
   departAt: number;
+  patronChar?: Character;
 }
 interface BoothVisual {
   bg: Phaser.GameObjects.Rectangle;
@@ -167,6 +183,7 @@ interface BoothVisual {
 }
 interface QueuedPatron {
   expiresAt: number;
+  char: Character;
 }
 interface OpProgress {
   startedAt: number;
@@ -240,6 +257,69 @@ class ProgressButton {
   }
 }
 
+/** 二头身 Q 版占位角色：大圆头 + 矩形身体 + 发型。 */
+class Character extends Phaser.GameObjects.Container {
+  private bodyRect: Phaser.GameObjects.Rectangle;
+  private hairArc: Phaser.GameObjects.Arc;
+
+  constructor(scene: Phaser.Scene, x: number, y: number, bodyColor: number, hairColor: number, longHair = false) {
+    super(scene, x, y);
+    this.bodyRect = scene.add.rectangle(0, 10, 26, 26, bodyColor);
+    const head = scene.add.circle(0, -10, 16, 0xffe0bd);
+    this.hairArc = scene.add.circle(0, -20, 14, hairColor);
+    if (longHair) this.hairArc.setScale(1.1, 1.5);
+    const legs = scene.add.rectangle(0, 30, 18, 14, 0x3a3a3a);
+    this.add([legs, this.bodyRect, head, this.hairArc]);
+    this.setDepth(20);
+    scene.add.existing(this);
+  }
+
+  setBodyColor(color: number) {
+    this.bodyRect.setFillStyle(color);
+  }
+
+  setHairColor(color: number) {
+    this.hairArc.setFillStyle(color);
+  }
+
+  /** 操作中的占位动画：缩放脉冲 + 上下浮动。 */
+  pulse() {
+    this.scene.tweens.add({
+      targets: this,
+      scaleX: 1.16,
+      scaleY: 1.16,
+      duration: 110,
+      yoyo: true,
+      repeat: 2,
+      ease: "Sine.easeInOut",
+    });
+    this.scene.tweens.add({
+      targets: this,
+      y: this.y - 6,
+      duration: 160,
+      yoyo: true,
+      repeat: 3,
+      ease: "Sine.easeInOut",
+    });
+  }
+
+  walkTo(x: number, y: number, duration: number, onComplete?: () => void) {
+    this.scene.tweens.add({
+      targets: this,
+      x,
+      y,
+      duration,
+      ease: "Linear",
+      onComplete: () => onComplete?.(),
+    });
+  }
+
+  teleportTo(x: number, y: number) {
+    this.scene.tweens.killTweensOf(this);
+    this.setPosition(x, y);
+  }
+}
+
 class TavernScene extends Phaser.Scene {
   private coins = STARTING_COINS;
   private inventory = STARTING_INVENTORY;
@@ -270,7 +350,12 @@ class TavernScene extends Phaser.Scene {
   private skyRect!: Phaser.GameObjects.Rectangle;
   private sunMoon!: Phaser.GameObjects.Arc;
   private tavernGfx!: Phaser.GameObjects.Graphics;
+  private interiorGfx!: Phaser.GameObjects.Graphics;
   private uiObjects: { obj: { x: number; setScrollFactor(v: number): unknown }; baseX: number }[] = [];
+
+  private playerChar!: Character;
+  private staffChars: Partial<Record<StaffRole, Character>> = {};
+  private playerGender: "male" | "female" = "male";
 
   private coinsText!: Phaser.GameObjects.Text;
   private inventoryText!: Phaser.GameObjects.Text;
@@ -293,9 +378,8 @@ class TavernScene extends Phaser.Scene {
   private upgradeButton!: Phaser.GameObjects.Text;
   private startButton!: Phaser.GameObjects.Text;
 
+  private genderButton!: Phaser.GameObjects.Text;
   private overlay: Phaser.GameObjects.Container | null = null;
-  // UI 在屏幕上的横向偏移，切换营业/打烊时 tween
-  private uiOffset = 0;
 
   constructor() {
     super("tavern");
@@ -309,13 +393,92 @@ class TavernScene extends Phaser.Scene {
     this.buildUi();
 
     this.cameras.main.centerOn(CAMERA_CLOSED_X, SCREEN_H / 2);
+    this.setGender("male");
     this.refreshHud();
+    // shortcut: 用 localStorage 记性别；接入微信小游戏时换成 wx.setStorageSync
+    if (!localStorage.getItem("tavern_gender")) this.showGenderPicker();
+  }
+
+  private showGenderPicker() {
+    const cam = this.cameras.main;
+    const layer = this.add.container(cam.scrollX, cam.scrollY).setDepth(120);
+    layer.add(this.add.rectangle(0, 0, SCREEN_W, SCREEN_H, 0x000000, 0.92).setOrigin(0, 0));
+    layer.add(this.add.text(60, 220, "选择你的形象", { fontSize: "30px", color: "#ffffff" }));
+    const pick = (x: number, label: string, gender: "male" | "female", color: string) => {
+      const btn = this.add
+        .text(x, 360, label, {
+          fontSize: "28px",
+          color: "#ffffff",
+          backgroundColor: color,
+          padding: { x: 40, y: 24 },
+        })
+        .setInteractive({ useHandCursor: true })
+        .on("pointerdown", () => {
+          this.setGender(gender);
+          localStorage.setItem("tavern_gender", gender);
+          layer.destroy(true);
+        });
+      layer.add(btn);
+    };
+    pick(120, "男", "male", "#3f5a7a");
+    pick(400, "女", "female", "#7a3f5a");
+    this.overlay = layer;
   }
 
   // ===== 世界（跟随镜头）=====
   private buildWorld() {
-    this.tavernGfx = this.add.graphics().setDepth(0);
+    // 外观酒楼放到远处，打烊时镜头看它
+    this.tavernGfx = this.add.graphics().setDepth(0).setX(EXTERIOR_X);
     this.drawTavern(this.tavernGfx, false);
+
+    // 营业时看的酒楼内部
+    this.interiorGfx = this.add.graphics().setDepth(0);
+    this.drawInterior(this.interiorGfx);
+
+    this.playerChar = new Character(this, PLAYER_HOME.x, PLAYER_HOME.y, 0x4a7ab8, 0x2b2b2b, false);
+    this.playerChar.setVisible(false);
+  }
+
+  /** 酒楼内部：后墙、地板、厨房灶台、门洞、两侧窗户（窗户颜色随昼夜变）。 */
+  private drawInterior(gfx: Phaser.GameObjects.Graphics) {
+    gfx.clear();
+    gfx.fillStyle(0x6b5240, 1);
+    gfx.fillRect(-360, 0, 720, 500);
+    gfx.fillStyle(0x8a6a4a, 1);
+    gfx.fillRect(-360, 500, 720, 780);
+
+    gfx.lineStyle(2, 0x74563a, 1);
+    for (let y = 540; y < 1120; y += 60) gfx.lineBetween(-360, y, 360, y);
+
+    // 厨房灶台
+    gfx.fillStyle(0x9a9a9a, 1);
+    gfx.fillRect(-280, KITCHEN_Y - 75, 560, 110);
+    gfx.fillStyle(0x6a6a6a, 1);
+    gfx.fillRect(-260, KITCHEN_Y - 55, 520, 70);
+    gfx.fillStyle(0xff7a3a, 0.9);
+    gfx.fillCircle(-120, KITCHEN_Y + 20, 14);
+    gfx.fillCircle(0, KITCHEN_Y + 20, 14);
+    gfx.fillCircle(120, KITCHEN_Y + 20, 14);
+
+    // 门洞
+    gfx.fillStyle(0x3a2a1e, 1);
+    gfx.fillRect(-140, DOOR_Y - 110, 280, 90);
+    gfx.fillStyle(0x241610, 1);
+    gfx.fillRect(-125, DOOR_Y - 20, 250, 190);
+  }
+
+  /** 窗户（随时间变色），单独保存以便 updateSky 调整。 */
+  private windowViews: Phaser.GameObjects.Rectangle[] = [];
+
+  private buildWindows() {
+    const positions = [
+      { x: -300, y: 180 },
+      { x: 300, y: 180 },
+    ];
+    for (const p of positions) {
+      const w = this.add.rectangle(p.x, p.y, 90, 110, 0x74bdf7).setDepth(1).setStrokeStyle(4, 0x4a3324);
+      this.windowViews.push(w);
+    }
   }
 
   /** 程序合成酒楼：屋檐、墙体、门窗、灯笼、招牌。夜晚时窗内透出灯火。 */
@@ -357,46 +520,59 @@ class TavernScene extends Phaser.Scene {
   // ===== 屏幕固定层（天空/地面/日月/UI）=====
   private buildUi() {
     this.skyRect = this.add
-      .rectangle(0, 0, SCREEN_W, SCREEN_H, NIGHT_COLOR)
+.rectangle(0, 0, SCREEN_W, SCREEN_H, NIGHT_COLOR)
       .setOrigin(0, 0)
       .setScrollFactor(0)
       .setDepth(-20);
-    this.add
-      .rectangle(0, 1110, SCREEN_W, 170, 0x2a2a24)
-      .setOrigin(0, 0)
-      .setScrollFactor(0)
-      .setDepth(-10);
     this.sunMoon = this.add.circle(0, 0, 34, 0xffe8a0).setScrollFactor(0).setDepth(-15);
+    this.buildWindows();
 
-    // 操作区半透明底板：跟随 uiOffset 平移，营业时让出左侧酒楼，打烊时让出右侧酒楼
-    const panel = this.add.rectangle(0, 0, 540, SCREEN_H, 0x0a0a0a, 0.45).setOrigin(0, 0).setDepth(-5);
-    this.registerUi(panel, 0);
+    // 顶部 HUD 悬浮条
+    const hud = this.add.rectangle(0, 0, SCREEN_W, 104, 0x000000, 0.55).setOrigin(0, 0).setScrollFactor(0).setDepth(30);
+    hud.setVisible(true);
 
-    this.coinsText = this.addUiText(20, 18, "", "18px", "#ffd700");
-    this.inventoryText = this.addUiText(20, 46, "", "18px", "#9fe870");
-    this.levelText = this.addUiText(20, 74, "", "18px", "#87ceeb");
-    this.queueText = this.addUiText(20, 102, "", "18px", "#e0b0ff");
-    this.lineText = this.addUiText(20, 128, "", "14px", "#ff9d9d");
-    this.sessionText = this.addUiText(20, 150, "", "14px", "#a8d8ff");
-    this.addUiText(20, 178, "见闻录：", "14px", "#888888");
-    this.chronicleText = this.addUiText(20, 200, "", "14px", "#cccccc");
-    this.chronicleText.setLineSpacing(4);
-    this.tableTitle = this.addUiText(20, 330, "雅座", "14px", "#bbbbbb");
+    this.coinsText = this.addUiText(16, 10, "", "17px", "#ffd700");
+    this.inventoryText = this.addUiText(16, 36, "", "17px", "#9fe870");
+    this.levelText = this.addUiText(250, 10, "", "17px", "#87ceeb");
+    this.queueText = this.addUiText(250, 36, "", "17px", "#e0b0ff");
+    this.sessionText = this.addUiText(16, 62, "", "14px", "#a8d8ff");
+    this.lineText = this.addUiText(16, 82, "", "13px", "#ff9d9d");
+    this.chronicleText = this.addUiText(400, 62, "", "13px", "#cccccc");
+    this.tableTitle = this.addUiText(16, 108, "雅座", "13px", "#bbbbbb");
+    this.tableTitle.setVisible(false);
 
-    this.hawkButton = new ProgressButton(this, 10, 776, UI_W, 36, () => this.startHawk("player"), this.registerUi);
-    this.serveButton = new ProgressButton(this, 10, 872, UI_W, 36, () => this.startSeat("player"), this.registerUi);
-    this.purchaseButton = new ProgressButton(this, 10, 1064, UI_W, 36, () => this.startPurchase(), this.registerUi);
+    // 营业中就地按钮（世界坐标，贴在门口/桌区/厨房）
+    this.hawkButton = new ProgressButton(this, HAWK_SPOT.x - 80, HAWK_SPOT.y - 10, 170, 34, () => this.startHawk("player"), () => {});
+    this.serveButton = new ProgressButton(this, SERVE_SPOT.x - 80, SERVE_SPOT.y - 10, 170, 34, () => this.startSeat("player"), () => {});
+    this.cookButton = this.addWorldButton(COOK_SPOT.x - 80, COOK_SPOT.y - 10, () => this.manualCook());
 
-    this.startButton = this.addUiButton(10, 680, () => this.onStartButton());
-    this.hireHawkerButton = this.addUiButton(10, 728, () => this.hireStaff("hawker"));
-    this.hireServerButton = this.addUiButton(10, 824, () => this.hireStaff("server"));
-    this.hireCookButton = this.addUiButton(10, 920, () => this.hireStaff("cook"));
-    this.cookButton = this.addUiButton(10, 968, () => this.manualCook());
-    this.hireBuyerButton = this.addUiButton(10, 1016, () => this.hireStaff("buyer"));
-    this.upgradeButton = this.addUiButton(10, 1112, () => this.upgradeTavern());
+    // 通用按钮：底部固定
+    this.purchaseButton = new ProgressButton(this, 16, 1194, 200, 34, () => this.startPurchase(), this.registerUi);
+    this.startButton = this.addUiButton(230, 1194, () => this.onStartButton());
+
+    // 打烊期的经营按钮（屏幕左侧竖排）
+    this.hireHawkerButton = this.addUiButton(16, 700, () => this.hireStaff("hawker"));
+    this.hireServerButton = this.addUiButton(16, 760, () => this.hireStaff("server"));
+    this.hireCookButton = this.addUiButton(16, 820, () => this.hireStaff("cook"));
+    this.hireBuyerButton = this.addUiButton(16, 880, () => this.hireStaff("buyer"));
+    this.upgradeButton = this.addUiButton(16, 940, () => this.upgradeTavern());
+    this.genderButton = this.addUiButton(16, 1000, () => this.toggleGender());
 
     this.buildBoothVisuals();
     this.positionUi(false);
+  }
+
+  private addWorldButton(x: number, y: number, onClick: () => void): Phaser.GameObjects.Text {
+    return this.add
+      .text(x, y, "", {
+        fontSize: "15px",
+        color: "#ffffff",
+        backgroundColor: "#3a3a3a",
+        padding: { x: 10, y: 8 },
+      })
+      .setDepth(25)
+      .setInteractive({ useHandCursor: true })
+      .on("pointerdown", onClick);
   }
 
   private registerUi = (obj: { x: number; setScrollFactor(v: number): unknown }, baseX: number) => {
@@ -405,23 +581,22 @@ class TavernScene extends Phaser.Scene {
   };
 
   private addUiText(x: number, y: number, text: string, fontSize: string, color: string): Phaser.GameObjects.Text {
-    const t = this.add.text(x, y, text, { fontSize, color });
-    this.registerUi(t, x);
+    const t = this.add.text(x, y, text, { fontSize, color }).setDepth(31).setScrollFactor(0);
     return t;
   }
 
   private addUiButton(x: number, y: number, onClick: () => void): Phaser.GameObjects.Text {
-    const t = this.add
+    return this.add
       .text(x, y, "", {
         fontSize: "15px",
         color: "#ffffff",
         backgroundColor: "#3a3a3a",
         padding: { x: 10, y: 8 },
       })
+      .setDepth(31)
+      .setScrollFactor(0)
       .setInteractive({ useHandCursor: true })
       .on("pointerdown", onClick);
-    this.registerUi(t, x);
-    return t;
   }
 
   private buildBoothVisuals() {
@@ -431,12 +606,10 @@ class TavernScene extends Phaser.Scene {
   private addBoothVisual(i: number) {
     const col = i % 3;
     const row = Math.floor(i / 3);
-    const x = 10 + col * 155;
-    const y = 356 + row * 74;
-    const bg = this.add.rectangle(x, y, 148, 62, 0x3a3a3a).setOrigin(0, 0).setStrokeStyle(2, 0x5a5a5a);
-    const label = this.add.text(x + 10, y + 8, "", { fontSize: "13px", color: "#ffffff" });
-    this.registerUi(bg, x);
-    this.registerUi(label, x + 10);
+    const x = -220 + col * 220;
+    const y = TABLE_ROW_Y + row * TABLE_ROW_GAP;
+    const bg = this.add.rectangle(x, y, 170, 110, 0x3a3a3a).setDepth(2).setStrokeStyle(2, 0x6a5a4a);
+    const label = this.add.text(x - 78, y - 46, "", { fontSize: "12px", color: "#ffffff" }).setDepth(3);
     const visible = this.gameState === "open";
     bg.setVisible(visible);
     label.setVisible(visible);
@@ -444,12 +617,8 @@ class TavernScene extends Phaser.Scene {
   }
 
   // ===== 状态机 =====
-  private setUiOffset(offset: number) {
-    for (const item of this.uiObjects) item.obj.x = item.baseX + offset;
-  }
 
   update(time: number) {
-    this.setUiOffset(this.uiOffset);
     // 覆盖层始终对齐相机可见区域，避免营业↔打烊镜头平移时错位
     if (this.overlay) this.overlay.setPosition(this.cameras.main.scrollX, this.cameras.main.scrollY);
 
@@ -473,6 +642,7 @@ class TavernScene extends Phaser.Scene {
     this.queue = this.queue.filter((patron) => {
       if (time >= patron.expiresAt) {
         this.sessionLost += 1;
+        patron.char.walkTo(0, DOOR_Y + 220, 400, () => patron.char.destroy());
         this.log("一位食客候得不耐，拂袖离去");
         return false;
       }
@@ -489,14 +659,23 @@ class TavernScene extends Phaser.Scene {
         booth.state = "dining";
         booth.departAt = time + DINING_MS;
         this.log("出餐完毕，食客开始用膳");
-        if (booth.cookingDriver === "player" && this.playerCookingBooth === index) this.playerCookingBooth = null;
-        if (booth.cookingDriver === "staff" && this.staffCookingBooth === index) this.staffCookingBooth = null;
+        if (booth.cookingDriver === "player" && this.playerCookingBooth === index) {
+          this.playerCookingBooth = null;
+          this.moveActorHome("player", "cook");
+        }
+        if (booth.cookingDriver === "staff" && this.staffCookingBooth === index) {
+          this.staffCookingBooth = null;
+          this.moveActorHome("staff", "cook");
+        }
       } else if (booth.state === "dining" && time >= booth.departAt) {
         const price = booth.currentDish?.price ?? 0;
         const dishName = booth.currentDish?.name ?? "菜";
         booth.state = "empty";
         booth.cookingDriver = null;
         booth.currentDish = null;
+        const leaver = booth.patronChar;
+        booth.patronChar = undefined;
+        leaver?.walkTo(0, DOOR_Y + 220, 500, () => leaver.destroy());
         this.coins += price;
         this.sessionServed += 1;
         this.sessionRevenue += price;
@@ -558,6 +737,11 @@ class TavernScene extends Phaser.Scene {
       }
     }
     this.skyRect.setFillStyle(color, 1);
+    // 室内窗户透出的天光与外面同步；打烊时窗户只剩余夜色
+    if (this.windowViews.length) {
+      const winColor = this.gameState === "open" ? color : NIGHT_COLOR;
+      this.windowViews.forEach((w) => w.setFillStyle(winColor, 1));
+    }
 
     // 日月：营业期间从左侧地平线弧到右侧，夜晚显示月牙色
     if (this.gameState === "open") {
@@ -677,6 +861,17 @@ class TavernScene extends Phaser.Scene {
     this.staffSeat = null;
     this.staffCookingBooth = null;
 
+    this.playerChar.teleportTo(PLAYER_HOME.x, PLAYER_HOME.y);
+    const homes: Record<string, { x: number; y: number }> = {
+      hawker: HAWKER_HOME,
+      server: SERVER_HOME,
+      cook: COOK_HOME,
+    };
+    Object.entries(this.staffChars).forEach(([role, char]) => {
+      const h = homes[role];
+      if (h) char?.teleportTo(h.x, h.y);
+    });
+
     this.dishCursor = 0;
     this.sessionServed = 0;
     this.sessionRevenue = 0;
@@ -685,7 +880,6 @@ class TavernScene extends Phaser.Scene {
     this.log("开张大吉，今日营业开始");
 
     this.cameras.main.pan(CAMERA_OPEN_X, SCREEN_H / 2, CAMERA_PAN_MS, "Sine.easeInOut");
-    this.tweens.add({ targets: this, uiOffset: UI_OFFSET_OPEN, duration: CAMERA_PAN_MS, ease: "Sine.easeInOut" });
     this.positionUi(true);
   }
 
@@ -703,8 +897,11 @@ class TavernScene extends Phaser.Scene {
     this.staffHawk = null;
     this.staffSeat = null;
     this.staffCookingBooth = null;
+    this.queue.forEach((p) => p.char.destroy());
     this.queue = [];
     this.booths.forEach((booth) => {
+      booth.patronChar?.destroy();
+      booth.patronChar = undefined;
       booth.state = "empty";
       booth.cookingDriver = null;
       booth.currentDish = null;
@@ -713,7 +910,6 @@ class TavernScene extends Phaser.Scene {
     this.buildSettlementOverlay();
 
     this.cameras.main.pan(CAMERA_CLOSED_X, SCREEN_H / 2, CAMERA_PAN_MS, "Sine.easeInOut");
-    this.tweens.add({ targets: this, uiOffset: 0, duration: CAMERA_PAN_MS, ease: "Sine.easeInOut" });
     this.positionUi(false);
   }
 
@@ -762,12 +958,38 @@ class TavernScene extends Phaser.Scene {
   }
 
   private positionUi(isOpen: boolean) {
-    // 营业时操作区在右、桌子可见；打烊时在左、桌子隐藏
     this.tableTitle.setVisible(isOpen);
     this.boothVisuals.forEach((v) => {
       v.bg.setVisible(isOpen);
       v.label.setVisible(isOpen);
     });
+
+    this.hawkButton.setVisible(isOpen);
+    this.serveButton.setVisible(isOpen);
+    this.cookButton.setVisible(isOpen);
+    this.hireHawkerButton.setVisible(!isOpen);
+    this.hireServerButton.setVisible(!isOpen);
+    this.hireCookButton.setVisible(!isOpen);
+    this.hireBuyerButton.setVisible(!isOpen);
+    this.upgradeButton.setVisible(!isOpen);
+    this.genderButton.setVisible(!isOpen);
+
+    this.playerChar.setVisible(isOpen);
+    Object.values(this.staffChars).forEach((c) => c?.setVisible(isOpen));
+    this.queue.forEach((p) => p.char.setVisible(isOpen));
+    this.booths.forEach((b) => b.patronChar?.setVisible(isOpen));
+    this.windowViews.forEach((w) => w.setVisible(isOpen));
+  }
+
+  private toggleGender() {
+    this.setGender(this.playerGender === "male" ? "female" : "male");
+  }
+
+  private setGender(gender: "male" | "female") {
+    this.playerGender = gender;
+    this.playerChar.setBodyColor(gender === "male" ? 0x4a7ab8 : 0xc86a9e);
+    this.playerChar.setHairColor(gender === "male" ? 0x2b2b2b : 0x4a2b1a);
+    this.genderButton?.setText(gender === "male" ? "玩家形象：男（点击切换）" : "玩家形象：女（点击切换）");
   }
 
   private setButtonEnabled(button: Phaser.GameObjects.Text, enabled: boolean) {
@@ -822,6 +1044,27 @@ class TavernScene extends Phaser.Scene {
     const progress: OpProgress = { startedAt: this.time.now, duration };
     if (driver === "player") this.playerHawk = progress;
     else this.staffHawk = progress;
+    this.moveActorTo(driver, "hawk", Math.min(400, duration));
+  }
+
+  /** 玩家瞬移到目标点并做动作；伙计走过去再做动作。 */
+  private moveActorTo(driver: Driver, kind: "hawk" | "seat" | "cook", travelMs: number) {
+    const spot = kind === "hawk" ? HAWK_SPOT : kind === "seat" ? SERVE_SPOT : COOK_SPOT;
+    if (driver === "player") {
+      this.playerChar.teleportTo(spot.x, spot.y);
+      this.playerChar.pulse();
+      return;
+    }
+    const role = kind === "hawk" ? "hawker" : kind === "seat" ? "server" : "cook";
+    const char = this.staffChars[role];
+    char?.walkTo(spot.x, spot.y, travelMs, () => char.pulse());
+  }
+
+  private moveActorHome(driver: Driver, kind: "hawk" | "seat" | "cook") {
+    const home = kind === "hawk" ? HAWKER_HOME : kind === "seat" ? SERVER_HOME : COOK_HOME;
+    const actor = driver === "player" ? this.playerChar : this.staffChars[kind === "hawk" ? "hawker" : kind === "seat" ? "server" : "cook"];
+    const target = driver === "player" ? PLAYER_HOME : home;
+    actor?.walkTo(target.x, target.y, 300);
   }
 
   private resolveHawk(progress: OpProgress | null, time: number, driver: Driver): OpProgress | null {
@@ -830,9 +1073,12 @@ class TavernScene extends Phaser.Scene {
       this.sessionLost += 1;
       this.log("门外已候满，吆喝不出新客");
     } else {
-      this.queue.push({ expiresAt: time + QUEUE_PATIENCE_MS });
+      const char = new Character(this, -90 + this.queue.length * 90, QUEUE_Y, 0xc0a080, 0x2b2b2b);
+      char.setVisible(this.gameState === "open");
+      this.queue.push({ expiresAt: time + QUEUE_PATIENCE_MS, char });
       this.log(driver === "player" ? "你吆喝一声，食客上门排队" : "迎客伙计招来一位食客排队");
     }
+    this.moveActorHome(driver, "hawk");
     return null;
   }
 
@@ -844,8 +1090,9 @@ class TavernScene extends Phaser.Scene {
     const boothIndex = this.booths.findIndex((booth) => booth.state === "empty");
     if (boothIndex === -1) return;
 
-    this.queue.shift();
-    this.booths[boothIndex].state = "seating";
+    const patron = this.queue.shift()!;
+    const booth = this.booths[boothIndex];
+    booth.state = "seating";
     const progress: SeatProgress = {
       startedAt: this.time.now,
       duration:
@@ -863,6 +1110,13 @@ class TavernScene extends Phaser.Scene {
     };
     if (driver === "player") this.playerSeat = progress;
     else this.staffSeat = progress;
+    this.moveActorTo(driver, "seat", Math.min(400, progress.duration));
+
+    // 顾客从门口走向桌子，移动时长与招待进度同步
+    const col = boothIndex % 3;
+    const row = Math.floor(boothIndex / 3);
+    patron.char.walkTo(-220 + col * 220, TABLE_ROW_Y + row * TABLE_ROW_GAP + 52, progress.duration);
+    booth.patronChar = patron.char;
   }
 
   private resolveSeat(progress: SeatProgress | null, time: number, driver: Driver): SeatProgress | null {
@@ -872,6 +1126,7 @@ class TavernScene extends Phaser.Scene {
       booth.state = "awaitingCook";
       this.log(driver === "player" ? "你领食客入座雅座，等候烹饪" : "跑堂伙计领食客入座雅座");
     }
+    this.moveActorHome(driver, "seat");
     return null;
   }
 
@@ -886,6 +1141,9 @@ class TavernScene extends Phaser.Scene {
     if (booth.state !== "awaitingCook") return;
     if (this.inventory <= 0) {
       booth.state = "empty";
+      const leaver = booth.patronChar;
+      booth.patronChar = undefined;
+      leaver?.walkTo(0, DOOR_Y + 220, 400, () => leaver.destroy());
       this.sessionLost += 1;
       this.log("灵材不足，食客离开");
       return;
@@ -911,6 +1169,7 @@ class TavernScene extends Phaser.Scene {
     booth.cookDoneAt = this.time.now + duration;
     if (driver === "player") this.playerCookingBooth = index;
     else this.staffCookingBooth = index;
+    this.moveActorTo(driver, "cook", Math.min(400, duration));
     this.log(driver === "player" ? `你下厨烹制${dish.name}` : `灶上伙计烹制${dish.name}（雅座 ${index + 1}）`);
   }
 
@@ -969,6 +1228,15 @@ class TavernScene extends Phaser.Scene {
     }
     this.coins -= hireCost;
     this.staffLevel[role] = 1;
+
+    if (role !== "buyer") {
+      const home = role === "hawker" ? HAWKER_HOME : role === "server" ? SERVER_HOME : COOK_HOME;
+      const color = role === "hawker" ? 0x8a6a3a : role === "server" ? 0x3a7a5a : 0x7a4a3a;
+      const char = new Character(this, home.x, home.y, color, 0x2b2b2b);
+      char.setVisible(this.gameState === "open");
+      this.staffChars[role] = char;
+    }
+
     const roleName = { hawker: "迎客", server: "跑堂", cook: "灶上", buyer: "采买" }[role];
     this.log(`雇到一位${roleName}伙计，此后自动运作`);
     const hireButton = {
