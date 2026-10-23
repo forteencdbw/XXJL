@@ -1,30 +1,35 @@
 import Phaser from "phaser";
 import { loadAudioSettings, playSfx, setBgmMuted, setSfxMuted, startBgm } from "./audio";
+import {
+  BANKRUPT_STREAK,
+  DISHES,
+  LOANS,
+  LOAN_PERIODS,
+  NIGHT_COLOR,
+  getArrivalInterval,
+  getBoothCount,
+  getLoanDue,
+  getPlayerDuration,
+  getPurchaseDuration,
+  getPurchasePrice,
+  getStaffDuration,
+  getStaffLevel,
+  getStaffWage,
+  getUpgradeCost,
+  skyColorAt,
+} from "./logic";
+import { EXP_PER_LEVEL } from "./logic";
+import type { Dish, LoanDef, StaffRole } from "./logic";
 
-// ===== 数值（占位，先验证手感）=====
-const TABLE_COUNT_BASE = 3;
+// ===== 本文件独有的常量 =====
 const QUEUE_PATIENCE_MS = 8000;
-const ARRIVAL_MIN_MS = 4000;
-const ARRIVAL_MAX_MS = 7000;
-const ARRIVAL_TAVERN_SHRINK_MS = 150;
-const ARRIVAL_HAWKER_SHRINK = 0.08;
-const ARRIVAL_FLOOR_MS = 1500;
 const LAST_CALL_MS = 10000;
 const DINING_MS = 3000;
 const SESSION_DURATION_MS = 60000;
-const PURCHASE_COST = 5;
 const PURCHASE_AMOUNT = 5;
-const PURCHASE_TIME_MS = 15000;
-const PURCHASE_EMERGENCY_MULTIPLIER = 2;
 const PURCHASE_TARGET_STOCK = 10;
-const PURCHASE_TAVERN_SHRINK_PER_LEVEL_MS = 300;
-const PURCHASE_FLOOR_MS = 3000;
-const PURCHASE_DISCOUNT_PER_LEVEL = 0.08;
-const PURCHASE_DISCOUNT_CAP = 0.5;
 const STARTING_COINS = 20;
 const STARTING_INVENTORY = 5;
-const UPGRADE_BASE_COST = 15;
-const UPGRADE_COST_MULTIPLIER = 1.6;
 const HIRE_COST_HAWKER = 30;
 const HIRE_COST_SERVER = 40;
 const HIRE_COST_COOK = 50;
@@ -37,32 +42,6 @@ const SEAT_FLOOR_MS = 300;
 const COOK_TAVERN_SHRINK_PER_LEVEL_MS = 200;
 const COOK_FLOOR_MS = 500;
 
-const STAFF_SPEED_PENALTY = 1.6;
-const STAFF_LEVEL_SPEEDUP = { hawker: 0.86, server: 0.94, cook: 0.9 } as const;
-
-// 熟练度：每回合 +1，每 3 点升一级，最高 4 级
-const EXP_PER_LEVEL = 3;
-const MAX_STAFF_LEVEL = 4;
-// 各岗位基础日薪，每高一级涨 30%
-const STAFF_BASE_WAGE = { hawker: 5, server: 8, cook: 10, buyer: 6 } as const;
-const WAGE_PER_LEVEL = 1.3;
-
-// 灵石商行：三档借贷，固定 12 期，连本带利分期偿还
-const LOAN_PERIODS = 12;
-const BANKRUPT_STREAK = 5;
-interface LoanDef {
-  id: string;
-  name: string;
-  principal: number;
-  totalRepay: number;
-  unlockLevel: number;
-}
-const LOANS: LoanDef[] = [
-  { id: "small", name: "小借", principal: 200, totalRepay: 240, unlockLevel: 1 },
-  { id: "medium", name: "中借", principal: 500, totalRepay: 650, unlockLevel: 3 },
-  { id: "large", name: "大借", principal: 1200, totalRepay: 1680, unlockLevel: 5 },
-];
-
 const COLOR_PLAYER = 0xffa94d;
 const COLOR_STAFF = 0x4da6ff;
 
@@ -70,16 +49,14 @@ const COLOR_STAFF = 0x4da6ff;
 const SCREEN_W = 720;
 const SCREEN_H = 1280;
 
-// 世界坐标：内部场景在 x=0，外观酒楼在左侧（镜头向左平移过去）
 const EXTERIOR_X = -2000;
-const CAMERA_OPEN_X = 0; // 营业：正视内部
-const CAMERA_CLOSED_X = -2360; // 打烊：外观在屏幕右侧露左半
+const CAMERA_OPEN_X = 0;
+const CAMERA_CLOSED_X = -2360;
 const TAVERN_W = 360;
 const SKY_TRANSITION_MS = 2000;
 
-// 酒楼内部布局（侧视图，世界坐标）
-const FLOOR_Y = 1010; // 地面线
-const ACTOR_Y = FLOOR_Y - 34; // 角色脚踩地面的中心高度
+const FLOOR_Y = 1010;
+const ACTOR_Y = FLOOR_Y - 34;
 const TABLE_X_MIN = -175;
 const TABLE_X_MAX = 145;
 const QUEUE_X = 420;
@@ -92,119 +69,9 @@ const SERVE_SPOT = { x: 20, y: ACTOR_Y };
 const COOK_SPOT = { x: -230, y: ACTOR_Y };
 const DOOR_X = 320;
 
-const SKY_STOPS = [
-  { t: 0, color: 0xa8d8ff }, // 清晨
-  { t: 0.28, color: 0x74bdf7 }, // 正午
-  { t: 0.68, color: 0xf0a05a }, // 黄昏
-  { t: 1, color: 0x1b2440 }, // 夜晚
-] as const;
-const NIGHT_COLOR = 0x1b2440;
-
 type Driver = "player" | "staff";
-type ProductionRole = "hawker" | "server" | "cook";
-type StaffRole = ProductionRole | "buyer";
 type GameState = "closed" | "selectingMenu" | "open" | "bankrupt";
 type TapText = Phaser.GameObjects.Text & { onTap: () => void };
-
-interface Dish {
-  id: string;
-  name: string;
-  price: number;
-  cookMs: number;
-  unlockLevel: number;
-}
-
-const DISHES: Dish[] = [
-  { id: "stirfry", name: "清炒灵蔬", price: 6, cookMs: 1500, unlockLevel: 1 },
-  { id: "porridge", name: "灵米粥", price: 8, cookMs: 2000, unlockLevel: 2 },
-  { id: "jelly", name: "玉露羹", price: 12, cookMs: 2800, unlockLevel: 3 },
-  { id: "fish", name: "龙涎鱼脍", price: 18, cookMs: 4000, unlockLevel: 4 },
-];
-
-function getBoothCount(level: number): number {
-  return TABLE_COUNT_BASE + (level - 1);
-}
-function getUpgradeCost(level: number): number {
-  return Math.round(UPGRADE_BASE_COST * Math.pow(UPGRADE_COST_MULTIPLIER, level - 1));
-}
-function getPlayerDuration(base: number, shrinkPerLevel: number, floor: number, tavernLevel: number): number {
-  return Math.max(floor, base - (tavernLevel - 1) * shrinkPerLevel);
-}
-function getStaffDuration(
-  role: ProductionRole,
-  base: number,
-  shrinkPerLevel: number,
-  floor: number,
-  tavernLevel: number,
-  staffLevel: number,
-): number {
-  const raw =
-    base * STAFF_SPEED_PENALTY * Math.pow(STAFF_LEVEL_SPEEDUP[role], Math.max(staffLevel, 1) - 1) -
-    (tavernLevel - 1) * shrinkPerLevel;
-  return Math.max(floor, raw);
-}
-/** 顾客到店间隔：基础随机区间，受装潢等级和迎客伙计等级缩短。 */
-function getArrivalInterval(tavernLevel: number, hawkerLevel: number): number {
-  const base = Phaser.Math.Between(ARRIVAL_MIN_MS, ARRIVAL_MAX_MS);
-  const hawkerFactor = Math.max(0.35, 1 - ARRIVAL_HAWKER_SHRINK * hawkerLevel);
-  return Math.max(ARRIVAL_FLOOR_MS, base * hawkerFactor - (tavernLevel - 1) * ARRIVAL_TAVERN_SHRINK_MS);
-}
-
-/** 熟练度点数换算等级：每 3 点一级，最高 4 级。 */
-function getStaffLevel(exp: number): number {
-  return Math.min(MAX_STAFF_LEVEL, 1 + Math.floor(exp / EXP_PER_LEVEL));
-}
-
-/** 日薪 = 岗位基础日薪 × 1.3^(等级-1)。 */
-function getStaffWage(role: StaffRole, level: number): number {
-  return Math.round(STAFF_BASE_WAGE[role] * Math.pow(WAGE_PER_LEVEL, Math.max(level, 1) - 1));
-}
-
-/** 采买伙计提供采购折扣，每级 -8%，最多 -50%。 */
-function getPurchaseDiscount(buyerLevel: number): number {
-  return Math.min(PURCHASE_DISCOUNT_CAP, PURCHASE_DISCOUNT_PER_LEVEL * Math.max(buyerLevel, 0));
-}
-
-/** 采购价格：营业中翻倍；采买等级提供折扣（玩家手动采购同样享受）。 */
-function getPurchasePrice(buyerLevel: number, emergency: boolean): number {
-  const base = PURCHASE_COST * (emergency ? PURCHASE_EMERGENCY_MULTIPLIER : 1);
-  return Math.max(1, Math.round(base * (1 - getPurchaseDiscount(buyerLevel))));
-}
-
-/** 营业中紧急采购的等待时长（受装潢小幅缩短）。打烊采购不走这个。 */
-function getPurchaseDuration(tavernLevel: number): number {
-  const shrink = (tavernLevel - 1) * PURCHASE_TAVERN_SHRINK_PER_LEVEL_MS;
-  return Math.max(PURCHASE_FLOOR_MS, PURCHASE_TIME_MS - shrink);
-}
-
-/** 按关键帧在昼夜色带里插值。t: 0=清晨 1=夜晚。 */
-function skyColorAt(t: number): number {
-  const clamped = Phaser.Math.Clamp(t, 0, 1);
-  for (let i = 0; i < SKY_STOPS.length - 1; i++) {
-    const a = SKY_STOPS[i];
-    const b = SKY_STOPS[i + 1];
-    if (clamped >= a.t && clamped <= b.t) {
-      const k = (clamped - a.t) / (b.t - a.t || 1);
-      const ca = Phaser.Display.Color.IntegerToColor(a.color);
-      const cb = Phaser.Display.Color.IntegerToColor(b.color);
-      const mixed = Phaser.Display.Color.Interpolate.ColorWithColor(ca, cb, 100, k * 100);
-      return Phaser.Display.Color.GetColor(mixed.r, mixed.g, mixed.b);
-    }
-  }
-  return SKY_STOPS[SKY_STOPS.length - 1].color;
-}
-
-// ===== 自检 =====
-console.assert(getBoothCount(1) === TABLE_COUNT_BASE, "1 级应为基础雅座/排队容量");
-console.assert(getUpgradeCost(2) > getUpgradeCost(1), "升级花费应随等级递增");
-console.assert(DISHES[0].unlockLevel === 1, "第一道菜应在 1 级即可用");
-console.assert(getPurchaseDuration(1) === PURCHASE_TIME_MS, "营业中紧急采购基础耗时应为 15 秒");
-console.assert(getPurchasePrice(0, false) === PURCHASE_COST, "无采买时打烊采购应为原价");
-console.assert(getPurchasePrice(0, true) === PURCHASE_COST * 2, "无采买时营业中采购应翻倍");
-console.assert(getPurchasePrice(2, false) < getPurchasePrice(0, false), "采买等级越高采购越便宜");
-console.assert(getPurchasePrice(99, false) >= 1, "折扣后价格不应低于 1");
-console.assert(skyColorAt(0) !== skyColorAt(1), "昼夜色带端点应不同");
-console.assert(skyColorAt(1) === NIGHT_COLOR, "夜晚色应等于色带末端");
 
 type BoothState = "empty" | "seating" | "awaitingCook" | "cooking" | "dining";
 
@@ -799,7 +666,7 @@ class TavernScene extends Phaser.Scene {
       }
     } else if (time >= this.nextArrivalAt) {
       this.spawnPatron(time);
-      this.nextArrivalAt = time + getArrivalInterval(this.level, this.staffLevel.hawker);
+      this.nextArrivalAt = time + getArrivalInterval(this.level, this.staffLevel.hawker, Phaser.Math.Between(4000, 7000));
     }
 
     this.queue = this.queue.filter((patron) => {
@@ -1051,7 +918,7 @@ class TavernScene extends Phaser.Scene {
       this.sessionRevenue = 0;
       this.sessionLost = 0;
       this.sessionEndsAt = this.time.now + SESSION_DURATION_MS;
-      this.nextArrivalAt = this.time.now + getArrivalInterval(this.level, this.staffLevel.hawker);
+      this.nextArrivalAt = this.time.now + getArrivalInterval(this.level, this.staffLevel.hawker, Phaser.Math.Between(4000, 7000));
       this.lastCallTriggered = false;
       playSfx("open");
       startBgm();
@@ -1682,7 +1549,7 @@ class TavernScene extends Phaser.Scene {
     const details: { name: string; due: number }[] = [];
     for (const loan of this.activeLoans) {
       if (loan.periodsLeft <= 0) continue;
-      const due = Math.ceil(loan.remaining / loan.periodsLeft);
+      const due = getLoanDue(loan.remaining, loan.periodsLeft);
       loan.remaining -= due;
       loan.periodsLeft -= 1;
       this.coins -= due;

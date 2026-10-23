@@ -63,13 +63,31 @@ before ("parent-directory symlink resolution changed").
   does not advance — you'll get a screenshot of the initial state no matter how large the
   budget is. Launch a persistent session (as above) and use real `await new
   Promise(r => setTimeout(r, ms))` waits instead.
-- **Click coordinates need the canvas offset, not raw viewport coordinates.** `index.html`
-  centers the 720×1280 canvas in a flex container, so on a viewport larger than the canvas
-  there's a `(viewport - canvas) / 2` margin on every side. A button Phaser places at
-  canvas-local `(x, y)` is at screen `(x + marginX, y + marginY)`. Getting this wrong
-  produces a click that silently does nothing (the most common failure mode here).
-- **Money/branching logic changes need a real wait, not just a screenshot of the initial
-  state.** Customers arrive on a random 2–5s (shrinking with tavern level) timer and
-  stay ~3s — wait at least that long between screenshots to see a full
-  arrival→seat→departure→revenue cycle, and check the HUD numbers add up (not just that
-  text appeared).
+- **Derive click coordinates from the live canvas rect, never by hand.** Print the canvas
+  offset once at the start and click through a helper, so the margin can't drift:
+
+  ```js
+  const rect = await page.evaluate(() => {
+    const c = document.querySelector("canvas").getBoundingClientRect();
+    return { x: c.x, y: c.y };
+  });
+  console.log("CANVAS_ORIGIN", rect);
+  const clickCanvas = (x, y) => page.mouse.click(rect.x + x, rect.y + y);
+  ```
+
+  A Phaser object at canvas-local `(x, y)` is clicked at screen `(rect.x + x, rect.y + y)`.
+  Hand-computing the centering margin has silently produced "clicks that do nothing"
+  more than once. Text objects also only accept clicks inside their text bounds — a
+  button's colored background is wider than its hit area.
+
+- **A click with no observable change is not evidence.** After each click, screenshot or
+  re-read a HUD value. If nothing changed, the click missed — do not conclude the feature
+  is broken. Before changing any implementation, add a temporary `console.log` inside the
+  handler and confirm whether the event arrives at all. Chasing a "broken button" that
+  was never clicked is the most expensive failure mode in this repo.
+
+- **Poll for state instead of sleeping through randomness.** Customers arrive on a random
+  4–7s timer and seats fill/free unpredictably, so a fixed `wait()` lands before or after
+  the window about half the time. Add a temporary log (or screenshot-check a visible
+  condition) and poll until the state you need is true, then click. For money/branching
+  changes, also verify the HUD numbers add up, not just that text appeared.
