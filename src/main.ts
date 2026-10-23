@@ -383,6 +383,8 @@ class TavernScene extends Phaser.Scene {
 
   private genderButton!: Phaser.GameObjects.Text;
   private overlay: Phaser.GameObjects.Container | null = null;
+  /** 结算面板显示中：产线已停，但视图仍停在营业视角，等玩家点「打烊」再过渡。 */
+  private settling = false;
 
   constructor() {
     super("tavern");
@@ -663,7 +665,7 @@ class TavernScene extends Phaser.Scene {
     // 覆盖层始终对齐相机可见区域，避免营业↔打烊镜头平移时错位
     if (this.overlay) this.overlay.setPosition(this.cameras.main.scrollX, this.cameras.main.scrollY);
 
-    if (this.gameState === "open") {
+    if (this.gameState === "open" && !this.settling) {
       if (time >= this.sessionEndsAt) {
         this.endSession();
         return;
@@ -884,6 +886,8 @@ class TavernScene extends Phaser.Scene {
     if (this.selectedDishIds.size === 0) return;
     this.destroyOverlay();
     this.gameState = "open";
+    this.settling = false;
+    this.cameras.main.setZoom(1);
     this.sessionStartedAt = this.time.now;
 
     this.queue = [];
@@ -925,7 +929,7 @@ class TavernScene extends Phaser.Scene {
   }
 
   private endSession() {
-    this.gameState = "closed";
+    this.settling = true;
     this.sessionEndsAt = 0;
     if (this.playerPurchasing) {
       this.inventory += this.playerPurchasing.amount;
@@ -948,10 +952,28 @@ class TavernScene extends Phaser.Scene {
       booth.currentDish = null;
     });
     this.log("打烊，今日营业结束");
+    // 镜头暂留营业视角，等玩家在结算面板点「打烊」后再拉远过渡
     this.buildSettlementOverlay();
+  }
 
-    this.cameras.main.pan(CAMERA_CLOSED_X, SCREEN_H / 2, CAMERA_PAN_MS, "Sine.easeInOut");
-    this.positionUi(false);
+  /** 从内部视角拉远并平移到打烊外观视角。 */
+  private transitionToClosedView() {
+    const cam = this.cameras.main;
+    cam.pan(CAMERA_CLOSED_X, SCREEN_H / 2, 900, "Sine.easeInOut");
+    this.tweens.addCounter({
+      from: 0,
+      to: 1,
+      duration: 900,
+      ease: "Sine.easeInOut",
+      onUpdate: (tw) => {
+        const t = tw.getValue() as number;
+        cam.setZoom(1 - 0.45 * Math.sin(Math.PI * t));
+      },
+      onComplete: () => {
+        cam.setZoom(1);
+        this.positionUi(false);
+      },
+    });
   }
 
   private buildSettlementOverlay() {
@@ -969,14 +991,19 @@ class TavernScene extends Phaser.Scene {
       layer.add(this.add.text(40, 320 + i * 60, line, { fontSize: "24px", color: "#e8e8e8" }));
     });
     const close = this.add
-      .text(40, 620, "回到打烊状态", {
+      .text(40, 620, "打烊", {
         fontSize: "22px",
         color: "#ffffff",
         backgroundColor: "#3f5a7a",
         padding: { x: 16, y: 12 },
       })
       .setInteractive({ useHandCursor: true })
-      .on("pointerdown", () => this.destroyOverlay());
+      .on("pointerdown", () => {
+        this.destroyOverlay();
+        this.settling = false;
+        this.gameState = "closed";
+        this.transitionToClosedView();
+      });
     layer.add(close);
     this.overlay = layer;
   }
