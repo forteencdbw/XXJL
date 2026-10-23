@@ -57,7 +57,8 @@ const FLOOR_Y = 1010; // 地面线
 const ACTOR_Y = FLOOR_Y - 34; // 角色脚踩地面的中心高度
 const TABLE_X_MIN = -175;
 const TABLE_X_MAX = 145;
-const QUEUE_X = 330;
+const QUEUE_X = 420;
+const QUEUE_GAP = 70;
 const PLAYER_HOME = { x: 0, y: ACTOR_Y };
 const HAWKER_HOME = { x: 280, y: ACTOR_Y };
 const SERVER_HOME = { x: 120, y: ACTOR_Y };
@@ -79,6 +80,7 @@ type Driver = "player" | "staff";
 type ProductionRole = "hawker" | "server" | "cook";
 type StaffRole = ProductionRole | "buyer";
 type GameState = "closed" | "selectingMenu" | "open";
+type TapText = Phaser.GameObjects.Text & { onTap: () => void };
 
 interface Dish {
   id: string;
@@ -231,7 +233,18 @@ class ProgressButton {
     register(this.playerFill, barX);
     register(this.staffFill, barX);
     register(this.label, x + 10);
-    this.track.setInteractive({ useHandCursor: true }).on("pointerdown", onClick);
+    // 用 pointerup + 位移阈值判定点击，避免玩家拖拽场景时误触按钮
+    let sx = 0;
+    let sy = 0;
+    this.track
+      .setInteractive({ useHandCursor: true })
+      .on("pointerdown", (p: Phaser.Input.Pointer) => {
+        sx = p.x;
+        sy = p.y;
+      })
+      .on("pointerup", (p: Phaser.Input.Pointer) => {
+        if (Math.hypot(p.x - sx, p.y - sy) < 12) onClick();
+      });
   }
 
   setLabel(text: string) {
@@ -370,17 +383,17 @@ class TavernScene extends Phaser.Scene {
   private boothVisuals: BoothVisual[] = [];
 
   private hawkButton!: ProgressButton;
-  private hireHawkerButton!: Phaser.GameObjects.Text;
+  private hireHawkerButton!: TapText;
   private serveButton!: ProgressButton;
-  private hireServerButton!: Phaser.GameObjects.Text;
+  private hireServerButton!: TapText;
   private cookButton!: Phaser.GameObjects.Text;
-  private hireCookButton!: Phaser.GameObjects.Text;
+  private hireCookButton!: TapText;
   private purchaseButton!: ProgressButton;
-  private hireBuyerButton!: Phaser.GameObjects.Text;
-  private upgradeButton!: Phaser.GameObjects.Text;
-  private startButton!: Phaser.GameObjects.Text;
+  private hireBuyerButton!: TapText;
+  private upgradeButton!: TapText;
+  private startButton!: TapText;
 
-  private genderButton!: Phaser.GameObjects.Text;
+  private genderButton!: TapText;
   private overlay: Phaser.GameObjects.Container | null = null;
   /** 结算面板显示中：产线已停，但视图仍停在营业视角，等玩家点「打烊」再过渡。 */
   private settling = false;
@@ -400,6 +413,7 @@ class TavernScene extends Phaser.Scene {
 
     this.cameras.main.centerOn(CAMERA_CLOSED_X, SCREEN_H / 2);
     this.setGender("male");
+    this.bindCameraDrag();
     this.refreshHud();
     // shortcut: 用 localStorage 记性别；接入微信小游戏时换成 wx.setStorageSync
     if (!localStorage.getItem("tavern_gender")) this.showGenderPicker();
@@ -489,6 +503,25 @@ class TavernScene extends Phaser.Scene {
     // 门外地面延伸
     gfx.fillStyle(0x6a5a44, 1);
     gfx.fillRect(DOOR_X + 80, FLOOR_Y, 360 - DOOR_X - 80, 1280 - FLOOR_Y);
+
+    // 门外空地
+    gfx.fillStyle(0x7a6a4a, 1);
+    gfx.fillRect(360, FLOOR_Y, 540, 1280 - FLOOR_Y);
+    gfx.lineStyle(3, 0x5a4028, 1);
+    gfx.lineBetween(360, FLOOR_Y, 900, FLOOR_Y);
+    // 空地装饰：树和石头
+    gfx.fillStyle(0x4a3420, 1);
+    gfx.fillRect(560, FLOOR_Y - 80, 14, 80);
+    gfx.fillStyle(0x3a6a3a, 1);
+    gfx.fillCircle(567, FLOOR_Y - 100, 46);
+    gfx.fillStyle(0x2f5a2f, 1);
+    gfx.fillCircle(567, FLOOR_Y - 118, 30);
+    gfx.fillStyle(0x8a8a8a, 1);
+    gfx.fillCircle(740, FLOOR_Y - 12, 20);
+    gfx.fillCircle(800, FLOOR_Y - 8, 13);
+    // 排队区标记
+    gfx.lineStyle(2, 0x8a7a5a, 1);
+    gfx.lineBetween(400, FLOOR_Y - 2, 620, FLOOR_Y - 2);
   }
 
   /** 窗户（随时间变色），单独保存以便 updateSky 调整。 */
@@ -587,6 +620,8 @@ class TavernScene extends Phaser.Scene {
   }
 
   private addWorldButton(x: number, y: number, onClick: () => void): Phaser.GameObjects.Text {
+    let sx = 0;
+    let sy = 0;
     return this.add
       .text(x, y, "", {
         fontSize: "15px",
@@ -596,7 +631,13 @@ class TavernScene extends Phaser.Scene {
       })
       .setDepth(25)
       .setInteractive({ useHandCursor: true })
-      .on("pointerdown", onClick);
+      .on("pointerdown", (p: Phaser.Input.Pointer) => {
+        sx = p.x;
+        sy = p.y;
+      })
+      .on("pointerup", (p: Phaser.Input.Pointer) => {
+        if (Math.hypot(p.x - sx, p.y - sy) < 12) onClick();
+      });
   }
 
   private registerUi = (obj: { x: number; setScrollFactor(v: number): unknown }, baseX: number) => {
@@ -609,8 +650,10 @@ class TavernScene extends Phaser.Scene {
     return t;
   }
 
-  private addUiButton(x: number, y: number, onClick: () => void): Phaser.GameObjects.Text {
-    return this.add
+  private addUiButton(x: number, y: number, onClick: () => void): TapText {
+    let sx = 0;
+    let sy = 0;
+    const t = this.add
       .text(x, y, "", {
         fontSize: "15px",
         color: "#ffffff",
@@ -620,7 +663,15 @@ class TavernScene extends Phaser.Scene {
       .setDepth(31)
       .setScrollFactor(0)
       .setInteractive({ useHandCursor: true })
-      .on("pointerdown", onClick);
+      .on("pointerdown", (p: Phaser.Input.Pointer) => {
+        sx = p.x;
+        sy = p.y;
+      })
+      .on("pointerup", (p: Phaser.Input.Pointer) => {
+        if (Math.hypot(p.x - sx, p.y - sy) < 12) t.onTap();
+      }) as TapText;
+    t.onTap = onClick;
+    return t;
   }
 
   private buildBoothVisuals() {
@@ -1058,6 +1109,30 @@ class TavernScene extends Phaser.Scene {
     this.setGender(this.playerGender === "male" ? "female" : "male");
   }
 
+  /** 营业视角：玩家可水平拖拽镜头，从厨房左缘一直拖到空地尽头。 */
+  private bindCameraDrag() {
+    const cam = this.cameras.main;
+    let startX = 0;
+    let startScroll = 0;
+    let active = false;
+
+    this.input.on("pointerdown", (p: Phaser.Input.Pointer) => {
+      if (this.gameState !== "open" || this.transitioning) return;
+      startX = p.x;
+      startScroll = cam.scrollX;
+      active = true;
+    });
+    this.input.on("pointermove", (p: Phaser.Input.Pointer) => {
+      if (!active || !p.isDown) return;
+      const dx = p.x - startX;
+      if (Math.abs(dx) < 8) return;
+      cam.scrollX = Phaser.Math.Clamp(startScroll - dx, -360, 180);
+    });
+    this.input.on("pointerup", () => {
+      active = false;
+    });
+  }
+
   private setGender(gender: "male" | "female") {
     this.playerGender = gender;
     this.playerChar.setBodyColor(gender === "male" ? 0x4a7ab8 : 0xc86a9e);
@@ -1146,8 +1221,10 @@ class TavernScene extends Phaser.Scene {
       this.sessionLost += 1;
       this.log("门外已候满，吆喝不出新客");
     } else {
-      const char = new Character(this, QUEUE_X + this.queue.length * 8, ACTOR_Y - this.queue.length * 10, 0xc0a080, 0x2b2b2b);
+      // 顾客从右侧空地外走进来，站到队尾
+      const char = new Character(this, 980, ACTOR_Y, 0xc0a080, 0x2b2b2b);
       char.setVisible(this.gameState === "open");
+      char.walkTo(QUEUE_X + this.queue.length * QUEUE_GAP, ACTOR_Y, 700);
       this.queue.push({ expiresAt: time + QUEUE_PATIENCE_MS, char });
       this.log(driver === "player" ? "你吆喝一声，食客上门排队" : "迎客伙计招来一位食客排队");
     }
@@ -1317,7 +1394,7 @@ class TavernScene extends Phaser.Scene {
       cook: this.hireCookButton,
       buyer: this.hireBuyerButton,
     }[role];
-    hireButton.off("pointerdown").on("pointerdown", () => this.upgradeStaff(role));
+    hireButton.onTap = () => this.upgradeStaff(role);
   }
 
   private upgradeStaff(role: StaffRole) {
