@@ -1432,22 +1432,19 @@ class TavernScene extends Phaser.Scene {
     this.log(driver === "player" ? `你下厨烹制${dish.name}` : `灶上伙计烹制${dish.name}（雅座 ${index + 1}）`);
   }
 
-  /** 玩家点采购：打烊瞬间到货；营业中走 15 秒紧急采购（翻倍价）。 */
+  /** 玩家点采购：打烊瞬间到货；营业中走 15 秒紧急采购（翻倍价）。灵石不足时赊账，费用照扣。 */
   private startPurchase() {
     const emergency = this.gameState === "open";
     const price = getPurchasePrice(this.staffLevel.buyer, emergency);
 
     if (this.isPlayerBusy()) return;
-    if (this.coins < price) {
-      this.log(emergency ? "灵石不足，无法紧急采购" : "灵石不足，无法采购");
-      return;
-    }
+    const credit = this.coins < price;
     this.coins -= price;
     this.displayedCoins = this.coins;
 
     if (!emergency) {
       this.inventory += PURCHASE_AMOUNT;
-      this.log(`采购灵材 +${PURCHASE_AMOUNT}`);
+      this.log(`${credit ? "灵石不足，赊账采购灵材" : "采购灵材"} +${PURCHASE_AMOUNT}`);
       return;
     }
     this.playerPurchasing = {
@@ -1455,7 +1452,7 @@ class TavernScene extends Phaser.Scene {
       duration: getPurchaseDuration(this.level),
       amount: PURCHASE_AMOUNT,
     };
-    this.log("紧急采购下单（价格翻倍），等货中");
+    this.log(credit ? "灵石不足，赊账紧急采购下单（价格翻倍），等货中" : "紧急采购下单（价格翻倍），等货中");
   }
 
   private upgradeTavern() {
@@ -1595,8 +1592,7 @@ class TavernScene extends Phaser.Scene {
       ? (time - this.playerPurchasing.startedAt) / this.playerPurchasing.duration
       : 0;
     this.purchaseButton.setProgress(playerPurchaseFraction, 0);
-    const purchasePrice = getPurchasePrice(this.staffLevel.buyer, this.gameState === "open");
-    this.purchaseButton.setEnabled(!this.isPlayerBusy() && this.coins >= purchasePrice);
+    this.purchaseButton.setEnabled(!this.isPlayerBusy());
 
     this.booths.forEach((booth, i) => {
       const visual = this.boothVisuals[i];
