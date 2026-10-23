@@ -50,7 +50,6 @@ const EXTERIOR_X = -2000;
 const CAMERA_OPEN_X = 0; // 营业：正视内部
 const CAMERA_CLOSED_X = -2360; // 打烊：外观在屏幕右侧露左半
 const TAVERN_W = 360;
-const CAMERA_PAN_MS = 600;
 const SKY_TRANSITION_MS = 2000;
 
 // 酒楼内部布局（侧视图，世界坐标）
@@ -385,6 +384,8 @@ class TavernScene extends Phaser.Scene {
   private overlay: Phaser.GameObjects.Container | null = null;
   /** 结算面板显示中：产线已停，但视图仍停在营业视角，等玩家点「打烊」再过渡。 */
   private settling = false;
+  /** 视图过渡中，防止重复触发。 */
+  private transitioning = false;
 
   constructor() {
     super("tavern");
@@ -883,49 +884,58 @@ class TavernScene extends Phaser.Scene {
   }
 
   private startSession() {
-    if (this.selectedDishIds.size === 0) return;
+    if (this.selectedDishIds.size === 0 || this.transitioning) return;
     this.destroyOverlay();
-    this.gameState = "open";
-    this.settling = false;
-    this.cameras.main.setZoom(1);
-    this.sessionStartedAt = this.time.now;
+    this.transitioning = true;
 
-    this.queue = [];
-    this.booths.forEach((booth) => {
-      booth.state = "empty";
-      booth.cookingDriver = null;
-      booth.currentDish = null;
-      booth.cookStartedAt = 0;
-      booth.cookDoneAt = 0;
-      booth.departAt = 0;
+    this.cameras.main.fadeOut(450, 0, 0, 0, () => {
+      this.gameState = "open";
+      this.settling = false;
+      this.cameras.main.centerOn(CAMERA_OPEN_X, SCREEN_H / 2);
+      this.cameras.main.setZoom(1);
+      this.positionUi(true);
+      this.sessionStartedAt = this.time.now;
+
+      this.queue.forEach((p) => p.char.destroy());
+      this.queue = [];
+      this.booths.forEach((booth) => {
+        booth.patronChar?.destroy();
+        booth.patronChar = undefined;
+        booth.state = "empty";
+        booth.cookingDriver = null;
+        booth.currentDish = null;
+        booth.cookStartedAt = 0;
+        booth.cookDoneAt = 0;
+        booth.departAt = 0;
+      });
+      this.playerHawk = null;
+      this.playerSeat = null;
+      this.playerCookingBooth = null;
+      this.staffHawk = null;
+      this.staffSeat = null;
+      this.staffCookingBooth = null;
+
+      this.playerChar.teleportTo(PLAYER_HOME.x, PLAYER_HOME.y);
+      const homes: Record<string, { x: number; y: number }> = {
+        hawker: HAWKER_HOME,
+        server: SERVER_HOME,
+        cook: COOK_HOME,
+      };
+      Object.entries(this.staffChars).forEach(([role, char]) => {
+        const h = homes[role];
+        if (h) char?.teleportTo(h.x, h.y);
+      });
+
+      this.dishCursor = 0;
+      this.sessionServed = 0;
+      this.sessionRevenue = 0;
+      this.sessionLost = 0;
+      this.sessionEndsAt = this.time.now + SESSION_DURATION_MS;
+      this.log("开张大吉，今日营业开始");
+
+      this.cameras.main.fadeIn(450, 0, 0, 0);
+      this.transitioning = false;
     });
-    this.playerHawk = null;
-    this.playerSeat = null;
-    this.playerCookingBooth = null;
-    this.staffHawk = null;
-    this.staffSeat = null;
-    this.staffCookingBooth = null;
-
-    this.playerChar.teleportTo(PLAYER_HOME.x, PLAYER_HOME.y);
-    const homes: Record<string, { x: number; y: number }> = {
-      hawker: HAWKER_HOME,
-      server: SERVER_HOME,
-      cook: COOK_HOME,
-    };
-    Object.entries(this.staffChars).forEach(([role, char]) => {
-      const h = homes[role];
-      if (h) char?.teleportTo(h.x, h.y);
-    });
-
-    this.dishCursor = 0;
-    this.sessionServed = 0;
-    this.sessionRevenue = 0;
-    this.sessionLost = 0;
-    this.sessionEndsAt = this.time.now + SESSION_DURATION_MS;
-    this.log("开张大吉，今日营业开始");
-
-    this.cameras.main.pan(CAMERA_OPEN_X, SCREEN_H / 2, CAMERA_PAN_MS, "Sine.easeInOut");
-    this.positionUi(true);
   }
 
   private endSession() {
@@ -956,23 +966,19 @@ class TavernScene extends Phaser.Scene {
     this.buildSettlementOverlay();
   }
 
-  /** 从内部视角拉远并平移到打烊外观视角。 */
+  /** 从内部视角淡出到黑屏，切到打烊视角后再淡入。 */
   private transitionToClosedView() {
+    if (this.transitioning) return;
+    this.transitioning = true;
     const cam = this.cameras.main;
-    cam.pan(CAMERA_CLOSED_X, SCREEN_H / 2, 900, "Sine.easeInOut");
-    this.tweens.addCounter({
-      from: 0,
-      to: 1,
-      duration: 900,
-      ease: "Sine.easeInOut",
-      onUpdate: (tw) => {
-        const t = tw.getValue() as number;
-        cam.setZoom(1 - 0.45 * Math.sin(Math.PI * t));
-      },
-      onComplete: () => {
-        cam.setZoom(1);
-        this.positionUi(false);
-      },
+    cam.fadeOut(450, 0, 0, 0, () => {
+      this.gameState = "closed";
+      this.settling = false;
+      cam.centerOn(CAMERA_CLOSED_X, SCREEN_H / 2);
+      cam.setZoom(1);
+      this.positionUi(false);
+      cam.fadeIn(450, 0, 0, 0);
+      this.transitioning = false;
     });
   }
 
@@ -1000,8 +1006,6 @@ class TavernScene extends Phaser.Scene {
       .setInteractive({ useHandCursor: true })
       .on("pointerdown", () => {
         this.destroyOverlay();
-        this.settling = false;
-        this.gameState = "closed";
         this.transitionToClosedView();
       });
     layer.add(close);
