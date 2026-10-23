@@ -520,8 +520,8 @@ class TavernScene extends Phaser.Scene {
     this.levelText = this.addUiText(250, 10, "", "17px", "#87ceeb");
     this.queueText = this.addUiText(250, 36, "", "17px", "#e0b0ff");
     this.sessionText = this.addUiText(16, 62, "", "14px", "#a8d8ff");
-    this.chronicleText = this.addUiText(370, 82, "", "13px", "#cccccc");
-    this.tableTitle = this.addUiText(16, 108, "雅座", "13px", "#bbbbbb");
+    this.chronicleText = this.addUiText(16, 82, "", "13px", "#cccccc");
+    this.tableTitle = this.addUiText(16, 176, "雅座", "13px", "#bbbbbb");
 
     const audio = loadAudioSettings();
     this.sfxMuted = audio.sfxMuted;
@@ -539,9 +539,9 @@ class TavernScene extends Phaser.Scene {
     this.refreshAudioButtons();
     this.tableTitle.setVisible(false);
 
-    // 营业中就地按钮（世界坐标，贴在门口/桌区/厨房）
-    this.serveButton = this.addUiButton(SERVE_SPOT.x - 80 + 360, SERVE_SPOT.y - 10, () => this.startSeat("player"));
-    this.cookButton = this.addUiButton(COOK_SPOT.x - 80 + 360, COOK_SPOT.y - 10, () => this.manualCook());
+    // 营业中操作按钮：与采购/打烊同处底部操作区
+    this.serveButton = this.addUiButton(330, 1194, () => this.startSeat("player"));
+    this.cookButton = this.addUiButton(440, 1194, () => this.manualCook());
 
     // 通用按钮：底部固定
     this.purchaseButton = new ProgressButton(this, 16, 1194, 200, 34, () => this.startPurchase(), this.registerUi);
