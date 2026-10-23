@@ -397,6 +397,18 @@ class TavernScene extends Phaser.Scene {
     this.refreshHud();
     // shortcut: 用 localStorage 记性别；接入微信小游戏时换成 wx.setStorageSync
     if (!localStorage.getItem("tavern_gender")) this.showGenderPicker();
+
+    // Debug 面板只在开发环境引入，生产构建会被整块剔除
+    if (import.meta.env.DEV) {
+      void import("./debug").then(({ setupDebug }) =>
+        setupDebug(this, {
+          addCoins: (n) => {
+            this.coins += n;
+            this.refreshHud();
+          },
+        }),
+      );
+    }
   }
 
   private showGenderPicker() {
