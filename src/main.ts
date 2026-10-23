@@ -247,6 +247,7 @@ interface StaffLevels {
 class ProgressButton {
   private static readonly BAR_WIDTH = 165;
   private track: Phaser.GameObjects.Rectangle;
+  private zone: Phaser.GameObjects.Zone;
   private playerFill: Phaser.GameObjects.Rectangle;
   private staffFill: Phaser.GameObjects.Rectangle;
   private label: Phaser.GameObjects.Text;
@@ -260,13 +261,17 @@ class ProgressButton {
     onClick: () => void,
     register: (obj: { x: number; setScrollFactor(v: number): unknown }, baseX: number) => void,
   ) {
-    this.track = scene.add.rectangle(x, y, width, height, 0x3a3a3a).setOrigin(0, 0).setStrokeStyle(1, 0x666666);
+    this.track = scene.add
+      .rectangle(x + width / 2, y + height / 2, width, height, 0x3a3a3a)
+      .setStrokeStyle(1, 0x666666);
     const barX = x + width - ProgressButton.BAR_WIDTH - 10;
     this.staffFill = scene.add.rectangle(barX, y + 5, 0, 11, COLOR_STAFF).setOrigin(0, 0);
     this.playerFill = scene.add.rectangle(barX, y + height - 16, 0, 11, COLOR_PLAYER).setOrigin(0, 0);
     this.label = scene.add
       .text(x + 10, y + height / 2, "", { fontSize: "15px", color: "#ffffff" })
       .setOrigin(0, 0.5);
+    this.zone = scene.add.zone(x, y, width, height).setOrigin(0, 0);
+    register(this.zone, x);
     register(this.track, x);
     register(this.playerFill, barX);
     register(this.staffFill, barX);
@@ -274,7 +279,7 @@ class ProgressButton {
     // 用 pointerup + 位移阈值判定点击，避免玩家拖拽场景时误触按钮
     let sx = 0;
     let sy = 0;
-    this.track
+    this.zone
       .setInteractive({ useHandCursor: true })
       .on("pointerdown", (p: Phaser.Input.Pointer) => {
         sx = p.x;
@@ -296,11 +301,16 @@ class ProgressButton {
     this.playerFill.width = w * Phaser.Math.Clamp(playerFraction, 0, 1);
     this.staffFill.width = w * Phaser.Math.Clamp(staffFraction, 0, 1);
   }
+  private enabled = true;
   setEnabled(enabled: boolean) {
+    if (enabled === this.enabled) return;
+    this.enabled = enabled;
     if (enabled) {
-      this.track.setInteractive({ useHandCursor: true }).setAlpha(1);
+      this.zone.setInteractive({ useHandCursor: true });
+      this.track.setAlpha(1);
     } else {
-      this.track.disableInteractive().setAlpha(0.5);
+      this.zone.disableInteractive();
+      this.track.setAlpha(0.5);
     }
   }
   setVisible(visible: boolean) {
@@ -308,7 +318,8 @@ class ProgressButton {
     this.playerFill.setVisible(visible);
     this.staffFill.setVisible(visible);
     this.label.setVisible(visible);
-    if (!visible) this.track.disableInteractive();
+    if (!visible) this.zone.disableInteractive();
+    else this.zone.setInteractive({ useHandCursor: true });
   }
 }
 
@@ -436,7 +447,7 @@ class TavernScene extends Phaser.Scene {
   private bgmButton!: TapText;
   private staffButton!: TapText;
   private bankButton!: TapText;
-  private serveButton!: ProgressButton;
+  private serveButton!: TapText;
   private cookButton!: Phaser.GameObjects.Text;
   private purchaseButton!: ProgressButton;
   private upgradeButton!: TapText;
@@ -637,7 +648,7 @@ class TavernScene extends Phaser.Scene {
     const hud = this.add.rectangle(0, 0, SCREEN_W, 104, 0x000000, 0.55).setOrigin(0, 0).setScrollFactor(0).setDepth(30);
     hud.setVisible(true);
 
-    this.coinsText = this.addUiText(16, 10, "", "17px", "#ffd700");
+    this.coinsText = this.addUiText(16, 10, "", "17px", "#7fe8dd");
     this.inventoryText = this.addUiText(16, 36, "", "17px", "#9fe870");
     this.levelText = this.addUiText(250, 10, "", "17px", "#87ceeb");
     this.queueText = this.addUiText(250, 36, "", "17px", "#e0b0ff");
@@ -662,8 +673,8 @@ class TavernScene extends Phaser.Scene {
     this.tableTitle.setVisible(false);
 
     // 营业中就地按钮（世界坐标，贴在门口/桌区/厨房）
-    this.serveButton = new ProgressButton(this, SERVE_SPOT.x - 80, SERVE_SPOT.y - 10, 170, 34, () => this.startSeat("player"), () => {});
-    this.cookButton = this.addWorldButton(COOK_SPOT.x - 80, COOK_SPOT.y - 10, () => this.manualCook());
+    this.serveButton = this.addUiButton(SERVE_SPOT.x - 80 + 360, SERVE_SPOT.y - 10, () => this.startSeat("player"));
+    this.cookButton = this.addUiButton(COOK_SPOT.x - 80 + 360, COOK_SPOT.y - 10, () => this.manualCook());
 
     // 通用按钮：底部固定
     this.purchaseButton = new ProgressButton(this, 16, 1194, 200, 34, () => this.startPurchase(), this.registerUi);
@@ -677,30 +688,6 @@ class TavernScene extends Phaser.Scene {
 
     this.buildBoothVisuals();
     this.positionUi(false);
-  }
-
-  private addWorldButton(x: number, y: number, onClick: () => void): Phaser.GameObjects.Text {
-    let sx = 0;
-    let sy = 0;
-    return this.add
-      .text(x, y, "", {
-        fontSize: "15px",
-        color: "#ffffff",
-        backgroundColor: "#3a3a3a",
-        padding: { x: 10, y: 8 },
-      })
-      .setDepth(25)
-      .setInteractive({ useHandCursor: true })
-      .on("pointerdown", (p: Phaser.Input.Pointer) => {
-        sx = p.x;
-        sy = p.y;
-      })
-      .on("pointerup", (p: Phaser.Input.Pointer) => {
-        if (Math.hypot(p.x - sx, p.y - sy) < 12) {
-          playSfx("click");
-          onClick();
-        }
-      });
   }
 
   private registerUi = (obj: { x: number; setScrollFactor(v: number): unknown }, baseX: number) => {
@@ -1205,7 +1192,7 @@ class TavernScene extends Phaser.Scene {
       layer.add(
         this.add.text(50, y, `${def.name} · 借 ${def.principal} 灵石`, {
           fontSize: "22px",
-          color: borrowed ? "#666666" : "#ffffff",
+          color: borrowed ? "#666666" : "#7fe8dd",
         }),
       );
       layer.add(
@@ -1418,14 +1405,6 @@ class TavernScene extends Phaser.Scene {
     this.playerChar.setBodyColor(gender === "male" ? 0x4a7ab8 : 0xc86a9e);
     this.playerChar.setHairColor(gender === "male" ? 0x2b2b2b : 0x4a2b1a);
     this.genderButton?.setText(gender === "male" ? "玩家形象：男（点击切换）" : "玩家形象：女（点击切换）");
-  }
-
-  private setButtonEnabled(button: Phaser.GameObjects.Text, enabled: boolean) {
-    if (enabled) {
-      button.setInteractive({ useHandCursor: true }).setAlpha(1);
-    } else {
-      button.disableInteractive().setAlpha(0.5);
-    }
   }
 
   private isPlayerBusy(): boolean {
@@ -1744,23 +1723,6 @@ class TavernScene extends Phaser.Scene {
   }
 
   private renderProgress(time: number) {
-    const playerSeatFraction = this.playerSeat ? (time - this.playerSeat.startedAt) / this.playerSeat.duration : 0;
-    const staffSeatFraction = this.staffSeat ? (time - this.staffSeat.startedAt) / this.staffSeat.duration : 0;
-    this.serveButton.setProgress(playerSeatFraction, staffSeatFraction);
-    this.serveButton.setEnabled(
-      this.gameState === "open" &&
-        !this.isPlayerBusy() &&
-        this.queue.length > 0 &&
-        this.booths.some((booth) => booth.state === "empty"),
-    );
-
-    this.setButtonEnabled(
-      this.cookButton,
-      this.gameState === "open" &&
-        !this.isPlayerBusy() &&
-        this.inventory > 0 &&
-        this.booths.some((booth) => booth.state === "awaitingCook"),
-    );
 
     const playerPurchaseFraction = this.playerPurchasing
       ? (time - this.playerPurchasing.startedAt) / this.playerPurchasing.duration
@@ -1786,14 +1748,28 @@ class TavernScene extends Phaser.Scene {
     const sy = worldY;
 
     const container = this.add.container(sx, sy).setScrollFactor(0).setDepth(40);
-    const icon = this.add.circle(0, 0, 9, 0xffd700).setStrokeStyle(2, 0xfff2a0);
-    const text = this.add.text(14, -10, `+${amount}`, {
+    const glow = this.add.circle(0, 0, 16, 0x7fe8dd, 0.35);
+    const stone = this.add.graphics();
+    const shape = [
+      new Phaser.Geom.Point(0, -13),
+      new Phaser.Geom.Point(11, -4),
+      new Phaser.Geom.Point(8, 11),
+      new Phaser.Geom.Point(-8, 11),
+      new Phaser.Geom.Point(-11, -4),
+    ];
+    stone.fillStyle(0x7fe8dd, 1);
+    stone.fillPoints(shape, true);
+    stone.lineStyle(2, 0xffffff, 0.9);
+    stone.strokePoints(shape, true);
+    stone.fillStyle(0xffffff, 0.55);
+    stone.fillTriangle(-6, -3, 3, -5, -1, 7);
+    const text = this.add.text(17, -10, `+${amount}`, {
       fontSize: "20px",
-      color: "#ffd700",
-      stroke: "#4a3000",
+      color: "#a8f5e8",
+      stroke: "#173a36",
       strokeThickness: 3,
     });
-    container.add([icon, text]);
+    container.add([glow, stone, text]);
 
     this.tweens.add({ targets: container, y: sy - 34, duration: 260, ease: "Sine.easeOut" });
     this.tweens.add({
@@ -1855,7 +1831,7 @@ class TavernScene extends Phaser.Scene {
     this.staffButton.setText("伙计");
     this.bankButton.setText("灵石商行");
 
-    this.serveButton.setLabel("招待入座");
+    this.serveButton.setText("招待入座");
     this.cookButton.setText("动手烹饪");
 
     const purchasePriceLabel = getPurchasePrice(this.staffLevel.buyer, open);
