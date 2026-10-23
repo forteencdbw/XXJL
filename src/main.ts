@@ -400,7 +400,6 @@ class TavernScene extends Phaser.Scene {
   private inventoryText!: Phaser.GameObjects.Text;
   private levelText!: Phaser.GameObjects.Text;
   private queueText!: Phaser.GameObjects.Text;
-  private lineText!: Phaser.GameObjects.Text;
   private sessionText!: Phaser.GameObjects.Text;
   private chronicleText!: Phaser.GameObjects.Text;
   private tableTitle!: Phaser.GameObjects.Text;
@@ -625,7 +624,6 @@ class TavernScene extends Phaser.Scene {
     this.levelText = this.addUiText(250, 10, "", "17px", "#87ceeb");
     this.queueText = this.addUiText(250, 36, "", "17px", "#e0b0ff");
     this.sessionText = this.addUiText(16, 62, "", "14px", "#a8d8ff");
-    this.lineText = this.addUiText(16, 82, "", "13px", "#ff9d9d");
     this.chronicleText = this.addUiText(370, 82, "", "13px", "#cccccc");
     this.tableTitle = this.addUiText(16, 108, "雅座", "13px", "#bbbbbb");
 
@@ -1255,10 +1253,6 @@ class TavernScene extends Phaser.Scene {
     );
   }
 
-  private getUnlockedDishes(): Dish[] {
-    return DISHES.filter((d) => d.unlockLevel <= this.level);
-  }
-
   private getMenuDishes(): Dish[] {
     return DISHES.filter((d) => this.selectedDishIds.has(d.id) && d.unlockLevel <= this.level);
   }
@@ -1533,42 +1527,6 @@ class TavernScene extends Phaser.Scene {
     return { empty: 0x3a3a3a, seating: 0x8a6d3b, awaitingCook: 0x7a5a2a, cooking: 0xc97a2a, dining: 0x4a7a3a }[state];
   }
 
-  private getStaffBottleneck(): string {
-    type LineRole = "server" | "cook";
-    const durations: Record<LineRole, number> = {
-      server: getStaffDuration(
-        "server",
-        SEAT_BASE_MS,
-        SEAT_TAVERN_SHRINK_PER_LEVEL_MS,
-        SEAT_FLOOR_MS,
-        this.level,
-        this.staffLevel.server,
-      ),
-      cook: getStaffDuration(
-        "cook",
-        DISHES.reduce((sum, d) => sum + d.cookMs, 0) / DISHES.length,
-        COOK_TAVERN_SHRINK_PER_LEVEL_MS,
-        COOK_FLOOR_MS,
-        this.level,
-        this.staffLevel.cook,
-      ),
-    };
-    const nameOf: Record<LineRole, string> = { server: "跑堂", cook: "灶上" };
-
-    if (this.staffLevel.server === 0 || this.staffLevel.cook === 0) {
-      const hired = (["server", "cook"] as LineRole[])
-        .filter((role) => this.staffLevel[role] > 0)
-        .map((role) => `${nameOf[role]} ${(durations[role] / 1000).toFixed(1)}s`);
-      return `伙计产线：${hired.length ? hired.join(" / ") : "尚未雇人"}`;
-    }
-
-    const slowestRole: LineRole = durations.server >= durations.cook ? "server" : "cook";
-    const list = (["server", "cook"] as LineRole[])
-      .map((role) => `${nameOf[role]} ${(durations[role] / 1000).toFixed(1)}s`)
-      .join(" / ");
-    return `伙计产线：${list}（瓶颈：${nameOf[slowestRole]}）`;
-  }
-
   private renderProgress(time: number) {
     const playerSeatFraction = this.playerSeat ? (time - this.playerSeat.startedAt) / this.playerSeat.duration : 0;
     const staffSeatFraction = this.staffSeat ? (time - this.staffSeat.startedAt) / this.staffSeat.duration : 0;
@@ -1657,11 +1615,10 @@ class TavernScene extends Phaser.Scene {
     this.inventoryText.setText(`灵材：${this.inventory}`);
     this.levelText.setText(`酒楼等级：${this.level}`);
     this.queueText.setText(`排队：${this.queue.length}/${getBoothCount(this.level)}`);
-    this.lineText.setText(this.getStaffBottleneck());
     this.sessionText.setText(
       open
         ? `营业中 · 剩余 ${Math.max(0, Math.ceil((this.sessionEndsAt - this.time.now) / 1000))}s · 本局 ${this.sessionServed} 位 / ${this.sessionRevenue} 灵石`
-        : `打烊中 · 已解锁菜品 ${this.getUnlockedDishes().length} 道`,
+        : "",
     );
     this.chronicleText.setText(this.chronicleLines.join("\n"));
 
