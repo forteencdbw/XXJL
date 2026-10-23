@@ -7,6 +7,12 @@ const DINING_MS = 3000;
 const SESSION_DURATION_MS = 60000;
 const PURCHASE_COST = 5;
 const PURCHASE_AMOUNT = 5;
+const PURCHASE_TIME_MS = 15000;
+const PURCHASE_EMERGENCY_MULTIPLIER = 2;
+const PURCHASE_TARGET_STOCK = 10;
+const PURCHASE_TAVERN_SHRINK_PER_LEVEL_MS = 300;
+const PURCHASE_FLOOR_MS = 3000;
+const PURCHASE_STAFF_LEVEL_SPEEDUP = 0.85;
 const STARTING_COINS = 20;
 const STARTING_INVENTORY = 5;
 const UPGRADE_BASE_COST = 15;
@@ -33,14 +39,15 @@ const STAFF_SPEED_PENALTY = 1.6;
 // 各岗位成长曲线不同：基础越快的岗位每级提速越少，让三岗逐渐收敛、瓶颈在岗位间转移
 const STAFF_LEVEL_SPEEDUP = { hawker: 0.86, server: 0.94, cook: 0.9 } as const;
 
-const STAFF_UPGRADE_BASE_COST = { hawker: 10, server: 12, cook: 15 } as const;
+const STAFF_UPGRADE_BASE_COST = { hawker: 10, server: 12, cook: 15, buyer: 12 } as const;
 const STAFF_UPGRADE_COST_MULTIPLIER = 1.6;
 
 const COLOR_PLAYER = 0xffa94d;
 const COLOR_STAFF = 0x4da6ff;
 
 type Driver = "player" | "staff";
-type StaffRole = "hawker" | "server" | "cook";
+type ProductionRole = "hawker" | "server" | "cook";
+type StaffRole = ProductionRole | "buyer";
 type GameState = "closed" | "selectingMenu" | "open";
 
 interface Dish {
@@ -71,7 +78,7 @@ function getPlayerDuration(base: number, shrinkPerLevel: number, floor: number, 
 }
 
 function getStaffDuration(
-  role: StaffRole,
+  role: ProductionRole,
   base: number,
   shrinkPerLevel: number,
   floor: number,
@@ -87,6 +94,14 @@ function getStaffDuration(
 function getStaffUpgradeCost(role: StaffRole, level: number): number {
   const base = STAFF_UPGRADE_BASE_COST[role];
   return Math.round(base * Math.pow(STAFF_UPGRADE_COST_MULTIPLIER, level - 1));
+}
+
+/** 采购耗时：玩家固定基准（受装潢略缩），采买伙计随等级提速。 */
+function getPurchaseDuration(tavernLevel: number, staffLevel: number, isStaff: boolean): number {
+  const shrink = (tavernLevel - 1) * PURCHASE_TAVERN_SHRINK_PER_LEVEL_MS;
+  if (!isStaff) return Math.max(PURCHASE_FLOOR_MS, PURCHASE_TIME_MS - shrink);
+  const raw = PURCHASE_TIME_MS * Math.pow(PURCHASE_STAFF_LEVEL_SPEEDUP, Math.max(staffLevel, 1) - 1) - shrink;
+  return Math.max(PURCHASE_FLOOR_MS, raw);
 }
 
 // 数值自检
@@ -106,6 +121,8 @@ console.assert(
   STAFF_LEVEL_SPEEDUP.server > STAFF_LEVEL_SPEEDUP.cook && STAFF_LEVEL_SPEEDUP.cook > STAFF_LEVEL_SPEEDUP.hawker,
   "基础越快的岗位成长应越慢",
 );
+console.assert(getPurchaseDuration(1, 0, false) === PURCHASE_TIME_MS, "采购基础耗时应为 15 秒");
+console.assert(getPurchaseDuration(1, 3, true) < getPurchaseDuration(1, 1, true), "采买等级越高采购越快");
 
 type BoothState = "empty" | "seating" | "awaitingCook" | "cooking" | "dining";
 
@@ -141,6 +158,11 @@ interface StaffLevels {
   hawker: number;
   server: number;
   cook: number;
+  buyer: number;
+}
+
+interface PurchaseProgress extends OpProgress {
+  amount: number;
 }
 
 /** 按钮内叠两条进度条：上=伙计（蓝），下=玩家（橙），两者独立并行。 */
@@ -198,8 +220,7 @@ class TavernScene extends Phaser.Scene {
   private level = 1;
   private booths: Booth[] = [];
   private queue: QueuedPatron[] = [];
-  private staffLevel: StaffLevels = { hawker: 0, server: 0, cook: 0 };
-  private buyerHired = false;
+  private staffLevel: StaffLevels = { hawker: 0, server: 0, cook: 0, buyer: 0 };
   private chronicleLines: string[] = [];
 
   private gameState: GameState = "closed";
@@ -213,10 +234,12 @@ class TavernScene extends Phaser.Scene {
   private playerHawk: OpProgress | null = null;
   private playerSeat: SeatProgress | null = null;
   private playerCookingBooth: number | null = null;
+  private playerPurchasing: PurchaseProgress | null = null;
 
   private staffHawk: OpProgress | null = null;
   private staffSeat: SeatProgress | null = null;
   private staffCookingBooth: number | null = null;
+  private staffPurchasing: PurchaseProgress | null = null;
 
   private coinsText!: Phaser.GameObjects.Text;
   private inventoryText!: Phaser.GameObjects.Text;
@@ -233,7 +256,7 @@ class TavernScene extends Phaser.Scene {
   private hireServerButton!: Phaser.GameObjects.Text;
   private cookButton!: Phaser.GameObjects.Text;
   private hireCookButton!: Phaser.GameObjects.Text;
-  private purchaseButton!: Phaser.GameObjects.Text;
+  private purchaseButton!: ProgressButton;
   private hireBuyerButton!: Phaser.GameObjects.Text;
   private upgradeButton!: Phaser.GameObjects.Text;
   private startButton!: Phaser.GameObjects.Text;
@@ -275,7 +298,7 @@ class TavernScene extends Phaser.Scene {
     this.hireCookButton = this.makeButton(h - 312, () => this.hireStaff("cook"));
     this.cookButton = this.makeButton(h - 254, () => this.manualCook());
     this.hireBuyerButton = this.makeButton(h - 196, () => this.hireStaff("buyer"));
-    this.purchaseButton = this.makeButton(h - 138, () => this.purchaseInventory());
+    this.purchaseButton = new ProgressButton(this, 20, h - 138, 460, 36, () => this.startPurchase("player"));
     this.upgradeButton = this.makeButton(h - 80, () => this.upgradeTavern());
 
     this.refreshHud();
@@ -290,8 +313,33 @@ class TavernScene extends Phaser.Scene {
       this.tickOpenSession(time);
     }
 
+    this.tickPurchase(time);
+    if (this.gameState === "closed") this.tickClosedProcurement();
+
     this.renderProgress(time);
     this.refreshHud();
+  }
+
+  /** 采购到货：下单时已扣钱，进度条跑完才真正入库。 */
+  private tickPurchase(time: number) {
+    if (this.playerPurchasing && time >= this.playerPurchasing.startedAt + this.playerPurchasing.duration) {
+      this.inventory += this.playerPurchasing.amount;
+      this.log(`采购到货 +${this.playerPurchasing.amount} 灵材`);
+      this.playerPurchasing = null;
+    }
+    if (this.staffPurchasing && time >= this.staffPurchasing.startedAt + this.staffPurchasing.duration) {
+      this.inventory += this.staffPurchasing.amount;
+      this.log(`采买伙计补货到店 +${this.staffPurchasing.amount} 灵材`);
+      this.staffPurchasing = null;
+    }
+  }
+
+  /** 打烊阶段采买伙计按正常价自动补货，一直补到目标库存。营业中不插手。 */
+  private tickClosedProcurement() {
+    if (this.staffLevel.buyer === 0 || this.staffPurchasing) return;
+    if (this.inventory >= PURCHASE_TARGET_STOCK) return;
+    if (this.coins < PURCHASE_COST) return;
+    this.startPurchase("staff");
   }
 
   private tickOpenSession(time: number) {
@@ -334,9 +382,6 @@ class TavernScene extends Phaser.Scene {
     if (this.staffLevel.cook > 0 && this.staffCookingBooth === null) {
       const index = this.booths.findIndex((booth) => booth.state === "awaitingCook");
       if (index !== -1) this.startCook(this.booths[index], index, "staff");
-    }
-    if (this.buyerHired && this.inventory <= 0 && this.coins >= PURCHASE_COST) {
-      this.purchaseInventory();
     }
   }
 
@@ -455,6 +500,17 @@ class TavernScene extends Phaser.Scene {
   private endSession() {
     this.gameState = "closed";
     this.sessionEndsAt = 0;
+    // 打烊时在途采购立即到货，钱已扣不退还
+    if (this.playerPurchasing) {
+      this.inventory += this.playerPurchasing.amount;
+      this.log(`打烊，采购的灵材到店 +${this.playerPurchasing.amount}`);
+      this.playerPurchasing = null;
+    }
+    if (this.staffPurchasing) {
+      this.inventory += this.staffPurchasing.amount;
+      this.log(`打烊，采买伙计的货到店 +${this.staffPurchasing.amount}`);
+      this.staffPurchasing = null;
+    }
     this.playerHawk = null;
     this.playerSeat = null;
     this.playerCookingBooth = null;
@@ -543,12 +599,13 @@ class TavernScene extends Phaser.Scene {
     }
   }
 
-  private hideButton(button: Phaser.GameObjects.Text) {
-    button.setVisible(false).disableInteractive();
-  }
-
   private isPlayerBusy(): boolean {
-    return this.playerHawk !== null || this.playerSeat !== null || this.playerCookingBooth !== null;
+    return (
+      this.playerHawk !== null ||
+      this.playerSeat !== null ||
+      this.playerCookingBooth !== null ||
+      this.playerPurchasing !== null
+    );
   }
 
   private getUnlockedDishes(): Dish[] {
@@ -681,14 +738,35 @@ class TavernScene extends Phaser.Scene {
     );
   }
 
-  private purchaseInventory() {
-    if (this.coins < PURCHASE_COST) {
-      this.log("灵石不足，无法采购");
-      return;
+  /** 打烊阶段按正常价采购；营业中只允许紧急采购，价格翻倍。下单即扣钱，到货才入库。 */
+  private startPurchase(driver: Driver) {
+    const emergency = this.gameState === "open";
+    const price = emergency ? PURCHASE_COST * PURCHASE_EMERGENCY_MULTIPLIER : PURCHASE_COST;
+
+    if (driver === "player") {
+      if (this.isPlayerBusy()) return;
+      if (this.coins < price) {
+        this.log(emergency ? "灵石不足，无法紧急采购" : "灵石不足，无法采购");
+        return;
+      }
+      this.coins -= price;
+      this.playerPurchasing = {
+        startedAt: this.time.now,
+        duration: getPurchaseDuration(this.level, 0, false),
+        amount: PURCHASE_AMOUNT,
+      };
+      this.log(emergency ? "紧急采购下单（价格翻倍），等货中" : "采购下单，等货中");
+    } else {
+      if (this.staffPurchasing) return;
+      if (this.coins < price) return;
+      this.coins -= price;
+      this.staffPurchasing = {
+        startedAt: this.time.now,
+        duration: getPurchaseDuration(this.level, this.staffLevel.buyer, true),
+        amount: PURCHASE_AMOUNT,
+      };
+      this.log("采买伙计出门补货了");
     }
-    this.coins -= PURCHASE_COST;
-    this.inventory += PURCHASE_AMOUNT;
-    this.log(`采购灵材 +${PURCHASE_AMOUNT}`);
   }
 
   private upgradeTavern() {
@@ -710,23 +788,14 @@ class TavernScene extends Phaser.Scene {
     );
   }
 
-  private hireStaff(role: "hawker" | "server" | "cook" | "buyer") {
-    if (role === "buyer") {
-      if (this.buyerHired) return;
-      if (this.coins < HIRE_COST_BUYER) {
-        this.log("灵石不足，无法雇人");
-        return;
-      }
-      this.coins -= HIRE_COST_BUYER;
-      this.buyerHired = true;
-      this.log("雇到一位采买伙计，此后自动运作");
-      this.hideButton(this.hireBuyerButton);
-      this.hideButton(this.purchaseButton);
-      return;
-    }
-
+  private hireStaff(role: StaffRole) {
     if (this.staffLevel[role] > 0) return;
-    const hireCost = { hawker: HIRE_COST_HAWKER, server: HIRE_COST_SERVER, cook: HIRE_COST_COOK }[role];
+    const hireCost = {
+      hawker: HIRE_COST_HAWKER,
+      server: HIRE_COST_SERVER,
+      cook: HIRE_COST_COOK,
+      buyer: HIRE_COST_BUYER,
+    }[role];
     if (this.coins < hireCost) {
       this.log("灵石不足，无法雇人");
       return;
@@ -734,12 +803,15 @@ class TavernScene extends Phaser.Scene {
     this.coins -= hireCost;
     this.staffLevel[role] = 1;
 
-    const roleName = { hawker: "迎客", server: "跑堂", cook: "灶上" }[role];
+    const roleName = { hawker: "迎客", server: "跑堂", cook: "灶上", buyer: "采买" }[role];
     this.log(`雇到一位${roleName}伙计，此后自动运作`);
 
-    const hireButton = { hawker: this.hireHawkerButton, server: this.hireServerButton, cook: this.hireCookButton }[
-      role
-    ];
+    const hireButton = {
+      hawker: this.hireHawkerButton,
+      server: this.hireServerButton,
+      cook: this.hireCookButton,
+      buyer: this.hireBuyerButton,
+    }[role];
     hireButton.off("pointerdown").on("pointerdown", () => this.upgradeStaff(role));
   }
 
@@ -751,7 +823,7 @@ class TavernScene extends Phaser.Scene {
     }
     this.coins -= cost;
     this.staffLevel[role] += 1;
-    const roleName = { hawker: "迎客", server: "跑堂", cook: "灶上" }[role];
+    const roleName = { hawker: "迎客", server: "跑堂", cook: "灶上", buyer: "采买" }[role];
     this.log(`${roleName}伙计升至 ${this.staffLevel[role]} 级，手脚更利索了`);
   }
 
@@ -770,7 +842,7 @@ class TavernScene extends Phaser.Scene {
   }
 
   private getStaffBottleneck(): string {
-    const durations: Record<StaffRole, number> = {
+    const durations: Record<ProductionRole, number> = {
       hawker: getStaffDuration("hawker", HAWK_BASE_MS, HAWK_TAVERN_SHRINK_PER_LEVEL_MS, HAWK_FLOOR_MS, this.level, this.staffLevel.hawker),
       server: getStaffDuration("server", SEAT_BASE_MS, SEAT_TAVERN_SHRINK_PER_LEVEL_MS, SEAT_FLOOR_MS, this.level, this.staffLevel.server),
       // 烹饪耗时随菜品变化，这里用菜品平均耗时做基准估算
@@ -783,20 +855,20 @@ class TavernScene extends Phaser.Scene {
         this.staffLevel.cook,
       ),
     };
-    const nameOf = { hawker: "迎客", server: "跑堂", cook: "灶上" } as const;
+    const nameOf: Record<ProductionRole, string> = { hawker: "迎客", server: "跑堂", cook: "灶上" };
 
     if (this.staffLevel.hawker === 0 || this.staffLevel.server === 0 || this.staffLevel.cook === 0) {
-      const hired = (["hawker", "server", "cook"] as StaffRole[])
+      const hired = (["hawker", "server", "cook"] as ProductionRole[])
         .filter((role) => this.staffLevel[role] > 0)
         .map((role) => `${nameOf[role]} ${(durations[role] / 1000).toFixed(1)}s`);
       return `伙计产线：${hired.length ? hired.join(" / ") : "尚未雇人"}`;
     }
 
-    let slowestRole: StaffRole = "hawker";
-    for (const role of ["server", "cook"] as StaffRole[]) {
+    let slowestRole: ProductionRole = "hawker";
+    for (const role of ["server", "cook"] as ProductionRole[]) {
       if (durations[role] > durations[slowestRole]) slowestRole = role;
     }
-    const list = (["hawker", "server", "cook"] as StaffRole[])
+    const list = (["hawker", "server", "cook"] as ProductionRole[])
       .map((role) => `${nameOf[role]} ${(durations[role] / 1000).toFixed(1)}s`)
       .join(" / ");
     return `伙计产线：${list}（瓶颈：${nameOf[slowestRole]}）`;
@@ -831,6 +903,17 @@ class TavernScene extends Phaser.Scene {
         this.inventory > 0 &&
         this.booths.some((booth) => booth.state === "awaitingCook"),
     );
+
+    const playerPurchaseFraction = this.playerPurchasing
+      ? (time - this.playerPurchasing.startedAt) / this.playerPurchasing.duration
+      : 0;
+    const staffPurchaseFraction = this.staffPurchasing
+      ? (time - this.staffPurchasing.startedAt) / this.staffPurchasing.duration
+      : 0;
+    this.purchaseButton.setProgress(playerPurchaseFraction, staffPurchaseFraction);
+    const purchasePrice =
+      this.gameState === "open" ? PURCHASE_COST * PURCHASE_EMERGENCY_MULTIPLIER : PURCHASE_COST;
+    this.purchaseButton.setEnabled(!this.isPlayerBusy() && this.coins >= purchasePrice);
 
     this.booths.forEach((booth, i) => {
       const visual = this.boothVisuals[i];
@@ -874,9 +957,9 @@ class TavernScene extends Phaser.Scene {
     this.hireHawkerButton.setVisible(!open);
     this.hireServerButton.setVisible(!open);
     this.hireCookButton.setVisible(!open);
-    this.hireBuyerButton.setVisible(!open && !this.buyerHired);
+    this.hireBuyerButton.setVisible(!open);
     this.upgradeButton.setVisible(!open);
-    this.purchaseButton.setVisible(!this.buyerHired);
+    this.purchaseButton.setVisible(true);
 
     this.hawkButton.setLabel("吆喝招揽");
     this.hireHawkerButton.setText(
@@ -905,8 +988,20 @@ class TavernScene extends Phaser.Scene {
         : `雇灶上伙计（${HIRE_COST_COOK} 灵石 → 自动烹饪）`,
     );
 
-    this.purchaseButton.setText(`采购灵材（花费 ${PURCHASE_COST} 灵石 → +${PURCHASE_AMOUNT} 灵材）`);
-    this.hireBuyerButton.setText(`雇采买伙计（花费 ${HIRE_COST_BUYER} 灵石 → 采购自动化）`);
+    const purchasePriceLabel =
+      this.gameState === "open" ? PURCHASE_COST * PURCHASE_EMERGENCY_MULTIPLIER : PURCHASE_COST;
+    this.purchaseButton.setLabel(
+      this.gameState === "open"
+        ? `紧急采购（${purchasePriceLabel} 灵石 → +${PURCHASE_AMOUNT} 灵材）`
+        : `采购灵材（${purchasePriceLabel} 灵石 → +${PURCHASE_AMOUNT} 灵材）`,
+    );
+    this.hireBuyerButton.setText(
+      this.staffLevel.buyer > 0
+        ? `升级采买伙计（${getStaffUpgradeCost("buyer", this.staffLevel.buyer)} 灵石 → ${
+            this.staffLevel.buyer
+          }→${this.staffLevel.buyer + 1} 级）`
+        : `雇采买伙计（${HIRE_COST_BUYER} 灵石 → 打烊自动补货）`,
+    );
 
     const unlocked = DISHES.find((d) => d.unlockLevel === this.level + 1);
     this.upgradeButton.setText(
