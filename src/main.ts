@@ -47,6 +47,22 @@ const MAX_STAFF_LEVEL = 4;
 const STAFF_BASE_WAGE = { hawker: 5, server: 8, cook: 10, buyer: 6 } as const;
 const WAGE_PER_LEVEL = 1.3;
 
+// 灵石商行：三档借贷，固定 12 期，连本带利分期偿还
+const LOAN_PERIODS = 12;
+const BANKRUPT_STREAK = 5;
+interface LoanDef {
+  id: string;
+  name: string;
+  principal: number;
+  totalRepay: number;
+  unlockLevel: number;
+}
+const LOANS: LoanDef[] = [
+  { id: "small", name: "小借", principal: 200, totalRepay: 240, unlockLevel: 1 },
+  { id: "medium", name: "中借", principal: 500, totalRepay: 650, unlockLevel: 3 },
+  { id: "large", name: "大借", principal: 1200, totalRepay: 1680, unlockLevel: 5 },
+];
+
 const COLOR_PLAYER = 0xffa94d;
 const COLOR_STAFF = 0x4da6ff;
 
@@ -87,7 +103,7 @@ const NIGHT_COLOR = 0x1b2440;
 type Driver = "player" | "staff";
 type ProductionRole = "hawker" | "server" | "cook";
 type StaffRole = ProductionRole | "buyer";
-type GameState = "closed" | "selectingMenu" | "open";
+type GameState = "closed" | "selectingMenu" | "open" | "bankrupt";
 type TapText = Phaser.GameObjects.Text & { onTap: () => void };
 
 interface Dish {
@@ -410,11 +426,16 @@ class TavernScene extends Phaser.Scene {
   /** HUD 上显示的灵石数，收益到账时从这里滚动到真实值。 */
   private displayedCoins = STARTING_COINS;
   private lastWages: { role: StaffRole; level: number; wage: number }[] = [];
+  private lastLoanDues: { name: string; due: number }[] = [];
+  private activeLoans: { name: string; remaining: number; periodsLeft: number }[] = [];
+  private borrowedIds = new Set<string>();
+  private negativeStreak = 0;
   private sfxMuted = false;
   private bgmMuted = false;
   private sfxButton!: TapText;
   private bgmButton!: TapText;
   private staffButton!: TapText;
+  private bankButton!: TapText;
   private serveButton!: ProgressButton;
   private cookButton!: Phaser.GameObjects.Text;
   private purchaseButton!: ProgressButton;
@@ -652,6 +673,7 @@ class TavernScene extends Phaser.Scene {
     this.staffButton = this.addUiButton(16, 700, () => this.buildStaffOverlay());
     this.upgradeButton = this.addUiButton(16, 760, () => this.upgradeTavern());
     this.genderButton = this.addUiButton(16, 820, () => this.toggleGender());
+    this.bankButton = this.addUiButton(16, 880, () => this.buildBankOverlay());
 
     this.buildBoothVisuals();
     this.positionUi(false);
@@ -758,6 +780,7 @@ class TavernScene extends Phaser.Scene {
   // ===== 状态机 =====
 
   update(time: number) {
+    if (this.gameState === "bankrupt") return;
     // 覆盖层始终对齐相机可见区域，避免营业↔打烊镜头平移时错位
     if (this.overlay) this.overlay.setPosition(this.cameras.main.scrollX, this.cameras.main.scrollY);
 
@@ -1077,8 +1100,11 @@ class TavernScene extends Phaser.Scene {
     this.log("打烊，今日营业结束");
     this.gainStaffExperience();
     this.lastWages = this.settleWages();
+    this.lastLoanDues = this.settleLoans();
+    this.updateBankruptStreak();
     // 镜头暂留营业视角，等玩家在结算面板点「打烊」后再拉远过渡
-    this.buildSettlementOverlay();
+    if (this.gameState === "bankrupt") this.buildBankruptOverlay();
+    else this.buildSettlementOverlay();
   }
 
   /** 从内部视角淡出到黑屏，切到打烊视角后再淡入。 */
@@ -1158,6 +1184,95 @@ class TavernScene extends Phaser.Scene {
     this.overlay = layer;
   }
 
+  /** 二级页面：灵石商行，按酒楼等级解锁三档借贷。 */
+  private buildBankOverlay() {
+    this.destroyOverlay();
+    const cam = this.cameras.main;
+    const layer = this.add.container(cam.scrollX, cam.scrollY).setDepth(100);
+    layer.add(this.add.rectangle(0, 0, SCREEN_W, SCREEN_H, 0x000000, 0.92).setOrigin(0, 0));
+    layer.add(this.add.text(40, 70, "灵石商行", { fontSize: "30px", color: "#ffffff" }));
+    layer.add(
+      this.add.text(40, 116, `在贷 ${this.activeLoans.length} 笔 · 连亏 ${this.negativeStreak}/${BANKRUPT_STREAK} 日`, {
+        fontSize: "15px",
+        color: "#bbbbbb",
+      }),
+    );
+
+    LOANS.forEach((def, i) => {
+      const y = 170 + i * 120;
+      const borrowed = this.borrowedIds.has(def.id);
+      const locked = this.level < def.unlockLevel;
+      layer.add(
+        this.add.text(50, y, `${def.name} · 借 ${def.principal} 灵石`, {
+          fontSize: "22px",
+          color: borrowed ? "#666666" : "#ffffff",
+        }),
+      );
+      layer.add(
+        this.add.text(50, y + 34, `分 ${LOAN_PERIODS} 期偿还，共 ${def.totalRepay}（利钱 ${def.totalRepay - def.principal}）`, {
+          fontSize: "15px",
+          color: "#bbbbbb",
+        }),
+      );
+
+      if (borrowed) {
+        layer.add(this.add.text(430, y + 6, "已借", { fontSize: "18px", color: "#666666" }));
+      } else if (locked) {
+        layer.add(this.add.text(400, y + 6, `需酒楼 ${def.unlockLevel} 级`, { fontSize: "16px", color: "#888888" }));
+      } else {
+        const btn = this.add
+          .text(400, y + 4, "立据借贷", {
+            fontSize: "18px",
+            color: "#ffffff",
+            backgroundColor: "#5a4a2a",
+            padding: { x: 14, y: 8 },
+          })
+          .setInteractive({ useHandCursor: true })
+          .on("pointerup", () => {
+            playSfx("click");
+            this.takeLoan(def);
+            this.buildBankOverlay();
+          });
+        layer.add(btn);
+      }
+    });
+
+    const close = this.add
+      .text(40, 620, "关闭", {
+        fontSize: "20px",
+        color: "#ffffff",
+        backgroundColor: "#3a3a3a",
+        padding: { x: 16, y: 10 },
+      })
+      .setInteractive({ useHandCursor: true })
+      .on("pointerup", () => this.destroyOverlay());
+    layer.add(close);
+    this.overlay = layer;
+  }
+
+  /** 连续亏空到上限后的破产结算，锁死所有操作。 */
+  private buildBankruptOverlay() {
+    this.destroyOverlay();
+    const cam = this.cameras.main;
+    const layer = this.add.container(cam.scrollX, cam.scrollY).setDepth(150);
+    layer.add(this.add.rectangle(0, 0, SCREEN_W, SCREEN_H, 0x000000, 0.97).setOrigin(0, 0));
+    layer.add(this.add.text(40, 220, "酒楼倒闭", { fontSize: "42px", color: "#ff6b6b" }));
+    layer.add(
+      this.add.text(40, 320, `连续 ${BANKRUPT_STREAK} 日入不敷出，灵石商行上门封了铺子。`, {
+        fontSize: "20px",
+        color: "#dddddd",
+      }),
+    );
+    layer.add(
+      this.add.text(40, 370, `酒楼等级 ${this.level} · 欠款 ${Math.abs(Math.min(this.coins, 0))} 灵石`, {
+        fontSize: "20px",
+        color: "#dddddd",
+      }),
+    );
+    layer.add(this.add.text(40, 470, "刷新页面重新开张", { fontSize: "18px", color: "#999999" }));
+    this.overlay = layer;
+  }
+
   private buildSettlementOverlay() {
     this.destroyOverlay();
     const cam = this.cameras.main;
@@ -1182,12 +1297,27 @@ class TavernScene extends Phaser.Scene {
       y += 10;
     }
 
+    if (this.lastLoanDues.length > 0) {
+      layer.add(this.add.text(40, y, "商行还账", { fontSize: "18px", color: "#aaaaaa" }));
+      y += 34;
+      for (const d of this.lastLoanDues) {
+        layer.add(
+          this.add.text(56, y, `${d.name} · 本期还 ${d.due} 灵石`, { fontSize: "19px", color: "#e8e8e8" }),
+        );
+        y += 30;
+      }
+      y += 10;
+    }
+
     const totalWage = this.lastWages.reduce((sum, w) => sum + w.wage, 0);
+    const totalLoan = this.lastLoanDues.reduce((sum, d) => sum + d.due, 0);
     const summary = [
       `服务食客：${this.sessionServed} 位`,
       `总收益：${this.sessionRevenue} 灵石`,
       `工资合计：${totalWage} 灵石`,
-      `净收益：${this.sessionRevenue - totalWage} 灵石`,
+      `商行还账：${totalLoan} 灵石`,
+      `净收益：${this.sessionRevenue - totalWage - totalLoan} 灵石`,
+      `余下：${this.coins} 灵石（连亏 ${this.negativeStreak}/${BANKRUPT_STREAK} 日）`,
       `流失食客：${this.sessionLost} 位`,
     ];
     summary.forEach((line) => {
@@ -1239,6 +1369,7 @@ class TavernScene extends Phaser.Scene {
     this.serveButton.setVisible(isOpen);
     this.cookButton.setVisible(isOpen);
     this.staffButton.setVisible(!isOpen);
+    this.bankButton.setVisible(!isOpen);
     this.upgradeButton.setVisible(!isOpen);
     this.genderButton.setVisible(!isOpen);
 
@@ -1550,11 +1681,50 @@ class TavernScene extends Phaser.Scene {
       .filter((role) => this.staffLevel[role] > 0)
       .map((role) => ({ role, level: this.staffLevel[role], wage: getStaffWage(role, this.staffLevel[role]) }));
     const total = details.reduce((sum, d) => sum + d.wage, 0);
-    const paid = Math.min(total, this.coins);
-    this.coins -= paid;
+    // 工资可以扣成负数，负数表示欠款
+    this.coins -= total;
     this.displayedCoins = this.coins;
-    if (paid < total) this.log(`灵石不足，只付了 ${paid}/${total} 灵石工钱`);
     return details;
+  }
+
+  /** 灵石商行借贷：到账即加灵石，之后每回合还一期。 */
+  private takeLoan(def: LoanDef) {
+    if (this.borrowedIds.has(def.id) || this.level < def.unlockLevel) return;
+    this.borrowedIds.add(def.id);
+    this.coins += def.principal;
+    this.displayedCoins = this.coins;
+    this.activeLoans.push({ name: def.name, remaining: def.totalRepay, periodsLeft: LOAN_PERIODS });
+    playSfx("coin");
+    this.log(`向灵石商行${def.name}，得 ${def.principal} 灵石，分 ${LOAN_PERIODS} 期偿还`);
+  }
+
+  /** 每回合按剩余本息均摊一期。 */
+  private settleLoans(): { name: string; due: number }[] {
+    const details: { name: string; due: number }[] = [];
+    for (const loan of this.activeLoans) {
+      if (loan.periodsLeft <= 0) continue;
+      const due = Math.ceil(loan.remaining / loan.periodsLeft);
+      loan.remaining -= due;
+      loan.periodsLeft -= 1;
+      this.coins -= due;
+      details.push({ name: loan.name, due });
+    }
+    this.activeLoans = this.activeLoans.filter((l) => l.periodsLeft > 0);
+    this.displayedCoins = this.coins;
+    return details;
+  }
+
+  /** 连续 5 个回合结束为负余额即破产。 */
+  private updateBankruptStreak() {
+    if (this.coins < 0) {
+      this.negativeStreak += 1;
+      if (this.negativeStreak >= BANKRUPT_STREAK) {
+        this.gameState = "bankrupt";
+        this.log("连续五日亏空，酒楼倒闭了");
+      }
+    } else {
+      this.negativeStreak = 0;
+    }
   }
 
   private log(text: string) {
@@ -1678,10 +1848,12 @@ class TavernScene extends Phaser.Scene {
     this.serveButton.setVisible(open);
     this.cookButton.setVisible(open);
     this.staffButton.setVisible(!open);
+    this.bankButton.setVisible(!open);
     this.upgradeButton.setVisible(!open);
     this.purchaseButton.setVisible(true);
 
     this.staffButton.setText("伙计");
+    this.bankButton.setText("灵石商行");
 
     this.serveButton.setLabel("招待入座");
     this.cookButton.setText("动手烹饪");
