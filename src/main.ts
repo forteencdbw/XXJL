@@ -395,6 +395,8 @@ class TavernScene extends Phaser.Scene {
 
   private nextArrivalAt = 0;
   private lastCallTriggered = false;
+  /** HUD 上显示的灵石数，收益到账时从这里滚动到真实值。 */
+  private displayedCoins = STARTING_COINS;
   private sfxMuted = false;
   private bgmMuted = false;
   private sfxButton!: TapText;
@@ -821,7 +823,7 @@ class TavernScene extends Phaser.Scene {
         booth.patronChar = undefined;
         leaver?.walkTo(440, ACTOR_Y, 500, () => leaver.destroy());
         playSfx("coin");
-        this.coins += price;
+        this.showCoinPopup(this.tablePosition(index).x, FLOOR_Y - 120, price);
         this.sessionServed += 1;
         this.sessionRevenue += price;
         this.log(`食客用罢${dishName}离店，收入 +${price} 灵石`);
@@ -850,10 +852,14 @@ class TavernScene extends Phaser.Scene {
     let bought = 0;
     while (this.inventory < PURCHASE_TARGET_STOCK && this.coins >= price) {
       this.coins -= price;
+      this.displayedCoins = this.coins;
       this.inventory += PURCHASE_AMOUNT;
       bought += PURCHASE_AMOUNT;
     }
-    if (bought > 0) this.log(`采买伙计补货 +${bought} 灵材`);
+    if (bought > 0) {
+      this.displayedCoins = this.coins;
+      this.log(`采买伙计补货 +${bought} 灵材`);
+    }
   }
 
   // ===== 昼夜 =====
@@ -1375,6 +1381,7 @@ class TavernScene extends Phaser.Scene {
       return;
     }
     this.coins -= price;
+    this.displayedCoins = this.coins;
 
     if (!emergency) {
       this.inventory += PURCHASE_AMOUNT;
@@ -1396,6 +1403,7 @@ class TavernScene extends Phaser.Scene {
       return;
     }
     this.coins -= cost;
+    this.displayedCoins = this.coins;
     this.level += 1;
     this.booths.push(this.makeBooth());
     this.addBoothVisual(this.booths.length - 1);
@@ -1418,6 +1426,7 @@ class TavernScene extends Phaser.Scene {
       return;
     }
     this.coins -= hireCost;
+    this.displayedCoins = this.coins;
     this.staffLevel[role] = 1;
 
     if (role !== "buyer") {
@@ -1447,6 +1456,7 @@ class TavernScene extends Phaser.Scene {
       return;
     }
     this.coins -= cost;
+    this.displayedCoins = this.coins;
     this.staffLevel[role] += 1;
     const roleName = { hawker: "迎客", server: "跑堂", cook: "灶上", buyer: "采买" }[role];
     playSfx("upgrade");
@@ -1538,10 +1548,58 @@ class TavernScene extends Phaser.Scene {
     });
   }
 
+  private coinRollTween: Phaser.Tweens.Tween | null = null;
+
+  /** 食客离店时在桌子上方弹出收益浮字，飞到 HUD 灵石处后让数字滚动。 */
+  private showCoinPopup(worldX: number, worldY: number, amount: number) {
+    this.coins += amount;
+    const cam = this.cameras.main;
+    const sx = worldX - cam.scrollX;
+    const sy = worldY;
+
+    const container = this.add.container(sx, sy).setScrollFactor(0).setDepth(40);
+    const icon = this.add.circle(0, 0, 9, 0xffd700).setStrokeStyle(2, 0xfff2a0);
+    const text = this.add.text(14, -10, `+${amount}`, {
+      fontSize: "20px",
+      color: "#ffd700",
+      stroke: "#4a3000",
+      strokeThickness: 3,
+    });
+    container.add([icon, text]);
+
+    this.tweens.add({ targets: container, y: sy - 34, duration: 260, ease: "Sine.easeOut" });
+    this.tweens.add({
+      targets: container,
+      x: 54,
+      y: 22,
+      scale: 0.45,
+      alpha: 0,
+      delay: 280,
+      duration: 560,
+      ease: "Cubic.easeIn",
+      onComplete: () => {
+        container.destroy(true);
+        this.rollCoinsDisplay();
+      },
+    });
+  }
+
+  private rollCoinsDisplay() {
+    this.coinRollTween?.remove();
+    this.coinRollTween = this.tweens.addCounter({
+      from: this.displayedCoins,
+      to: this.coins,
+      duration: 380,
+      onUpdate: (tw) => {
+        this.displayedCoins = Math.round(tw.getValue() as number);
+      },
+    });
+  }
+
   private refreshHud() {
     const open = this.gameState === "open";
 
-    this.coinsText.setText(`灵石：${this.coins}`);
+    this.coinsText.setText(`灵石：${this.displayedCoins}`);
     this.inventoryText.setText(`灵材：${this.inventory}`);
     this.levelText.setText(`酒楼等级：${this.level}`);
     this.queueText.setText(`排队：${this.queue.length}/${getBoothCount(this.level)}`);
