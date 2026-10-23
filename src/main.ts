@@ -48,6 +48,10 @@ const COLOR_STAFF = 0x4da6ff;
 // ===== 视觉/布局 =====
 const SCREEN_W = 720;
 const SCREEN_H = 1280;
+/** 界面分区（见 GLOSSARY）：状态栏 / 主屏 / 副屏。 */
+const STATUS_BAR_H = 104;
+const SECONDARY_TOP = 1077;
+const CARD_W = 600;
 
 const EXTERIOR_X = -2000;
 const CAMERA_OPEN_X = 0;
@@ -326,6 +330,9 @@ class TavernScene extends Phaser.Scene {
   private settling = false;
   /** 视图过渡中，防止重复触发。 */
   private transitioning = false;
+  private celebrating = false;
+  private celebrationTimer?: Phaser.Time.TimerEvent;
+  private sparkles: Phaser.GameObjects.Arc[] = [];
 
   constructor() {
     super("tavern");
@@ -512,7 +519,11 @@ class TavernScene extends Phaser.Scene {
     this.buildWindows();
 
     // 顶部 HUD 悬浮条
-    const hud = this.add.rectangle(0, 0, SCREEN_W, 104, 0x000000, 0.55).setOrigin(0, 0).setScrollFactor(0).setDepth(30);
+    const hud = this.add
+      .rectangle(0, 0, SCREEN_W, STATUS_BAR_H, 0x000000, 0.55)
+      .setOrigin(0, 0)
+      .setScrollFactor(0)
+      .setDepth(30);
     hud.setVisible(true);
 
     this.coinsText = this.addUiText(16, 10, "", "17px", "#7fe8dd");
@@ -800,6 +811,7 @@ class TavernScene extends Phaser.Scene {
 
   // ===== 回合 =====
   private onStartButton() {
+    if (this.settling) return;
     if (this.gameState === "closed") this.openMenu();
     else if (this.gameState === "open") this.endSession();
   }
@@ -956,9 +968,20 @@ class TavernScene extends Phaser.Scene {
     this.lastWages = this.settleWages();
     this.lastLoanDues = this.settleLoans();
     this.updateBankruptStreak();
+    // 结算/破产期间锁定副屏，避免重复结算或误买
+    this.purchaseButton.setEnabled(false);
+    this.startButton.setAlpha(0.4);
+    this.serveButton.setAlpha(0.4);
+    this.cookButton.setAlpha(0.4);
     // 镜头暂留营业视角，等玩家在结算面板点「打烊」后再拉远过渡
-    if (this.gameState === "bankrupt") this.buildBankruptOverlay();
-    else this.buildSettlementOverlay();
+    if (this.gameState === "bankrupt") {
+      this.buildBankruptOverlay();
+    } else {
+      this.startCelebration();
+      this.buildSettlementOverlay();
+    }
+    // 破产时 update() 不再刷新 HUD，这里只补状态栏的营业提示
+    this.sessionText.setText("已打烊");
   }
 
   /** 从内部视角淡出到黑屏，切到打烊视角后再淡入。 */
@@ -1104,65 +1127,115 @@ class TavernScene extends Phaser.Scene {
     this.overlay = layer;
   }
 
-  /** 连续亏空到上限后的破产结算，锁死所有操作。 */
-  private buildBankruptOverlay() {
+  /** 结算/破产共用弹窗外壳：只遮主屏的 30% 遮罩 + 上半屏卡片 + 入场动画。 */
+  private buildPopupCard(cardHeight: number, depth: number) {
     this.destroyOverlay();
     const cam = this.cameras.main;
-    const layer = this.add.container(cam.scrollX, cam.scrollY).setDepth(150);
-    layer.add(this.add.rectangle(0, 0, SCREEN_W, SCREEN_H, 0x000000, 0.97).setOrigin(0, 0));
-    layer.add(this.add.text(40, 220, "酒楼倒闭", { fontSize: "42px", color: "#ff6b6b" }));
+    const layer = this.add.container(cam.scrollX, cam.scrollY).setDepth(depth);
+    // 遮罩只盖主屏并吞掉主屏内的点击；状态栏与副屏保持原样
     layer.add(
-      this.add.text(40, 320, `连续 ${BANKRUPT_STREAK} 日入不敷出，灵石商行上门封了铺子。`, {
-        fontSize: "20px",
-        color: "#dddddd",
-      }),
+      this.add
+        .rectangle(0, STATUS_BAR_H, SCREEN_W, SECONDARY_TOP - STATUS_BAR_H, 0x000000, 0.3)
+        .setOrigin(0, 0)
+        .setInteractive(),
     );
-    layer.add(
-      this.add.text(40, 370, `酒楼等级 ${this.level} · 欠款 ${Math.abs(Math.min(this.coins, 0))} 灵石`, {
-        fontSize: "20px",
-        color: "#dddddd",
-      }),
+    const panel = this.add.container(SCREEN_W / 2, STATUS_BAR_H + 16);
+    panel.add(
+      this.add
+        .rectangle(0, 0, CARD_W, cardHeight, 0x1b2440, 0.98)
+        .setOrigin(0.5, 0)
+        .setStrokeStyle(2, 0x3f5a7a),
     );
-    layer.add(this.add.text(40, 470, "刷新页面重新开张", { fontSize: "18px", color: "#999999" }));
+    panel.setAlpha(0).setScale(0.92);
+    this.tweens.add({ targets: panel, alpha: 1, scale: 1, duration: 200, ease: "Sine.easeOut" });
+    layer.add(panel);
     this.overlay = layer;
+    return { panel, left: -CARD_W / 2 + 28 };
+  }
+
+  /** 打烊瞬间：在场角色原地跳跃 + 头顶粒子，循环到关闭弹窗。 */
+  private startCelebration() {
+    if (this.celebrating) return;
+    this.celebrating = true;
+    for (const char of this.celebrationChars()) {
+      this.tweens.killTweensOf(char);
+      const baseY = char.y;
+      this.tweens.add({
+        targets: char,
+        y: baseY - 16,
+        duration: 240,
+        yoyo: true,
+        repeat: -1,
+        ease: "Sine.easeInOut",
+      });
+      this.tweens.add({
+        targets: char,
+        scaleY: 1.12,
+        duration: 240,
+        yoyo: true,
+        repeat: -1,
+        ease: "Sine.easeInOut",
+      });
+    }
+    this.celebrationTimer = this.time.addEvent({ delay: 300, loop: true, callback: () => this.emitSparkles() });
+    this.emitSparkles();
+  }
+
+  private stopCelebration() {
+    if (!this.celebrating) return;
+    this.celebrating = false;
+    this.celebrationTimer?.remove();
+    this.celebrationTimer = undefined;
+    this.sparkles.forEach((spark) => spark.destroy());
+    this.sparkles = [];
+    this.celebrationChars().forEach((char) => {
+      this.tweens.killTweensOf(char);
+      char.setY(ACTOR_Y);
+      char.setScale(char.scaleX, 1);
+    });
+  }
+
+  private celebrationChars(): Character[] {
+    return [this.playerChar, ...Object.values(this.staffChars).filter((c): c is Character => c !== undefined)];
+  }
+
+  private emitSparkles() {
+    for (const char of this.celebrationChars()) {
+      const x = char.x + Phaser.Math.Between(-18, 18);
+      const y = char.y - 34;
+      const spark = this.add.circle(x, y, Phaser.Math.Between(2, 4), 0xffe08a, 1).setDepth(25);
+      this.sparkles.push(spark);
+      this.tweens.add({
+        targets: spark,
+        y: y - Phaser.Math.Between(36, 64),
+        alpha: 0,
+        duration: 650,
+        ease: "Sine.easeOut",
+        onComplete: () => {
+          spark.destroy();
+          this.sparkles = this.sparkles.filter((s) => s !== spark);
+        },
+      });
+    }
+  }
+
+  /** 连续亏空到上限后的破产结算，锁死所有操作。 */
+  private buildBankruptOverlay() {
+    const { panel, left } = this.buildPopupCard(300, 150);
+    panel.add(this.add.text(left, 22, "酒楼倒闭", { fontSize: "36px", color: "#ff6b6b" }));
+    panel.add(this.add.text(left, 90, `连续 ${BANKRUPT_STREAK} 日入不敷出，`, { fontSize: "19px", color: "#dddddd" }));
+    panel.add(this.add.text(left, 120, "灵石商行上门封了铺子。", { fontSize: "19px", color: "#dddddd" }));
+    panel.add(
+      this.add.text(left, 164, `酒楼等级 ${this.level} · 欠款 ${Math.abs(Math.min(this.coins, 0))} 灵石`, {
+        fontSize: "19px",
+        color: "#dddddd",
+      }),
+    );
+    panel.add(this.add.text(left, 230, "刷新页面重新开张", { fontSize: "18px", color: "#999999" }));
   }
 
   private buildSettlementOverlay() {
-    this.destroyOverlay();
-    const cam = this.cameras.main;
-    const layer = this.add.container(cam.scrollX, cam.scrollY).setDepth(100);
-    layer.add(this.add.rectangle(0, 0, SCREEN_W, SCREEN_H, 0x000000, 0.92).setOrigin(0, 0));
-    layer.add(this.add.text(40, 90, "今日营业结束", { fontSize: "32px", color: "#ffffff" }));
-
     const roleName = { hawker: "迎客", server: "跑堂", cook: "灶上", buyer: "采买" } as const;
-    let y = 170;
-    if (this.lastWages.length > 0) {
-      layer.add(this.add.text(40, y, "伙计工钱", { fontSize: "18px", color: "#aaaaaa" }));
-      y += 34;
-      for (const w of this.lastWages) {
-        layer.add(
-          this.add.text(56, y, `${roleName[w.role]} Lv${w.level} · 日薪 ${w.wage} 灵石`, {
-            fontSize: "19px",
-            color: "#e8e8e8",
-          }),
-        );
-        y += 30;
-      }
-      y += 10;
-    }
-
-    if (this.lastLoanDues.length > 0) {
-      layer.add(this.add.text(40, y, "商行还账", { fontSize: "18px", color: "#aaaaaa" }));
-      y += 34;
-      for (const d of this.lastLoanDues) {
-        layer.add(
-          this.add.text(56, y, `${d.name} · 本期还 ${d.due} 灵石`, { fontSize: "19px", color: "#e8e8e8" }),
-        );
-        y += 30;
-      }
-      y += 10;
-    }
-
     const totalWage = this.lastWages.reduce((sum, w) => sum + w.wage, 0);
     const totalLoan = this.lastLoanDues.reduce((sum, d) => sum + d.due, 0);
     const summary = [
@@ -1174,25 +1247,66 @@ class TavernScene extends Phaser.Scene {
       `余下：${this.coins} 灵石（连亏 ${this.negativeStreak}/${BANKRUPT_STREAK} 日）`,
       `流失食客：${this.sessionLost} 位`,
     ];
+    // 卡片高度按明细行数算，保证内容不溢出
+    const cardHeight =
+      76 +
+      (this.lastWages.length > 0 ? 30 + this.lastWages.length * 28 + 10 : 0) +
+      (this.lastLoanDues.length > 0 ? 30 + this.lastLoanDues.length * 28 + 10 : 0) +
+      summary.length * 34 +
+      18 +
+      46 +
+      20;
+    const { panel, left } = this.buildPopupCard(cardHeight, 100);
+
+    panel.add(this.add.text(left, 20, "今日营业结束", { fontSize: "30px", color: "#ffffff" }));
+    let y = 76;
+
+    if (this.lastWages.length > 0) {
+      panel.add(this.add.text(left, y, "伙计工钱", { fontSize: "18px", color: "#aaaaaa" }));
+      y += 30;
+      for (const w of this.lastWages) {
+        panel.add(
+          this.add.text(left + 16, y, `${roleName[w.role]} Lv${w.level} · 日薪 ${w.wage} 灵石`, {
+            fontSize: "19px",
+            color: "#e8e8e8",
+          }),
+        );
+        y += 28;
+      }
+      y += 10;
+    }
+
+    if (this.lastLoanDues.length > 0) {
+      panel.add(this.add.text(left, y, "商行还账", { fontSize: "18px", color: "#aaaaaa" }));
+      y += 30;
+      for (const d of this.lastLoanDues) {
+        panel.add(
+          this.add.text(left + 16, y, `${d.name} · 本期还 ${d.due} 灵石`, { fontSize: "19px", color: "#e8e8e8" }),
+        );
+        y += 28;
+      }
+      y += 10;
+    }
+
     summary.forEach((line) => {
-      layer.add(this.add.text(40, y, line, { fontSize: "21px", color: "#e8e8e8" }));
-      y += 40;
+      panel.add(this.add.text(left, y, line, { fontSize: "20px", color: "#e8e8e8" }));
+      y += 34;
     });
 
     const close = this.add
-      .text(40, Math.min(y + 40, 1150), "打烊", {
-        fontSize: "22px",
+      .text(left, y + 18, "打烊", {
+        fontSize: "20px",
         color: "#ffffff",
         backgroundColor: "#3f5a7a",
-        padding: { x: 16, y: 12 },
+        padding: { x: 16, y: 10 },
       })
       .setInteractive({ useHandCursor: true })
       .on("pointerdown", () => {
+        this.stopCelebration();
         this.destroyOverlay();
         this.transitionToClosedView();
       });
-    layer.add(close);
-    this.overlay = layer;
+    panel.add(close);
   }
 
   private destroyOverlay() {
@@ -1246,7 +1360,7 @@ class TavernScene extends Phaser.Scene {
     let active = false;
 
     this.input.on("pointerdown", (p: Phaser.Input.Pointer) => {
-      if (this.gameState !== "open" || this.transitioning) return;
+      if (this.gameState !== "open" || this.transitioning || this.settling) return;
       startX = p.x;
       startScroll = cam.scrollX;
       active = true;
@@ -1342,6 +1456,7 @@ class TavernScene extends Phaser.Scene {
   }
 
   private startSeat(driver: Driver) {
+    if (this.settling) return;
     if (driver === "player" && this.isPlayerBusy()) return;
     if (driver === "staff" && this.staffSeat) return;
     if (this.queue.length === 0) return;
@@ -1390,6 +1505,7 @@ class TavernScene extends Phaser.Scene {
   }
 
   private manualCook() {
+    if (this.settling) return;
     if (this.isPlayerBusy()) return;
     const index = this.booths.findIndex((booth) => booth.state === "awaitingCook");
     if (index === -1) return;
@@ -1434,6 +1550,7 @@ class TavernScene extends Phaser.Scene {
 
   /** 玩家点采购：打烊瞬间到货；营业中走 15 秒紧急采购（翻倍价）。灵石不足时赊账，费用照扣。 */
   private startPurchase() {
+    if (this.settling) return;
     const emergency = this.gameState === "open";
     const price = getPurchasePrice(this.staffLevel.buyer, emergency);
 
@@ -1592,7 +1709,7 @@ class TavernScene extends Phaser.Scene {
       ? (time - this.playerPurchasing.startedAt) / this.playerPurchasing.duration
       : 0;
     this.purchaseButton.setProgress(playerPurchaseFraction, 0);
-    this.purchaseButton.setEnabled(!this.isPlayerBusy());
+    this.purchaseButton.setEnabled(!this.isPlayerBusy() && !this.settling);
 
     this.booths.forEach((booth, i) => {
       const visual = this.boothVisuals[i];
@@ -1671,9 +1788,11 @@ class TavernScene extends Phaser.Scene {
     this.levelText.setText(`酒楼等级：${this.level}`);
     this.queueText.setText(`排队：${this.queue.length}/${getBoothCount(this.level)}`);
     this.sessionText.setText(
-      open
-        ? `营业中 · 剩余 ${Math.max(0, Math.ceil((this.sessionEndsAt - this.time.now) / 1000))}s · 本局 ${this.sessionServed} 位 / ${this.sessionRevenue} 灵石`
-        : "",
+      this.settling
+        ? "已打烊"
+        : open
+          ? `营业中 · 剩余 ${Math.max(0, Math.ceil((this.sessionEndsAt - this.time.now) / 1000))}s · 本局 ${this.sessionServed} 位 / ${this.sessionRevenue} 灵石`
+          : "",
     );
     this.chronicleText.setText(this.chronicleLines.join("\n"));
 
@@ -1683,6 +1802,11 @@ class TavernScene extends Phaser.Scene {
     });
 
     this.startButton.setText(open ? "提前打烊" : "开始营业");
+
+    const actionAlpha = this.settling ? 0.4 : 1;
+    this.startButton.setAlpha(actionAlpha);
+    this.serveButton.setAlpha(actionAlpha);
+    this.cookButton.setAlpha(actionAlpha);
 
     this.serveButton.setVisible(open);
     this.cookButton.setVisible(open);
