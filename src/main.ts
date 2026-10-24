@@ -379,6 +379,7 @@ class TavernScene extends Phaser.Scene {
   private purchaseButton!: ProgressButton;
   private upgradeButton!: TapText;
   private cultivationButton!: TapText;
+  private helpButton!: TapText;
   private startButton!: TapText;
   private lastAutosaveAt = 0;
 
@@ -449,7 +450,8 @@ class TavernScene extends Phaser.Scene {
         .on("pointerdown", () => {
           this.setGender(gender);
           this.save();
-          layer.destroy(true);
+          this.destroyOverlay();
+          this.showHelp();
         });
       layer.add(btn);
     };
@@ -762,6 +764,7 @@ class TavernScene extends Phaser.Scene {
     this.genderButton = this.addUiButton(16, 820, () => this.toggleGender());
     this.bankButton = this.addUiButton(16, 880, () => this.buildBankOverlay());
     this.cultivationButton = this.addUiButton(16, 940, () => this.buildCultivationOverlay());
+    this.helpButton = this.addUiButton(16, 1000, () => this.showHelp());
 
     this.buildBoothVisuals();
     this.positionUi(false);
@@ -1752,6 +1755,46 @@ class TavernScene extends Phaser.Scene {
     this.overlay = null;
   }
 
+  /** 玩法说明：新档第一次进门自动弹出，也可随时从「玩法」按钮打开。 */
+  private showHelp() {
+    this.destroyOverlay();
+    const cam = this.cameras.main;
+    const layer = this.add.container(cam.scrollX, cam.scrollY).setDepth(110);
+    layer.add(this.add.rectangle(0, 0, SCREEN_W, SCREEN_H, 0x000000, 0.94).setOrigin(0, 0));
+    layer.add(this.add.text(40, 80, "灵膳楼 · 掌柜须知", { fontSize: "30px", color: "#ffd98a" }));
+    layer.add(this.add.rectangle(40, 132, 640, 2, 0x8a6a3a).setOrigin(0, 0));
+    const lines = [
+      "营业前：采购灵材、雇伙计、装潢升级、选菜单，然后「开始营业」。",
+      "营业中：门口排队 → 招待入座 → 出菜行点菜 → 用膳结账。",
+      "亲自下厨得双倍修为；端上食客想吃的菜，售价 +50%。",
+      "修为推动境界突破，境界提高售价、操作速度与客流。",
+      "修到大乘可飞升：重置本局，仙缘永久提高售价与开局资源。",
+      "每天一个目标，达成有额外灵石与修为；连亏 5 日破产。",
+    ];
+    lines.forEach((line, i) => {
+      layer.add(
+        this.add.text(40, 180 + i * 52, line, {
+          fontSize: "18px",
+          color: "#dddddd",
+          wordWrap: { width: 640 },
+          lineSpacing: 8,
+        }),
+      );
+    });
+    layer.add(
+      this.add
+        .text(40, 560, "知道了，去营生", {
+          fontSize: "20px",
+          color: "#ffffff",
+          backgroundColor: "#3f5a7a",
+          padding: { x: 16, y: 10 },
+        })
+        .setInteractive({ useHandCursor: true })
+        .on("pointerup", () => this.destroyOverlay()),
+    );
+    this.overlay = layer;
+  }
+
   // ===== 场景与 UI =====
   private makeBooth(): Booth {
     return {
@@ -1781,6 +1824,7 @@ class TavernScene extends Phaser.Scene {
     this.upgradeButton.setVisible(!isOpen);
     this.genderButton.setVisible(!isOpen);
     this.cultivationButton.setVisible(!isOpen);
+    this.helpButton.setVisible(!isOpen);
 
     this.playerChar.setVisible(isOpen);
     Object.values(this.staffChars).forEach((c) => c?.setVisible(isOpen));
@@ -2462,11 +2506,13 @@ class TavernScene extends Phaser.Scene {
     this.bankButton.setVisible(!open);
     this.upgradeButton.setVisible(!open);
     this.cultivationButton.setVisible(!open);
+    this.helpButton.setVisible(!open);
     this.purchaseButton.setVisible(true);
 
     this.staffButton.setText("伙计");
     this.bankButton.setText("灵石商行");
     this.cultivationButton.setText("修行·境界");
+    this.helpButton.setText("玩法");
 
     this.serveButton.setText("招待入座");
     this.cookButton.setText("动手烹饪");
@@ -2492,5 +2538,9 @@ new Phaser.Game({
   width: SCREEN_W,
   height: SCREEN_H,
   backgroundColor: "#1b2440",
+  scale: {
+    mode: Phaser.Scale.FIT,
+    autoCenter: Phaser.Scale.CENTER_BOTH,
+  },
   scene: [TavernScene],
 });
