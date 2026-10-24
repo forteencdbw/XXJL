@@ -1040,11 +1040,11 @@ class TavernScene extends Phaser.Scene {
     this.purchaseButton = new ProgressButton(this, 16, 1186, 200, 80, () => this.startPurchase(), this.registerUi);
     this.startButton = this.addUiButton(222, 1186, () => this.onStartButton(), { x: 12, y: 28 }, 6, "20px");
 
-    // 打烊期的经营按钮（屏幕左侧竖排）
-    const nav = { x: 12, y: 14 };
+    // 打烊期的经营按钮：两列四行，保证每格都是可点的大按钮
+    const nav = { x: 12, y: 28 };
     this.staffButton = this.addUiButton(
       16,
-      700,
+      760,
       () => {
         this.staffNotice = "";
         this.buildStaffOverlay();
@@ -1053,13 +1053,13 @@ class TavernScene extends Phaser.Scene {
       6,
       "20px",
     );
-    this.upgradeButton = this.addUiButton(16, 760, () => this.buildBuildOverlay(), nav, 6, "20px");
-    this.genderButton = this.addUiButton(16, 820, () => this.toggleGender(), nav, 6, "20px");
-    this.bankButton = this.addUiButton(16, 880, () => this.buildBankOverlay(), nav, 6, "20px");
-    this.cultivationButton = this.addUiButton(16, 940, () => this.buildCultivationOverlay(), nav, 6, "20px");
-    this.helpButton = this.addUiButton(16, 1000, () => this.showHelp(), nav, 6, "20px");
-    this.recordButton = this.addUiButton(16, 1060, () => this.buildRecordOverlay(), nav, 6, "20px");
-    this.saveButton = this.addUiButton(16, 1120, () => this.openSaveDialog("export"), nav, 6, "20px");
+    this.upgradeButton = this.addUiButton(16, 864, () => this.buildBuildOverlay(), nav, 6, "20px");
+    this.genderButton = this.addUiButton(16, 968, () => this.toggleGender(), nav, 6, "20px");
+    this.bankButton = this.addUiButton(16, 1072, () => this.buildBankOverlay(), nav, 6, "20px");
+    this.cultivationButton = this.addUiButton(360, 760, () => this.buildCultivationOverlay(), nav, 6, "20px");
+    this.helpButton = this.addUiButton(360, 864, () => this.showHelp(), nav, 6, "20px");
+    this.recordButton = this.addUiButton(360, 968, () => this.buildRecordOverlay(), nav, 6, "20px");
+    this.saveButton = this.addUiButton(360, 1072, () => this.openSaveDialog("export"), nav, 6, "20px");
 
     this.buildBoothVisuals();
     this.positionUi(false);
@@ -2613,12 +2613,11 @@ class TavernScene extends Phaser.Scene {
   }
 
   private positionUi(isOpen: boolean) {
-    // 打烊时「开始营业」是主行动，放大突出；营业中收成普通大小的「提前打烊」
+    // 打烊时「开始营业」是主行动；营业中换成「提前打烊」配色。高度保持大按钮。
     this.startButton.setStyle({
-      fontSize: isOpen ? "15px" : "22px",
+      fontSize: isOpen ? "17px" : "20px",
       color: "#ffffff",
       backgroundColor: isOpen ? "#5a2a2a" : "#3f6a3f",
-      padding: isOpen ? { x: 10, y: 8 } : { x: 24, y: 12 },
     });
     this.boothVisuals.forEach((v) => {
       v.bg.setVisible(isOpen);
