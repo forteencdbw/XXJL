@@ -100,8 +100,8 @@ const FLOOR_Y = 1010;
 const ACTOR_Y = FLOOR_Y - 34;
 const TABLE_X_MIN = -230;
 const TABLE_X_MAX = 170;
-const QUEUE_X = 315;
-const QUEUE_GAP = 38;
+const QUEUE_X = 300;
+const QUEUE_GAP = 34;
 const TABLE_MARKS = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧"];
 const PLAYER_HOME = { x: 240, y: ACTOR_Y };
 const HAWKER_HOME = { x: 280, y: ACTOR_Y };
@@ -132,6 +132,7 @@ interface Booth {
 interface BoothVisual {
   bg: Phaser.GameObjects.Rectangle;
   runner: Phaser.GameObjects.Rectangle;
+  number: Phaser.GameObjects.Text;
   label: Phaser.GameObjects.Text;
   legs: Phaser.GameObjects.Rectangle[];
   barBg: Phaser.GameObjects.Rectangle;
@@ -663,9 +664,9 @@ class Character extends Phaser.GameObjects.Container {
       .setDepth(25);
     this.scene.tweens.add({
       targets: ring,
-      scale: 2.6,
+      scale: 3.2,
       alpha: 0,
-      duration: 750,
+      duration: 1500,
       ease: "Sine.easeOut",
       onComplete: () => ring.destroy(),
     });
@@ -768,11 +769,18 @@ class Character extends Phaser.GameObjects.Container {
       .setDepth(27);
     this.bubble = bubble;
     this.bubbleTail = tail;
+    // 先完整显示 1.7 秒，再淡出，避免“刚冒出来就透明”
     this.scene.tweens.add({
       targets: [bubble, tail],
       y: "-=12",
+      duration: 2400,
+      ease: "Sine.easeOut",
+    });
+    this.scene.tweens.add({
+      targets: [bubble, tail],
       alpha: 0,
-      duration: 1900,
+      delay: 1700,
+      duration: 650,
       ease: "Sine.easeOut",
       onComplete: () => {
         if (this.bubble === bubble) this.bubble = undefined;
@@ -961,6 +969,7 @@ class TavernScene extends Phaser.Scene {
   private transitioning = false;
   private focusTimer?: Phaser.Time.TimerEvent;
   private focusChar?: Character;
+  private focusCaption?: Phaser.GameObjects.Text;
   private focusReturn = { x: CAMERA_OPEN_X, y: SCREEN_H / 2 };
   private eventToast?: Phaser.GameObjects.Text;
   private hintToast?: Phaser.GameObjects.Text;
@@ -1880,12 +1889,14 @@ class TavernScene extends Phaser.Scene {
     }
     if (this.level >= 2) {
       for (const lx of [-110, 110]) {
+        gfx.fillStyle(0xff7a3a, 0.16);
+        gfx.fillCircle(lx, 348, 28);
         gfx.fillStyle(0x6a4a2a, 1);
         gfx.fillRect(lx - 1, 320, 2, 18);
         gfx.fillStyle(0xff5c3c, 1);
-        gfx.fillEllipse(lx, 348, 14, 20);
+        gfx.fillEllipse(lx, 348, 18, 26);
         gfx.fillStyle(0xffd98a, 0.9);
-        gfx.fillRect(lx - 1, 358, 2, 8);
+        gfx.fillRect(lx - 1, 360, 2, 9);
       }
     }
     if (this.level >= 8) {
@@ -2466,6 +2477,16 @@ class TavernScene extends Phaser.Scene {
   private addBoothVisual(_i: number) {
     const bg = this.add.rectangle(0, 0, 80, 16, 0x6a4a2a).setDepth(2).setStrokeStyle(2, 0x8a6a4a);
     const runner = this.add.rectangle(0, 0, 60, 6, 0x8a2a22).setDepth(2.5).setStrokeStyle(1, 0xd9b45a, 0.7);
+    const number = this.add
+      .text(0, 0, "", {
+        fontSize: "13px",
+        color: "#e0c9a0",
+        stroke: "#1a120a",
+        strokeThickness: 3,
+        fontFamily: XIAN_FONT,
+      })
+      .setOrigin(0.5)
+      .setDepth(3);
     const legs = [
       this.add.rectangle(0, 0, 7, 32, 0x4a3420).setDepth(1),
       this.add.rectangle(0, 0, 7, 32, 0x4a3420).setDepth(1),
@@ -2486,8 +2507,8 @@ class TavernScene extends Phaser.Scene {
     const barBg = this.add.rectangle(0, 0, 80, 8, 0x1a1a1a).setOrigin(0, 0.5).setDepth(3);
     const barFill = this.add.rectangle(0, 0, 0, 8, COLOR_PLAYER).setOrigin(0, 0.5).setDepth(4);
     const visible = this.gameState === "open";
-    [bg, runner, label, ...legs, barBg, barFill].forEach((o) => o.setVisible(visible));
-    this.boothVisuals.push({ bg, runner, label, legs, barBg, barFill });
+    [bg, runner, number, label, ...legs, barBg, barFill].forEach((o) => o.setVisible(visible));
+    this.boothVisuals.push({ bg, runner, number, label, legs, barBg, barFill });
     this.relayoutTables();
   }
 
@@ -2503,6 +2524,10 @@ class TavernScene extends Phaser.Scene {
         .setPosition(x, FLOOR_Y - 34)
         .setSize(Math.max(30, width - 14), 5)
         .setVisible(this.gameState === "open" && this.level >= 2);
+      v.number
+        .setText(TABLE_MARKS[i] ?? `${i + 1}`)
+        .setPosition(x, FLOOR_Y - 118)
+        .setVisible(this.gameState === "open");
       v.legs[0].setPosition(x - width / 2 + 10, FLOOR_Y - 14);
       v.legs[1].setPosition(x + width / 2 - 10, FLOOR_Y - 14);
       // 桌子多时交错两行放标签，避免相邻两桌的文字叠在一起
@@ -2977,6 +3002,8 @@ class TavernScene extends Phaser.Scene {
     this.focusTimer?.remove();
     this.focusing = false;
     this.focusChar = undefined;
+    this.focusCaption?.destroy();
+    this.focusCaption = undefined;
     this.setFocusUiHidden(false);
     if (wasFocusing) {
       this.cameras.main.setZoom(1);
@@ -3956,6 +3983,7 @@ class TavernScene extends Phaser.Scene {
     this.boothVisuals.forEach((v) => {
       v.bg.setVisible(isOpen);
       v.runner.setVisible(isOpen && this.level >= 2);
+      v.number.setVisible(isOpen);
       v.label.setVisible(isOpen);
       v.legs.forEach((l) => l.setVisible(isOpen));
       v.barBg.setVisible(isOpen);
@@ -4279,6 +4307,17 @@ class TavernScene extends Phaser.Scene {
     cam.pan(char.x, char.y - 14, 320, "Sine.easeInOut");
     cam.zoomTo(2.2, 320, "Sine.easeInOut");
     char.focusPose();
+    this.focusCaption?.destroy();
+    this.focusCaption = this.add
+      .text(char.x, char.y - 152, "人物特写 · 再点一次退出", {
+        fontSize: "14px",
+        color: "#ffe6c8",
+        backgroundColor: "rgba(30,22,15,0.85)",
+        padding: { x: 8, y: 4 },
+        fontFamily: XIAN_FONT,
+      })
+      .setOrigin(0.5)
+      .setDepth(27);
     this.focusTimer = this.time.delayedCall(4200, () => this.returnFromFocus());
   }
 
@@ -4288,6 +4327,8 @@ class TavernScene extends Phaser.Scene {
     this.focusTimer = undefined;
     this.focusing = false;
     this.focusChar = undefined;
+    this.focusCaption?.destroy();
+    this.focusCaption = undefined;
     const cam = this.cameras.main;
     cam.pan(this.focusReturn.x, this.focusReturn.y, 360, "Sine.easeInOut");
     cam.zoomTo(1, 360, "Sine.easeInOut");
@@ -5269,18 +5310,17 @@ class TavernScene extends Phaser.Scene {
             ? "#ffd98a"
             : "#ffffff",
       );
-      // 桌卡只留最短信息：想吃什么/做哪道/入座，名字交给人物本身
+      // 桌卡只留最短信息：想吃什么/做哪道/入座；固定桌号单独常驻
       const marker = kind && kind.priceFactor >= 1.8 ? "★" : "";
-      const tableMark = TABLE_MARKS[i] ?? `${i + 1}号`;
       const labelText =
         booth.state === "awaitingCook"
-          ? `${tableMark}${marker}${wishName ?? "随意"}↓`
+          ? `${marker}${wishName ?? "随意"}↓`
           : booth.state === "cooking"
-            ? `${tableMark}${booth.currentDish?.name ?? "烹饪"} ${Math.max(
+            ? `${booth.currentDish?.name ?? "烹饪"} ${Math.max(
                 0,
                 Math.ceil((booth.cookDoneAt - this.time.now) / 1000),
               )}s`
-            : `${tableMark}入座`;
+            : "入座";
       visual.label.setText(showLabel ? labelText : "");
     });
 
