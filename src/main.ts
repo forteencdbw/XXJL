@@ -100,8 +100,9 @@ const FLOOR_Y = 1010;
 const ACTOR_Y = FLOOR_Y - 34;
 const TABLE_X_MIN = -230;
 const TABLE_X_MAX = 170;
-const QUEUE_X = 320;
-const QUEUE_GAP = 40;
+const QUEUE_X = 315;
+const QUEUE_GAP = 38;
+const TABLE_MARKS = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧"];
 const PLAYER_HOME = { x: 240, y: ACTOR_Y };
 const HAWKER_HOME = { x: 280, y: ACTOR_Y };
 const SERVER_HOME = { x: 120, y: ACTOR_Y };
@@ -5270,15 +5271,16 @@ class TavernScene extends Phaser.Scene {
       );
       // 桌卡只留最短信息：想吃什么/做哪道/入座，名字交给人物本身
       const marker = kind && kind.priceFactor >= 1.8 ? "★" : "";
+      const tableMark = TABLE_MARKS[i] ?? `${i + 1}号`;
       const labelText =
         booth.state === "awaitingCook"
-          ? `${marker}${wishName ?? "随意"}↓`
+          ? `${tableMark}${marker}${wishName ?? "随意"}↓`
           : booth.state === "cooking"
-            ? `${booth.currentDish?.name ?? "烹饪"} ${Math.max(
+            ? `${tableMark}${booth.currentDish?.name ?? "烹饪"} ${Math.max(
                 0,
                 Math.ceil((booth.cookDoneAt - this.time.now) / 1000),
               )}s`
-            : "入座";
+            : `${tableMark}入座`;
       visual.label.setText(showLabel ? labelText : "");
     });
 
