@@ -317,6 +317,7 @@ class Character extends Phaser.GameObjects.Container {
   private bubble?: Phaser.GameObjects.Text;
   private bubbleTail?: Phaser.GameObjects.Triangle;
   private dining = false;
+  private mood: "idle" | "waiting" | "dining" | "cold" = "idle";
   private static readonly ART_SCALE = 1.18;
   private bodyColor: number;
   private hairColor: number;
@@ -521,8 +522,19 @@ class Character extends Phaser.GameObjects.Container {
     }
     // 眉
     g.lineStyle(1.4, this.shade(hair, 1.2), 0.9);
-    g.lineBetween(-7, -22.5, -2, -22.5);
-    g.lineBetween(2, -22.5, 7, -22.5);
+    if (this.mood === "waiting") {
+      g.lineBetween(-7, -24, -2, -21);
+      g.lineBetween(2, -21, 7, -24);
+    } else if (this.mood === "cold") {
+      g.lineBetween(-7, -21, -2, -21);
+      g.lineBetween(2, -21, 7, -21);
+    } else if (this.mood === "dining") {
+      g.lineBetween(-7, -21, -2, -23);
+      g.lineBetween(2, -23, 7, -21);
+    } else {
+      g.lineBetween(-7, -22.5, -2, -22.5);
+      g.lineBetween(2, -22.5, 7, -22.5);
+    }
     if (this.look === "elder") {
       g.fillStyle(0xf2f4f8, 0.95);
       g.fillTriangle(-7, -13, 7, -13, 0, 6);
@@ -543,11 +555,27 @@ class Character extends Phaser.GameObjects.Container {
     g.lineStyle(1.5, this.shade(hair, 1.35), 0.9);
     g.lineBetween(-8, -26, -10, -14);
     g.lineBetween(8, -26, 10, -14);
-    // 嘴
-    g.lineStyle(1.3, 0x9a5a4a, 0.9);
-    g.beginPath();
-    g.arc(0, -13, 3, 0, Math.PI, false);
-    g.strokePath();
+    // 嘴：等菜微愁，用膳张嘴笑并带一点腮红，稀客冷脸
+    if (this.mood === "dining") {
+      g.fillStyle(0x7a3a30, 0.95);
+      g.fillEllipse(0, -12, 6, 3.4);
+      g.fillStyle(0xffb0a0, 0.28);
+      g.fillCircle(-7, -16, 2.6);
+      g.fillCircle(7, -16, 2.6);
+    } else if (this.mood === "waiting") {
+      g.lineStyle(1.2, 0x9a5a4a, 0.8);
+      g.beginPath();
+      g.arc(0, -10, 2.4, Math.PI, Math.PI * 2, false);
+      g.strokePath();
+    } else if (this.mood === "cold") {
+      g.lineStyle(1.2, 0x9a5a4a, 0.8);
+      g.lineBetween(-2, -12, 2, -12);
+    } else {
+      g.lineStyle(1.3, 0x9a5a4a, 0.9);
+      g.beginPath();
+      g.arc(0, -13, 3, 0, Math.PI, false);
+      g.strokePath();
+    }
 
     // 身份道具：画在前面
     if (this.look === "elder") {
@@ -652,10 +680,18 @@ class Character extends Phaser.GameObjects.Container {
     this.draw();
   }
 
+  /** 表情：排队等菜微愁、用膳张嘴笑、稀客冷脸。 */
+  setMood(mood: "idle" | "waiting" | "dining" | "cold") {
+    if (this.mood === mood) return;
+    this.mood = mood;
+    this.draw();
+  }
+
   /** 用膳：收起腿、压低身子并做咀嚼起伏，看起来是坐着吃而不是站着。 */
   setDining(on: boolean) {
     if (this.dining === on || !this.scene || !this.visual?.active) return;
     this.dining = on;
+    this.mood = on ? "dining" : "idle";
     this.draw();
     this.stopIdle();
     if (on) {
@@ -4859,6 +4895,7 @@ class TavernScene extends Phaser.Scene {
     const longHair = kind.id === "alchemist" || kind.id === "demonlord" || kind.id === "elder";
     const char = new Character(this, spawnX, ACTOR_Y, kind.bodyColor, kind.hairColor, longHair, kind.id as CharacterLook);
     char.setVisible(this.gameState === "open");
+    char.setMood(rare ? "cold" : "waiting");
     const name = regular?.name ?? pickPatronName(kind, Math.random());
     char.displayName = regular ? `${name}（常客）` : name;
     if (rare) char.setAura(kind.id === "elder" ? 0xffe08a : 0xff6a6a, 0.9, 0.35);
@@ -5013,6 +5050,7 @@ class TavernScene extends Phaser.Scene {
 
     const patron = this.queue.shift()!;
     patron.char.setPatience(null);
+    patron.char.setMood(patron.kind.priceFactor >= 1.8 ? "cold" : "waiting");
     booth.state = "seating";
     const progress: SeatProgress = {
       startedAt: this.time.now,
