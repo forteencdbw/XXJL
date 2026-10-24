@@ -651,6 +651,25 @@ class Character extends Phaser.GameObjects.Container {
     }
   }
 
+  /** 被点进特写时的小动作：轻轻一欠身，让静止的人动一下。 */
+  focusPose() {
+    if (!this.scene || !this.visual?.active) return;
+    this.stopIdle();
+    this.scene.tweens.add({
+      targets: this.visual,
+      y: -5,
+      scaleY: Character.ART_SCALE * 1.04,
+      duration: 180,
+      yoyo: true,
+      repeat: 1,
+      ease: "Sine.easeOut",
+      onComplete: () => {
+        this.visual.setY(0).setScale(Character.ART_SCALE);
+        this.startIdle();
+      },
+    });
+  }
+
   /** 偶尔的小动作：点一下头/耸肩，让静止画面里也有活气。 */
   twitch() {
     if (this.dining || !this.scene || !this.visual?.active) return;
@@ -913,7 +932,6 @@ class TavernScene extends Phaser.Scene {
   /** 视图过渡中，防止重复触发。 */
   private transitioning = false;
   private focusTimer?: Phaser.Time.TimerEvent;
-  private focusVignette?: Phaser.GameObjects.Container;
   private focusChar?: Character;
   private focusReturn = { x: CAMERA_OPEN_X, y: SCREEN_H / 2 };
   private eventToast?: Phaser.GameObjects.Text;
@@ -2929,8 +2947,6 @@ class TavernScene extends Phaser.Scene {
   private endSession() {
     const wasFocusing = this.focusing;
     this.focusTimer?.remove();
-    this.focusVignette?.destroy();
-    this.focusVignette = undefined;
     this.focusing = false;
     this.focusChar = undefined;
     this.setFocusUiHidden(false);
@@ -4232,23 +4248,9 @@ class TavernScene extends Phaser.Scene {
     this.eventToast = undefined;
     this.hintToast?.destroy();
     this.hintToast = undefined;
-    if (!this.focusVignette) {
-      const v = this.add.container(0, 0).setScrollFactor(0).setDepth(28).setAlpha(0);
-      v.add(this.add.rectangle(0, 0, SCREEN_W, 150, 0x05070b, 0.55).setOrigin(0, 0));
-      v.add(this.add.rectangle(0, 1000, SCREEN_W, 280, 0x05070b, 0.55).setOrigin(0, 0));
-      v.add(this.add.rectangle(0, 0, 80, SCREEN_H, 0x05070b, 0.4).setOrigin(0, 0));
-      v.add(this.add.rectangle(640, 0, 80, SCREEN_H, 0x05070b, 0.4).setOrigin(0, 0));
-      v.add(
-        this.add
-          .rectangle(90, 180, 540, 760, 0x000000, 0)
-          .setStrokeStyle(1, 0xd9b45a, 0.25)
-          .setOrigin(0, 0),
-      );
-      this.focusVignette = v;
-    }
-    this.tweens.add({ targets: this.focusVignette, alpha: 1, duration: 250 });
     cam.pan(char.x, char.y - 14, 320, "Sine.easeInOut");
-    cam.zoomTo(1.8, 320, "Sine.easeInOut");
+    cam.zoomTo(2.2, 320, "Sine.easeInOut");
+    char.focusPose();
     this.focusTimer = this.time.delayedCall(4200, () => this.returnFromFocus());
   }
 
@@ -4258,18 +4260,6 @@ class TavernScene extends Phaser.Scene {
     this.focusTimer = undefined;
     this.focusing = false;
     this.focusChar = undefined;
-    if (this.focusVignette) {
-      const v = this.focusVignette;
-      this.tweens.add({
-        targets: v,
-        alpha: 0,
-        duration: 250,
-        onComplete: () => {
-          v.destroy();
-          if (this.focusVignette === v) this.focusVignette = undefined;
-        },
-      });
-    }
     const cam = this.cameras.main;
     cam.pan(this.focusReturn.x, this.focusReturn.y, 360, "Sine.easeInOut");
     cam.zoomTo(1, 360, "Sine.easeInOut");
