@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   BANKRUPT_STREAK,
   DISHES,
+  EMPTY_META,
   LOANS,
   LOAN_PERIODS,
   MAX_STAFF_LEVEL,
@@ -10,8 +11,11 @@ import {
   RANDOM_EVENTS,
   REALMS,
   applyEvent,
+  getAchievements,
   getArrivalInterval,
   getAscensionPriceMultiplier,
+  getAscensionStartCoins,
+  getAscensionStartInventory,
   getBoothCount,
   getCultivationGain,
   getDailyGoal,
@@ -41,6 +45,7 @@ import {
   getWishPrice,
   pickPatronWish,
   skyColorAt,
+  updateMeta,
 } from "./logic";
 
 describe("雅座与升级", () => {
@@ -357,5 +362,64 @@ describe("修为与境界", () => {
     const normal = getPlayerDuration(1200, 0, 300, 1);
     expect(getPlayerDuration(1200, 0, 300, 1, 0.9)).toBeLessThan(normal);
     expect(getPlayerDuration(100, 0, 300, 1, 0.9)).toBe(300);
+  });
+});
+
+describe("飞升开局与跨周目账簿", () => {
+  it("多周目开局资源线性增长，负数按 0 重处理", () => {
+    expect(getAscensionStartCoins(0)).toBe(20);
+    expect(getAscensionStartCoins(1)).toBe(40);
+    expect(getAscensionStartCoins(5)).toBe(120);
+    expect(getAscensionStartInventory(0)).toBe(5);
+    expect(getAscensionStartInventory(1)).toBe(7);
+    expect(getAscensionStartInventory(5)).toBe(15);
+    expect(getAscensionStartCoins(-3)).toBe(20);
+    expect(getAscensionStartInventory(-3)).toBe(5);
+  });
+
+  it("账簿累加、保留单日最高与历史最高境界", () => {
+    const first = updateMeta(EMPTY_META, { served: 9, revenue: 63, goalMet: true, realmIndex: 1 });
+    expect(first).toMatchObject({
+      days: 1,
+      served: 9,
+      revenue: 63,
+      bestRevenue: 63,
+      bestServed: 9,
+      goalsMet: 1,
+      maxRealm: 1,
+    });
+    const second = updateMeta(first, { served: 3, revenue: 20, goalMet: false, realmIndex: 0 });
+    expect(second.days).toBe(2);
+    expect(second.served).toBe(12);
+    expect(second.revenue).toBe(83);
+    expect(second.bestRevenue).toBe(63);
+    expect(second.bestServed).toBe(9);
+    expect(second.goalsMet).toBe(1);
+    expect(second.maxRealm).toBe(1);
+  });
+
+  it("成就按账簿阈值解锁，完整账簿可全解锁", () => {
+    const locked = getAchievements(EMPTY_META, 0);
+    expect(locked.length).toBe(10);
+    expect(new Set(locked.map((a) => a.id)).size).toBe(10);
+    expect(locked.every((a) => !a.unlocked)).toBe(true);
+
+    const newcomer = getAchievements({ ...EMPTY_META, served: 1 }, 0);
+    expect(newcomer.find((a) => a.id === "first")?.unlocked).toBe(true);
+    expect(newcomer.find((a) => a.id === "crowd")?.unlocked).toBe(false);
+
+    const maxed = getAchievements(
+      {
+        days: 100,
+        served: 100,
+        revenue: 5000,
+        bestRevenue: 200,
+        bestServed: 15,
+        goalsMet: 20,
+        maxRealm: 7,
+      },
+      1,
+    );
+    expect(maxed.every((a) => a.unlocked)).toBe(true);
   });
 });

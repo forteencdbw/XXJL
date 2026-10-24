@@ -9,6 +9,8 @@ export const ARRIVAL_MAX_MS = 7000;
 export const ARRIVAL_TAVERN_SHRINK_MS = 150;
 export const ARRIVAL_HAWKER_SHRINK = 0.08;
 export const ARRIVAL_FLOOR_MS = 1500;
+export const STARTING_COINS = 20;
+export const STARTING_INVENTORY = 5;
 export const PURCHASE_COST = 5;
 export const PURCHASE_TIME_MS = 15000;
 export const PURCHASE_EMERGENCY_MULTIPLIER = 2;
@@ -353,9 +355,86 @@ export function getRealmArrivalFactor(realmIndex: number): number {
 
 /** 飞升一次留一重仙缘，跨周目永久提高售价。 */
 export const ASCENSION_PRICE_BONUS = 0.1;
+export const ASCENSION_START_COIN_BONUS = 20;
+export const ASCENSION_START_INGREDIENT_BONUS = 2;
 
 export function getAscensionPriceMultiplier(ascensions: number): number {
   return 1 + ASCENSION_PRICE_BONUS * Math.max(0, Math.floor(ascensions));
+}
+
+export function getAscensionStartCoins(ascensions: number): number {
+  return STARTING_COINS + Math.max(0, Math.floor(ascensions)) * ASCENSION_START_COIN_BONUS;
+}
+
+export function getAscensionStartInventory(ascensions: number): number {
+  return STARTING_INVENTORY + Math.max(0, Math.floor(ascensions)) * ASCENSION_START_INGREDIENT_BONUS;
+}
+
+// ===== 跨周目账簿与成就 =====
+export interface MetaStats {
+  days: number;
+  served: number;
+  revenue: number;
+  bestRevenue: number;
+  bestServed: number;
+  goalsMet: number;
+  maxRealm: number;
+}
+
+export const EMPTY_META: MetaStats = {
+  days: 0,
+  served: 0,
+  revenue: 0,
+  bestRevenue: 0,
+  bestServed: 0,
+  goalsMet: 0,
+  maxRealm: 0,
+};
+
+export function updateMeta(
+  meta: MetaStats,
+  session: { served: number; revenue: number; goalMet: boolean; realmIndex: number },
+): MetaStats {
+  return {
+    days: meta.days + 1,
+    served: meta.served + Math.max(0, session.served),
+    revenue: meta.revenue + Math.max(0, session.revenue),
+    bestRevenue: Math.max(meta.bestRevenue, session.revenue),
+    bestServed: Math.max(meta.bestServed, session.served),
+    goalsMet: meta.goalsMet + (session.goalMet ? 1 : 0),
+    maxRealm: Math.max(meta.maxRealm, session.realmIndex),
+  };
+}
+
+export interface AchievementView {
+  id: string;
+  name: string;
+  desc: string;
+  unlocked: boolean;
+}
+
+interface AchievementDef {
+  id: string;
+  name: string;
+  desc: string;
+  test: (meta: MetaStats, ascensions: number) => boolean;
+}
+
+const ACHIEVEMENT_DEFS: AchievementDef[] = [
+  { id: "first", name: "初出茅庐", desc: "累计接待 1 位食客", test: (m) => m.served >= 1 },
+  { id: "crowd", name: "门庭若市", desc: "累计接待 100 位食客", test: (m) => m.served >= 100 },
+  { id: "full", name: "高朋满座", desc: "单日接待 15 位食客", test: (m) => m.bestServed >= 15 },
+  { id: "richday", name: "日进斗金", desc: "单日收入 200 灵石", test: (m) => m.bestRevenue >= 200 },
+  { id: "goldcore", name: "金丹大道", desc: "达到金丹境", test: (m) => m.maxRealm >= 2 },
+  { id: "nascent", name: "元婴出窍", desc: "达到元婴境", test: (m) => m.maxRealm >= 3 },
+  { id: "great", name: "大乘圆满", desc: "达到大乘境", test: (m) => m.maxRealm >= 7 },
+  { id: "ascend", name: "飞升上界", desc: "完成一次飞升", test: (_m, a) => a >= 1 },
+  { id: "tycoon", name: "富甲一方", desc: "累计收入 5000 灵石", test: (m) => m.revenue >= 5000 },
+  { id: "veteran", name: "百日光阴", desc: "累计营业 100 日", test: (m) => m.days >= 100 },
+];
+
+export function getAchievements(meta: MetaStats, ascensions: number): AchievementView[] {
+  return ACHIEVEMENT_DEFS.map(({ test, ...view }) => ({ ...view, unlocked: test(meta, ascensions) }));
 }
 
 export function getStaffLevel(exp: number): number {

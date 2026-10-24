@@ -29,6 +29,12 @@ npm run build   # 生产构建
 - 三条营造升级线：雅座扩建、灶台专精、门面招幡
 - 八重境界、飞升与仙缘
 - 随机事件（整体期望为正，每局至多 2 次）与见闻录
-- 本地自动存档（营业中不落盘，避免跳过工资/还账）
+- 跨周目账簿：累计数据、本机单日最高记录、10 项成就
+- 本地自动存档（营业中不落盘，避免跳过工资/还账）；「存档」页可导出/导入 `LS1.` 导出码，换设备不丢进度
 
-领域词汇与技术决策见 [GLOSSARY.md](GLOSSARY.md) 与 [docs/adr/](docs/adr/)。
+## 画面
+
+![营业视图](docs/screenshots/mobile-open.png)
+![跨周目账簿](docs/screenshots/ledger.png)
+
+自动化试玩、平衡数字与已知边界见 [docs/playtest.md](docs/playtest.md)。领域词汇与技术决策见 [GLOSSARY.md](GLOSSARY.md) 与 [docs/adr/](docs/adr/)。

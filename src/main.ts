@@ -3,14 +3,20 @@ import { loadAudioSettings, playSfx, setBgmMuted, setSfxMuted, startBgm } from "
 import {
   BANKRUPT_STREAK,
   DISHES,
+  EMPTY_META,
   LOANS,
   LOAN_PERIODS,
   MAX_STAFF_LEVEL,
   NIGHT_COLOR,
   REALMS,
+  STARTING_COINS,
+  STARTING_INVENTORY,
   applyEvent,
+  getAchievements,
   getArrivalInterval,
   getAscensionPriceMultiplier,
+  getAscensionStartCoins,
+  getAscensionStartInventory,
   getBoothCount,
   getCultivationGain,
   getDailyGoal,
@@ -39,9 +45,11 @@ import {
   pickPatronWish,
   pickRandomEvent,
   skyColorAt,
+  updateMeta,
 } from "./logic";
 import { EXP_PER_LEVEL } from "./logic";
-import type { DailyGoal, Dish, LoanDef, PatronKind, StaffRole } from "./logic";
+import type { DailyGoal, Dish, LoanDef, MetaStats, PatronKind, StaffRole } from "./logic";
+import { decodeSaveCode, encodeSaveCode } from "./savecode";
 
 // ===== 本文件独有的常量 =====
 const QUEUE_PATIENCE_MS = 8000;
@@ -50,8 +58,6 @@ const DINING_MS = 3000;
 const SESSION_DURATION_MS = 60000;
 const PURCHASE_AMOUNT = 5;
 const PURCHASE_TARGET_STOCK = 10;
-const STARTING_COINS = 20;
-const STARTING_INVENTORY = 5;
 const HIRE_COST_HAWKER = 30;
 const HIRE_COST_SERVER = 40;
 const HIRE_COST_COOK = 50;
@@ -162,6 +168,7 @@ interface SaveData {
   ascensions: number;
   selectedDishIds: string[];
   playerGender: "male" | "female";
+  meta: MetaStats;
 }
 
 /** 按钮内叠两条进度条：上=伙计（蓝），下=玩家（橙）。 */
@@ -334,6 +341,7 @@ class TavernScene extends Phaser.Scene {
   private staffExp: StaffLevels = { hawker: 0, server: 0, cook: 0, buyer: 0 };
   private chronicleLines: string[] = [];
   private cultivation = 0;
+  private meta: MetaStats = { ...EMPTY_META };
 
   private gameState: GameState = "closed";
   private selectedDishIds = new Set<string>();
@@ -349,6 +357,7 @@ class TavernScene extends Phaser.Scene {
   private day = 1;
   private ascensions = 0;
   private ascending = false;
+  private suppressSave = false;
   private sessionGoal: DailyGoal | null = null;
   /** 当天目标在进入这一天时锁定，之后升级装潢不会临时抬高目标。 */
   private dailyGoal: DailyGoal | null = null;
@@ -409,6 +418,8 @@ class TavernScene extends Phaser.Scene {
   private upgradeButton!: TapText;
   private cultivationButton!: TapText;
   private helpButton!: TapText;
+  private recordButton!: TapText;
+  private saveButton!: TapText;
   private startButton!: TapText;
   private lastAutosaveAt = 0;
 
@@ -495,10 +506,8 @@ class TavernScene extends Phaser.Scene {
 
   // ===== 存档 =====
   /** 只存经营进度与选择；营业中不落盘——中途刷新等于放弃本局，避免带着收益跳过工资与还账。 */
-  private save() {
-    if (this.ascending || this.gameState === "bankrupt") return;
-    if (this.gameState === "open" && !this.settling) return;
-    const data: SaveData = {
+  private buildSaveData(): SaveData {
+    return {
       v: 1,
       coins: this.coins,
       inventory: this.inventory,
@@ -515,8 +524,14 @@ class TavernScene extends Phaser.Scene {
       ascensions: this.ascensions,
       selectedDishIds: [...this.selectedDishIds],
       playerGender: this.playerGender,
+      meta: this.meta,
     };
-    this.writeSave(data);
+  }
+
+  private save() {
+    if (this.ascending || this.suppressSave || this.gameState === "bankrupt") return;
+    if (this.gameState === "open" && !this.settling) return;
+    this.writeSave(this.buildSaveData());
   }
 
   private writeSave(data: SaveData) {
@@ -531,8 +546,8 @@ class TavernScene extends Phaser.Scene {
   private freshSave(ascensions: number): SaveData {
     return {
       v: 1,
-      coins: STARTING_COINS + ascensions * 20,
-      inventory: STARTING_INVENTORY + ascensions * 2,
+      coins: getAscensionStartCoins(ascensions),
+      inventory: getAscensionStartInventory(ascensions),
       level: 1,
       stoveLevel: 0,
       signLevel: 0,
@@ -546,6 +561,7 @@ class TavernScene extends Phaser.Scene {
       ascensions,
       selectedDishIds: DISHES.filter((d) => d.unlockLevel <= 1).map((d) => d.id),
       playerGender: this.playerGender,
+      meta: this.meta,
     };
   }
 
@@ -597,6 +613,19 @@ class TavernScene extends Phaser.Scene {
         ),
       );
       this.displayedCoins = this.coins;
+      const meta = data.meta;
+      this.meta = meta
+        ? {
+            days: count(meta.days),
+            served: count(meta.served),
+            revenue: count(meta.revenue),
+            bestRevenue: count(meta.bestRevenue),
+            bestServed: count(meta.bestServed),
+            goalsMet: count(meta.goalsMet),
+            maxRealm: count(meta.maxRealm),
+          }
+        : { ...EMPTY_META };
+      this.meta.maxRealm = Math.max(this.meta.maxRealm, getRealmIndex(this.cultivation));
       return true;
     } catch {
       return false;
@@ -918,6 +947,8 @@ class TavernScene extends Phaser.Scene {
     this.bankButton = this.addUiButton(16, 880, () => this.buildBankOverlay());
     this.cultivationButton = this.addUiButton(16, 940, () => this.buildCultivationOverlay());
     this.helpButton = this.addUiButton(16, 1000, () => this.showHelp());
+    this.recordButton = this.addUiButton(16, 1060, () => this.buildRecordOverlay());
+    this.saveButton = this.addUiButton(16, 1120, () => this.openSaveDialog("export"));
 
     this.buildBoothVisuals();
     this.positionUi(false);
@@ -1413,6 +1444,12 @@ class TavernScene extends Phaser.Scene {
     this.lastWages = this.settleWages();
     this.lastLoanDues = this.settleLoans();
     this.settleDailyGoal();
+    this.meta = updateMeta(this.meta, {
+      served: this.sessionServed,
+      revenue: this.sessionRevenue,
+      goalMet: this.lastGoalResult?.met ?? false,
+      realmIndex: this.realmIndex(),
+    });
     this.updateBankruptStreak();
     // 结算/破产期间锁定副屏，避免重复结算或误买
     this.purchaseButton.setEnabled(false);
@@ -2104,6 +2141,7 @@ class TavernScene extends Phaser.Scene {
       "修为推动境界突破，境界提高售价、操作速度与客流。",
       "修到大乘可飞升：重置本局，仙缘永久提高售价与开局资源。",
       "每天一个目标，达成有额外灵石与修为；连亏 5 日破产。",
+      "「账簿」记录跨周目成绩与成就；「存档」可导出/导入进度。",
     ];
     lines.forEach((line, i) => {
       layer.add(
@@ -2117,7 +2155,7 @@ class TavernScene extends Phaser.Scene {
     });
     layer.add(
       this.add
-        .text(40, 600, "知道了，去营生", {
+        .text(40, 650, "知道了，去营生", {
           fontSize: "20px",
           color: "#ffffff",
           backgroundColor: "#3f5a7a",
@@ -2127,6 +2165,157 @@ class TavernScene extends Phaser.Scene {
         .on("pointerup", () => this.destroyOverlay()),
     );
     this.overlay = layer;
+  }
+
+  /** 二级页面：账簿。跨周目累计数据、本机最高记录与成就。 */
+  private buildRecordOverlay() {
+    this.destroyOverlay();
+    const cam = this.cameras.main;
+    const layer = this.add.container(cam.scrollX, cam.scrollY).setDepth(100);
+    layer.add(this.add.rectangle(0, 0, SCREEN_W, SCREEN_H, 0x000000, 0.94).setOrigin(0, 0).setInteractive());
+    layer.add(this.add.text(40, 70, "账簿", { fontSize: "30px", color: "#ffffff" }));
+    const meta = this.meta;
+    const realmName = REALMS[Math.min(Math.max(0, meta.maxRealm), REALMS.length - 1)].name;
+    const stats = [
+      `累计营业 ${meta.days} 日`,
+      `累计食客 ${meta.served} 位`,
+      `累计收益 ${meta.revenue} 灵石`,
+      `单日最高 ${meta.bestRevenue} 灵石`,
+      `单日最多 ${meta.bestServed} 位食客`,
+      `每日目标达成 ${meta.goalsMet} 次`,
+      `最高境界 ${realmName} · 当前仙缘 ${this.ascensions} 重`,
+    ];
+    stats.forEach((line, i) => {
+      layer.add(this.add.text(40, 126 + i * 30, line, { fontSize: "18px", color: "#dddddd" }));
+    });
+
+    const achievements = getAchievements(meta, this.ascensions);
+    const unlocked = achievements.filter((item) => item.unlocked).length;
+    layer.add(
+      this.add.text(40, 352, `成就 ${unlocked}/${achievements.length}`, { fontSize: "20px", color: "#ffd98a" }),
+    );
+    achievements.forEach((item, i) => {
+      const y = 392 + i * 32;
+      layer.add(
+        this.add.text(48, y, `${item.unlocked ? "✓" : "○"} ${item.name}`, {
+          fontSize: "16px",
+          color: item.unlocked ? "#9fdf6a" : "#777777",
+        }),
+      );
+      layer.add(
+        this.add.text(236, y + 1, item.desc, {
+          fontSize: "14px",
+          color: item.unlocked ? "#bbbbbb" : "#666666",
+        }),
+      );
+    });
+
+    layer.add(
+      this.add
+        .text(40, 740, "关闭", {
+          fontSize: "20px",
+          color: "#ffffff",
+          backgroundColor: "#3a3a3a",
+          padding: { x: 16, y: 10 },
+        })
+        .setInteractive({ useHandCursor: true })
+        .on("pointerup", () => this.destroyOverlay()),
+    );
+    this.overlay = layer;
+  }
+
+  /** 导出/导入存档。用浏览器原生输入框承载长文本（Phaser 没有文本输入控件）。 */
+  private openSaveDialog(mode: "export" | "import") {
+    document.getElementById("save-dialog")?.remove();
+    const overlay = document.createElement("div");
+    overlay.id = "save-dialog";
+    overlay.style.cssText =
+      "position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.82);display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;font-family:system-ui,sans-serif;";
+    const panel = document.createElement("div");
+    panel.style.cssText =
+      "width:min(92vw,560px);background:#1b2440;border:2px solid #3f5a7a;border-radius:10px;padding:18px;color:#fff;box-sizing:border-box;";
+    const title = document.createElement("div");
+    title.textContent = mode === "export" ? "导出存档" : "导入存档";
+    title.style.cssText = "font-size:22px;color:#ffd98a;margin-bottom:8px;";
+    const hint = document.createElement("div");
+    hint.textContent =
+      mode === "export"
+        ? "复制整段导出码保存。换设备或清空浏览器后，在这里选「导入存档」恢复。"
+        : "粘贴 LS1. 开头的导出码。导入会覆盖本机当前进度。";
+    hint.style.cssText = "font-size:14px;color:#bbbbbb;line-height:1.5;margin-bottom:10px;";
+    const textarea = document.createElement("textarea");
+    textarea.value = mode === "export" ? encodeSaveCode(this.buildSaveData()) : "";
+    textarea.readOnly = mode === "export";
+    textarea.placeholder = mode === "import" ? "在这里粘贴导出码" : "";
+    textarea.style.cssText =
+      "width:100%;height:170px;box-sizing:border-box;background:#0e1524;color:#cfe2ff;border:1px solid #3f5a7a;border-radius:6px;padding:10px;font-family:monospace;font-size:12px;resize:none;";
+    const status = document.createElement("div");
+    status.style.cssText = "min-height:20px;font-size:13px;color:#ff9a8a;margin:6px 0;";
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex;gap:10px;flex-wrap:wrap;";
+
+    const button = (label: string, primary: boolean, onClick: () => void) => {
+      const btn = document.createElement("button");
+      btn.textContent = label;
+      btn.style.cssText = `flex:1;min-width:110px;padding:12px;border-radius:6px;border:0;font-size:16px;cursor:pointer;background:${
+        primary ? "#3f6a3f" : "#3a3a3a"
+      };color:#fff;`;
+      btn.addEventListener("click", onClick);
+      row.appendChild(btn);
+    };
+
+    if (mode === "export") {
+      button("复制导出码", true, () => {
+        textarea.focus();
+        textarea.select();
+        const done = () => {
+          status.style.color = "#9fe870";
+          status.textContent = "已复制到剪贴板";
+        };
+        const fallback = () => {
+          try {
+            document.execCommand("copy");
+            done();
+          } catch {
+            status.style.color = "#ff9a8a";
+            status.textContent = "复制失败，请手动全选复制";
+          }
+        };
+        if (navigator.clipboard?.writeText) navigator.clipboard.writeText(textarea.value).then(done, fallback);
+        else fallback();
+      });
+    } else {
+      button("确认导入", true, () => {
+        const data = decodeSaveCode(textarea.value);
+        if (!data || typeof data !== "object" || (data as { v?: unknown }).v !== 1) {
+          status.textContent = "导出码无效或版本不匹配";
+          return;
+        }
+        try {
+          localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+          // 禁止 beforeunload 用当前内存状态覆盖刚导入的存档
+          this.suppressSave = true;
+          location.reload();
+        } catch {
+          status.textContent = "无法写入本地存档（浏览器存储不可用）";
+        }
+      });
+    }
+    button(mode === "export" ? "导入存档" : "导出存档", false, () =>
+      this.openSaveDialog(mode === "export" ? "import" : "export"),
+    );
+    button("关闭", false, () => overlay.remove());
+
+    panel.append(title, hint, textarea, status, row);
+    overlay.appendChild(panel);
+    overlay.addEventListener("click", (event) => {
+      if (event.target === overlay) overlay.remove();
+    });
+    document.body.appendChild(overlay);
+    if (mode === "export") {
+      textarea.focus();
+      textarea.select();
+    }
   }
 
   // ===== 场景与 UI =====
@@ -2167,6 +2356,8 @@ class TavernScene extends Phaser.Scene {
     this.genderButton.setVisible(!isOpen);
     this.cultivationButton.setVisible(!isOpen);
     this.helpButton.setVisible(!isOpen);
+    this.recordButton.setVisible(!isOpen);
+    this.saveButton.setVisible(!isOpen);
 
     this.playerChar.setVisible(isOpen);
     Object.values(this.staffChars).forEach((c) => c?.setVisible(isOpen));
@@ -3014,12 +3205,16 @@ class TavernScene extends Phaser.Scene {
     this.upgradeButton.setVisible(!open);
     this.cultivationButton.setVisible(!open);
     this.helpButton.setVisible(!open);
+    this.recordButton.setVisible(!open);
+    this.saveButton.setVisible(!open);
     this.purchaseButton.setVisible(true);
 
     this.staffButton.setText("伙计");
     this.bankButton.setText("灵石商行");
     this.cultivationButton.setText("修行·境界");
     this.helpButton.setText("玩法");
+    this.recordButton.setText("账簿");
+    this.saveButton.setText("存档");
 
     this.serveButton.setText("招待入座");
     this.cookButton.setText("动手烹饪");
