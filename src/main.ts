@@ -5503,6 +5503,10 @@ class TavernScene extends Phaser.Scene {
         Math.floor(Math.random() * 3)
       ],
     );
+    // 另一桌隔半秒回一句，画面里才像两个人在说话，而不是系统播报
+    this.time.delayedCall(900, () => {
+      if (b.active) b.say(["好酒！", "同饮。", "道友先请。", "这杯敬掌柜。"][Math.floor(Math.random() * 4)]);
+    });
     const x = (a.x + b.x) / 2;
     const y = ACTOR_Y - 58;
     const label = this.add
