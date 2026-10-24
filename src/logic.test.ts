@@ -19,6 +19,7 @@ import {
   getLoanDue,
   isGoalMet,
   getNextRealm,
+  pickPatronKind,
   pickRandomEvent,
   getPlayerDuration,
   getPurchaseDiscount,
@@ -155,9 +156,15 @@ describe("操作耗时", () => {
 describe("菜品与昼夜", () => {
   it("菜品按等级解锁且售价/耗时为正", () => {
     expect(DISHES[0].unlockLevel).toBe(1);
-    for (const d of DISHES) {
+    expect(new Set(DISHES.map((d) => d.id)).size).toBe(DISHES.length);
+    for (let i = 0; i < DISHES.length; i++) {
+      const d = DISHES[i];
       expect(d.price).toBeGreaterThan(0);
       expect(d.cookMs).toBeGreaterThan(0);
+      if (i > 0) {
+        expect(d.unlockLevel).toBeGreaterThanOrEqual(DISHES[i - 1].unlockLevel);
+        expect(d.price).toBeGreaterThan(DISHES[i - 1].price);
+      }
     }
     expect(DISHES[DISHES.length - 1].cookMs).toBeGreaterThan(DISHES[0].cookMs);
   });
@@ -170,12 +177,27 @@ describe("菜品与昼夜", () => {
 });
 
 describe("食客类型与口味", () => {
-  it("食客类型齐全，耐心系数为正", () => {
+  it("食客类型齐全，耐心、权重与客单价为正", () => {
     expect(PATRON_KINDS.length).toBeGreaterThanOrEqual(4);
     for (const kind of PATRON_KINDS) {
       expect(kind.patienceFactor).toBeGreaterThan(0);
+      expect(kind.weight).toBeGreaterThan(0);
+      expect(kind.priceFactor).toBeGreaterThan(0);
       expect(kind.name.length).toBeGreaterThan(0);
     }
+    expect(new Set(PATRON_KINDS.map((k) => k.id)).size).toBe(PATRON_KINDS.length);
+  });
+
+  it("稀客权重低、客单价高，抽取能覆盖整个池子", () => {
+    const elder = PATRON_KINDS.find((k) => k.id === "elder")!;
+    const rogue = PATRON_KINDS.find((k) => k.id === "rogue")!;
+    expect(elder.weight).toBeLessThan(rogue.weight);
+    expect(elder.priceFactor).toBeGreaterThan(rogue.priceFactor);
+    const seen = new Set<number>();
+    for (let i = 0; i < 5000; i++) seen.add(PATRON_KINDS.indexOf(pickPatronKind(i / 5000)));
+    expect(seen.size).toBe(PATRON_KINDS.length);
+    expect(pickPatronKind(0)).toBe(PATRON_KINDS[0]);
+    expect(pickPatronKind(1)).toBe(PATRON_KINDS[PATRON_KINDS.length - 1]);
   });
 
   it("只从今日菜单里挑偏爱菜，没有就返回 null", () => {

@@ -42,6 +42,9 @@ export const DISHES: Dish[] = [
   { id: "porridge", name: "灵米粥", price: 8, cookMs: 2000, unlockLevel: 2 },
   { id: "jelly", name: "玉露羹", price: 12, cookMs: 2800, unlockLevel: 3 },
   { id: "fish", name: "龙涎鱼脍", price: 18, cookMs: 4000, unlockLevel: 4 },
+  { id: "ginseng", name: "九转灵参", price: 26, cookMs: 5200, unlockLevel: 6 },
+  { id: "phoenix", name: "凤凰涅槃羹", price: 38, cookMs: 6500, unlockLevel: 8 },
+  { id: "voidfruit", name: "太虚道果", price: 55, cookMs: 8000, unlockLevel: 10 },
 ];
 
 export interface LoanDef {
@@ -124,15 +127,32 @@ export interface PatronKind {
   hairColor: number;
   patienceFactor: number;
   favorites: string[];
+  /** 抽取权重：常规食客高，仙门长老/魔道散人这类稀客很低。 */
+  weight: number;
+  /** 客单价倍率：身份越特殊越舍得掏灵石。 */
+  priceFactor: number;
 }
 
 export const PATRON_KINDS: PatronKind[] = [
-  { id: "rogue", name: "散修", bodyColor: 0x7a8a6a, hairColor: 0x2b2b2b, patienceFactor: 1, favorites: ["stirfry"] },
-  { id: "sword", name: "剑修", bodyColor: 0x5a7a9a, hairColor: 0x1b1b2b, patienceFactor: 0.8, favorites: ["fish", "jelly"] },
-  { id: "alchemist", name: "丹修", bodyColor: 0x8a6a9a, hairColor: 0x3b2b3b, patienceFactor: 1.1, favorites: ["porridge", "jelly"] },
-  { id: "demon", name: "妖修", bodyColor: 0x9a5a3a, hairColor: 0x4a2b1b, patienceFactor: 1.2, favorites: ["fish", "stirfry"] },
-  { id: "mortal", name: "凡人", bodyColor: 0xb0a090, hairColor: 0x3b3b3b, patienceFactor: 1.3, favorites: [] },
+  { id: "rogue", name: "散修", bodyColor: 0x7a8a6a, hairColor: 0x2b2b2b, patienceFactor: 1, favorites: ["stirfry", "ginseng"], weight: 8, priceFactor: 1 },
+  { id: "sword", name: "剑修", bodyColor: 0x5a7a9a, hairColor: 0x1b1b2b, patienceFactor: 0.8, favorites: ["fish", "jelly", "voidfruit"], weight: 8, priceFactor: 1.1 },
+  { id: "alchemist", name: "丹修", bodyColor: 0x8a6a9a, hairColor: 0x3b2b3b, patienceFactor: 1.1, favorites: ["porridge", "jelly", "ginseng"], weight: 8, priceFactor: 1.05 },
+  { id: "demon", name: "妖修", bodyColor: 0x9a5a3a, hairColor: 0x4a2b1b, patienceFactor: 1.2, favorites: ["fish", "stirfry", "phoenix"], weight: 8, priceFactor: 1.2 },
+  { id: "mortal", name: "凡人", bodyColor: 0xb0a090, hairColor: 0x3b3b3b, patienceFactor: 1.3, favorites: [], weight: 8, priceFactor: 0.9 },
+  { id: "elder", name: "仙门长老", bodyColor: 0xe8e0c8, hairColor: 0xdfe6ff, patienceFactor: 1.5, favorites: ["ginseng", "phoenix", "voidfruit"], weight: 1, priceFactor: 2.5 },
+  { id: "demonlord", name: "魔道散人", bodyColor: 0x6a2a3a, hairColor: 0x1a1a1a, patienceFactor: 0.7, favorites: ["fish", "phoenix"], weight: 1, priceFactor: 1.8 },
 ];
+
+/** 按权重抽食客类型；roll 取 [0,1) 方便测试。 */
+export function pickPatronKind(roll: number): PatronKind {
+  const total = PATRON_KINDS.reduce((sum, kind) => sum + kind.weight, 0);
+  let cursor = Math.min(0.999999, Math.max(0, roll)) * total;
+  for (const kind of PATRON_KINDS) {
+    cursor -= kind.weight;
+    if (cursor < 0) return kind;
+  }
+  return PATRON_KINDS[PATRON_KINDS.length - 1];
+}
 
 /** 从今日菜单里挑一道本类食客偏爱的菜；菜单里没有偏爱菜就不挑食。roll 取 [0,1)。 */
 export function pickPatronWish(kind: PatronKind, menuDishIds: string[], roll: number): string | null {
