@@ -240,6 +240,7 @@ class ProgressButton {
 class Character extends Phaser.GameObjects.Container {
   private bodyRect: Phaser.GameObjects.Rectangle;
   private hairArc: Phaser.GameObjects.Arc;
+  private aura?: Phaser.GameObjects.Arc;
 
   constructor(scene: Phaser.Scene, x: number, y: number, bodyColor: number, hairColor: number, longHair = false) {
     super(scene, x, y);
@@ -259,6 +260,15 @@ class Character extends Phaser.GameObjects.Container {
 
   setHairColor(color: number) {
     this.hairArc.setFillStyle(color);
+  }
+
+  /** 境界灵气：脚下的一圈光晕，随境界与仙缘变强。 */
+  setAura(color: number, scale = 1) {
+    if (!this.aura) {
+      this.aura = this.scene.add.circle(0, 30, 26, color, 0.18);
+      this.addAt(this.aura, 0);
+    }
+    this.aura.setFillStyle(color, 0.18).setScale(scale);
   }
 
   /** 操作中的占位动画：竖向缩放脉冲 + 上下浮动（不碰 scaleX，避免破坏朝向翻转）。 */
@@ -335,6 +345,8 @@ class TavernScene extends Phaser.Scene {
   // 视觉对象
   private skyRect!: Phaser.GameObjects.Rectangle;
   private sunMoon!: Phaser.GameObjects.Arc;
+  private moonShadow!: Phaser.GameObjects.Arc;
+  private stars: Phaser.GameObjects.Arc[] = [];
   private tavernGfx!: Phaser.GameObjects.Graphics;
   private interiorGfx!: Phaser.GameObjects.Graphics;
   private uiObjects: { obj: { x: number; setScrollFactor(v: number): unknown }; baseX: number }[] = [];
@@ -392,6 +404,7 @@ class TavernScene extends Phaser.Scene {
   private celebrating = false;
   private celebrationTimer?: Phaser.Time.TimerEvent;
   private sparkles: Phaser.GameObjects.Arc[] = [];
+  private fireflyCount = 0;
 
   constructor() {
     super("tavern");
@@ -410,8 +423,11 @@ class TavernScene extends Phaser.Scene {
 
     this.cameras.main.centerOn(CAMERA_CLOSED_X, SCREEN_H / 2);
     this.setGender(this.playerGender);
+    this.refreshPlayerAura();
     this.bindCameraDrag();
     this.refreshHud();
+    this.time.addEvent({ delay: 700, loop: true, callback: () => this.emitCookingSteam() });
+    this.time.addEvent({ delay: 1100, loop: true, callback: () => this.emitFirefly() });
     // shortcut: 用 localStorage 存档；接入微信小游戏时换成 wx.setStorageSync / wx.getStorageSync
     addEventListener("beforeunload", () => this.save());
     document.addEventListener("visibilitychange", () => {
@@ -588,6 +604,15 @@ class TavernScene extends Phaser.Scene {
     // 营业时看的酒楼内部
     this.interiorGfx = this.add.graphics().setDepth(0);
     this.drawInterior(this.interiorGfx);
+    this.add
+      .text(0, 212, "灵膳楼", {
+        fontSize: "34px",
+        color: "#ffd98a",
+        stroke: "#2a1a0a",
+        strokeThickness: 4,
+      })
+      .setOrigin(0.5)
+      .setDepth(2);
 
     this.playerChar = new Character(this, PLAYER_HOME.x, PLAYER_HOME.y, 0x4a7ab8, 0x2b2b2b, false);
     this.playerChar.setVisible(false);
@@ -599,13 +624,26 @@ class TavernScene extends Phaser.Scene {
     // 背景墙
     gfx.fillStyle(0x6b5240, 1);
     gfx.fillRect(-360, 0, 720, FLOOR_Y);
+    // 墙面木梁
+    gfx.fillStyle(0x5a4234, 1);
+    for (const x of [-300, -150, 0, 150, 300]) gfx.fillRect(x - 5, 0, 10, FLOOR_Y);
+    // 招牌匾额
+    gfx.fillStyle(0x3a2a1a, 1);
+    gfx.fillRect(-100, 180, 200, 66);
+    gfx.lineStyle(3, 0xd9b45a, 1);
+    gfx.strokeRect(-100, 180, 200, 66);
     // 地面
     gfx.fillStyle(0x8a6a4a, 1);
     gfx.fillRect(-360, FLOOR_Y, 720, 1280 - FLOOR_Y);
     gfx.lineStyle(3, 0x5a4028, 1);
     gfx.lineBetween(-360, FLOOR_Y, 360, FLOOR_Y);
+    // 地板木纹
+    gfx.lineStyle(2, 0x75583c, 0.6);
+    for (let y = FLOOR_Y + 34; y < 1280; y += 46) gfx.lineBetween(-360, y, 360, y);
 
-    // 左侧厨房：灶台（侧视）
+    // 左侧厨房：灶台（侧视），灶火映出一圈暖光
+    gfx.fillStyle(0xff9a3a, 0.12);
+    gfx.fillCircle(-272, 850, 72);
     gfx.fillStyle(0x9a9a9a, 1);
     gfx.fillRect(-345, 880, 150, 130);
     gfx.fillStyle(0x6a6a6a, 1);
@@ -644,6 +682,32 @@ class TavernScene extends Phaser.Scene {
     // 排队区标记
     gfx.lineStyle(2, 0x8a7a5a, 1);
     gfx.lineBetween(400, FLOOR_Y - 2, 620, FLOOR_Y - 2);
+  }
+
+  /** 夜空星子：只在打烊夜景与深夜里出现，缓慢明灭。 */
+  private buildStars() {
+    for (let i = 0; i < 46; i++) {
+      const star = this.add
+        .circle(
+          Phaser.Math.Between(0, SCREEN_W),
+          Phaser.Math.Between(0, 980),
+          Phaser.Math.FloatBetween(0.7, 1.8),
+          0xffffff,
+          Phaser.Math.FloatBetween(0.2, 0.7),
+        )
+        .setScrollFactor(0)
+        .setDepth(-19);
+      this.stars.push(star);
+      this.tweens.add({
+        targets: star,
+        alpha: 0.1,
+        duration: Phaser.Math.Between(1400, 3200),
+        yoyo: true,
+        repeat: -1,
+        delay: Phaser.Math.Between(0, 2200),
+        ease: "Sine.easeInOut",
+      });
+    }
   }
 
   /** 窗户（随时间变色），单独保存以便 updateSky 调整。 */
@@ -687,7 +751,10 @@ class TavernScene extends Phaser.Scene {
     gfx.lineStyle(3, 0x4a3324, 1);
     gfx.strokeRect(-155, 660, 70, 80);
     gfx.strokeRect(85, 660, 70, 80);
-    // 灯笼
+    // 灯笼与暖光
+    gfx.fillStyle(0xff7a3a, lit ? 0.16 : 0.05);
+    gfx.fillCircle(-165, 610, 38);
+    gfx.fillCircle(165, 610, 38);
     gfx.fillStyle(lit ? 0xff5c3c : 0x7a3a2a, 1);
     gfx.fillCircle(-165, 610, 16);
     gfx.fillCircle(165, 610, 16);
@@ -704,6 +771,8 @@ class TavernScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setDepth(-20);
     this.sunMoon = this.add.circle(0, 0, 34, 0xffe8a0).setScrollFactor(0).setDepth(-15);
+    this.moonShadow = this.add.circle(0, 0, 30, NIGHT_COLOR).setScrollFactor(0).setDepth(-14);
+    this.buildStars();
     this.buildWindows();
 
     // 顶部 HUD 悬浮条
@@ -1015,6 +1084,8 @@ class TavernScene extends Phaser.Scene {
       }
     }
     this.skyRect.setFillStyle(color, 1);
+    const showStars = this.gameState !== "open" || t > 0.8;
+    this.stars.forEach((star) => star.setVisible(showStars));
     // 室内窗户透出的天光与外面同步；打烊时窗户只剩余夜色
     if (this.windowViews.length) {
       const winColor = this.gameState === "open" ? color : NIGHT_COLOR;
@@ -1032,6 +1103,15 @@ class TavernScene extends Phaser.Scene {
       this.sunMoon.setPosition(SCREEN_W - 140, 170);
       this.sunMoon.setFillStyle(0xdfe6ff, 1);
       this.sunMoon.setRadius(26);
+    }
+    // 夜里给月亮咬出一弯缺口；星空同步淡出
+    const isMoon = this.gameState !== "open" || t > 0.82;
+    this.moonShadow.setVisible(isMoon);
+    if (isMoon) {
+      this.moonShadow
+        .setPosition(this.sunMoon.x + 12, this.sunMoon.y - 8)
+        .setRadius(24)
+        .setFillStyle(color, 1);
     }
 
     // 夜晚时酒楼窗内透出灯火
@@ -1942,6 +2022,60 @@ class TavernScene extends Phaser.Scene {
       duration: 1400,
       ease: "Cubic.easeOut",
       onComplete: () => text.destroy(),
+    });
+    this.refreshPlayerAura();
+  }
+
+  /** 境界灵气：颜色与大小随境界、仙缘变化。 */
+  private refreshPlayerAura() {
+    const colors = [0x8ab4ff, 0x7fe8dd, 0x9fe870, 0xffd98a, 0xff9a6a, 0xc8a8ff, 0xff8ad8, 0xfff2c0];
+    this.playerChar?.setAura(colors[this.realmIndex()] ?? 0xfff2c0, 1 + this.ascensions * 0.12);
+  }
+
+  /** 烹饪中的桌上冒热气；没开火时灶台自己冒。 */
+  private emitCookingSteam() {
+    if (this.gameState !== "open" || this.settling) return;
+    let puffs = 0;
+    this.booths.forEach((booth, i) => {
+      if (puffs >= 3 || booth.state !== "cooking") return;
+      puffs += 1;
+      const table = this.tablePosition(i);
+      this.spawnSteam(table.x + Phaser.Math.Between(-10, 10), FLOOR_Y - 84);
+    });
+    if (puffs === 0) this.spawnSteam(-272 + Phaser.Math.Between(-8, 8), 826, 0.16);
+  }
+
+  private spawnSteam(x: number, y: number, alpha = 0.26) {
+    const puff = this.add.circle(x, y, Phaser.Math.Between(3, 5), 0xe8e8e8, alpha).setDepth(4);
+    this.tweens.add({
+      targets: puff,
+      y: y - Phaser.Math.Between(30, 50),
+      alpha: 0,
+      scale: 1.8,
+      duration: 900,
+      ease: "Sine.easeOut",
+      onComplete: () => puff.destroy(),
+    });
+  }
+
+  /** 门外空地的流萤，给营业中添一点活气。 */
+  private emitFirefly() {
+    if (this.gameState !== "open" || this.settling || this.fireflyCount >= 6) return;
+    this.fireflyCount += 1;
+    const x = Phaser.Math.Between(380, 900);
+    const y = Phaser.Math.Between(FLOOR_Y - 240, FLOOR_Y - 20);
+    const dot = this.add.circle(x, y, Phaser.Math.Between(1, 3), 0xffe08a, 0.9).setDepth(6);
+    this.tweens.add({
+      targets: dot,
+      x: x + Phaser.Math.Between(-40, 40),
+      y: y + Phaser.Math.Between(-40, 20),
+      alpha: 0,
+      duration: Phaser.Math.Between(2200, 3600),
+      ease: "Sine.easeInOut",
+      onComplete: () => {
+        dot.destroy();
+        this.fireflyCount -= 1;
+      },
     });
   }
 
