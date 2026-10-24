@@ -20,6 +20,8 @@ import {
   getBoothCount,
   getCultivationGain,
   getDailyGoal,
+  getDailyGoalOptions,
+  getDailyRent,
   getDailySpecial,
   getDishFans,
   getGoalCoinReward,
@@ -257,6 +259,20 @@ describe("食客类型与口味", () => {
     expect(getDishFans("stirfry")).toEqual(expect.arrayContaining(["散修", "妖修"]));
     expect(getDishFans("porridge")).toEqual(expect.arrayContaining(["丹修"]));
     expect(getDishFans("not-a-dish")).toEqual([]);
+  });
+
+  it("每日目标三选一，奖励与目标随等级增长；租金随等级上涨", () => {
+    const options = getDailyGoalOptions(1, 1);
+    expect(options).toHaveLength(3);
+    expect(new Set(options.map((o) => o.kind)).size).toBe(3);
+    for (const o of options) {
+      expect(o.target).toBeGreaterThan(0);
+      expect(o.rewardCoins).toBeGreaterThan(0);
+      expect(o.rewardCultivation).toBeGreaterThan(0);
+    }
+    expect(getDailyGoalOptions(1, 4)[0].target).toBeGreaterThan(options[0].target);
+    expect(getDailyRent(1)).toBe(12);
+    expect(getDailyRent(4)).toBeGreaterThan(getDailyRent(1));
   });
 
   it("今日招牌按天轮换，只有一道菜时不设招牌", () => {

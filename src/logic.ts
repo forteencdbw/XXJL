@@ -309,23 +309,7 @@ export interface SessionStats {
 
 /** 每日目标按天轮换，难度随酒楼等级成长；奖励跟着等级走。 */
 export function getDailyGoal(day: number, level: number): DailyGoal {
-  const rewardCoins = 8 + level * 4;
-  const rewardCultivation = 2 + Math.floor(level / 3);
-  const base = { rewardCoins, rewardCultivation };
-  switch (((Math.max(1, day) - 1) % 3)) {
-    case 0: {
-      const target = 4 + level;
-      return { ...base, kind: "serve", target, label: `接待 ${target} 位食客` };
-    }
-    case 1: {
-      const target = 30 + level * 8;
-      return { ...base, kind: "revenue", target, label: `本日收入 ${target} 灵石` };
-    }
-    default: {
-      const target = 1 + Math.floor(level / 2);
-      return { ...base, kind: "wish", target, label: `满足 ${target} 位食客的口味` };
-    }
-  }
+  return getDailyGoalOptions(day, level)[(Math.max(1, day) - 1) % 3];
 }
 
 export function getGoalProgress(goal: DailyGoal, stats: SessionStats): number {
@@ -344,6 +328,40 @@ export interface GoalPayout {
   progress: number;
   coins: number;
   cultivation: number;
+}
+
+/** 每天三选一的目标：接待/收入/口味，奖励略有差异，让玩家按今日菜单做选择。 */
+export function getDailyGoalOptions(_day: number, level: number): DailyGoal[] {
+  const rewardCoins = 8 + level * 3;
+  const rewardCultivation = 1 + Math.floor(level / 3);
+  return [
+    {
+      kind: "serve",
+      label: `接待 ${4 + level} 位食客`,
+      target: 4 + level,
+      rewardCoins: rewardCoins + 2,
+      rewardCultivation,
+    },
+    {
+      kind: "revenue",
+      label: `本日收入 ${30 + level * 8} 灵石`,
+      target: 30 + level * 8,
+      rewardCoins: rewardCoins + 4,
+      rewardCultivation,
+    },
+    {
+      kind: "wish",
+      label: `满足 ${1 + Math.floor(level / 2)} 位食客的口味`,
+      target: 1 + Math.floor(level / 2),
+      rewardCoins: rewardCoins,
+      rewardCultivation: rewardCultivation + 1,
+    },
+  ];
+}
+
+/** 每天的店面租金，按等级缓慢上涨；结算时扣除。 */
+export function getDailyRent(level: number): number {
+  return 8 + Math.max(1, level) * 4;
 }
 
 /** 差一点也算数：达成给全赏，达到目标 60% 给半赏，避免 6/7、61/64 这类一整天空手。 */

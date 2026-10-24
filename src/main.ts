@@ -21,6 +21,8 @@ import {
   getBoothCount,
   getCultivationGain,
   getDailyGoal,
+  getDailyGoalOptions,
+  getDailyRent,
   getDailySpecial,
   getDishFans,
   getGoalPayout,
@@ -64,7 +66,7 @@ const SHOUT_COOLDOWN_MS = 10000;
 const DINING_MS = 4500;
 /** 桌子入座后先给玩家这么久亲手出菜，伙计再接手。 */
 const COOK_PRIORITY_MS = 1500;
-const SESSION_DURATION_MS = 60000;
+const SESSION_DURATION_MS = 90000;
 const PURCHASE_AMOUNT = 5;
 const PURCHASE_TARGET_STOCK = 10;
 const HIRE_COST_HAWKER = 30;
@@ -89,7 +91,7 @@ const COLOR_STAFF = 0x4da6ff;
 const SCREEN_W = 720;
 const SCREEN_H = 1280;
 /** 界面分区（见 GLOSSARY）：状态栏 / 主屏 / 副屏。 */
-const STATUS_BAR_H = 130;
+const STATUS_BAR_H = 124;
 const XIAN_FONT = '"KaiTi","STKaiti","Kaiti SC","Noto Serif SC",serif';
 const SECONDARY_TOP = 1077;
 const CARD_W = 600;
@@ -1210,6 +1212,7 @@ class TavernScene extends Phaser.Scene {
   private displayedCoins = STARTING_COINS;
   private lastWages: { role: StaffRole; level: number; wage: number }[] = [];
   private lastLoanDues: { name: string; due: number }[] = [];
+  private lastRent = 0;
   private activeLoans: { name: string; remaining: number; periodsLeft: number }[] = [];
   private borrowedIds = new Set<string>();
   private negativeStreak = 0;
@@ -1290,6 +1293,7 @@ class TavernScene extends Phaser.Scene {
     this.time.addEvent({ delay: 5600, loop: true, callback: () => this.ambientBark() });
     this.time.addEvent({ delay: 520, loop: true, callback: () => this.emitQi() });
     this.time.addEvent({ delay: 700, loop: true, callback: () => this.emitWeather() });
+    this.time.addEvent({ delay: 900, loop: true, callback: () => this.emitInteriorMote() });
     this.time.addEvent({ delay: 2600, loop: true, callback: () => this.idleTwitch() });
     this.events.on("focus-character", (char: Character) => this.focusOnCharacter(char));
     // shortcut: 用 localStorage 存档；接入微信小游戏时换成 wx.setStorageSync / wx.getStorageSync
@@ -1336,14 +1340,22 @@ class TavernScene extends Phaser.Scene {
     layer.add(this.add.rectangle(0, 0, SCREEN_W, SCREEN_H, 0x070b14, 1).setOrigin(0, 0).setInteractive());
 
     // 月光与远山
-    layer.add(
-      this.add
-        .image(540, 210, "soft-glow")
-        .setTint(0xffe8b0)
-        .setAlpha(0.9)
-        .setScale(1.55)
-        .setBlendMode(Phaser.BlendModes.ADD),
-    );
+    const moonGlow = this.add
+      .image(540, 210, "soft-glow")
+      .setTint(0xffe8b0)
+      .setAlpha(0.9)
+      .setScale(1.55)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    layer.add(moonGlow);
+    this.tweens.add({
+      targets: moonGlow,
+      alpha: 0.7,
+      scale: 1.66,
+      duration: 3200,
+      yoyo: true,
+      repeat: -1,
+      ease: "Sine.easeInOut",
+    });
     layer.add(this.add.circle(540, 210, 38, 0xffefc2, 0.95));
     const hills = this.add.graphics();
     hills.fillStyle(0x111b2a, 1);
@@ -1385,6 +1397,22 @@ class TavernScene extends Phaser.Scene {
       [80, 950, 300, 0.03],
     ]) {
       layer.add(this.add.ellipse(x, y, w, 46, 0xc8d8e8, a));
+    }
+    // 慢慢飘的夜云，让标题不是一张静止的图
+    for (const [x, y, cw, a] of [
+      [130, 300, 420, 0.035],
+      [470, 382, 520, 0.03],
+    ]) {
+      const cloud = this.add.ellipse(x, y, cw, 78, 0xdfe9f5, a);
+      layer.add(cloud);
+      this.tweens.add({
+        targets: cloud,
+        x: x + 90,
+        duration: 26000,
+        yoyo: true,
+        repeat: -1,
+        ease: "Sine.easeInOut",
+      });
     }
 
     const title = this.add
@@ -1523,6 +1551,31 @@ class TavernScene extends Phaser.Scene {
         ease: "Sine.easeOut",
       });
     }
+
+    // 檐下小灯笼：给标题底部一点暖光和摆动
+    const titleLantern = this.add.container(360, 1108);
+    titleLantern.add(this.add.rectangle(0, -30, 2, 22, 0x2a1a10));
+    titleLantern.add(
+      this.add
+        .image(0, 0, "soft-glow")
+        .setTint(0xff8a4a)
+        .setAlpha(0.28)
+        .setScale(0.34)
+        .setBlendMode(Phaser.BlendModes.ADD),
+    );
+    titleLantern.add(this.add.ellipse(0, 0, 24, 32, 0xff5c3c));
+    titleLantern.add(this.add.rectangle(0, -16, 15, 4, 0x2a1a10));
+    titleLantern.add(this.add.rectangle(0, 16, 15, 4, 0x2a1a10));
+    titleLantern.add(this.add.rectangle(0, 23, 2, 9, 0xd9b45a));
+    layer.add(titleLantern);
+    this.tweens.add({
+      targets: titleLantern,
+      angle: 4,
+      duration: 2600,
+      yoyo: true,
+      repeat: -1,
+      ease: "Sine.easeInOut",
+    });
 
     // 浮尘/灵火
     for (let i = 0; i < 14; i++) {
@@ -2317,8 +2370,10 @@ class TavernScene extends Phaser.Scene {
   private createSwayLantern(x: number, y: number) {
     const lantern = this.add.container(x, y).setDepth(3);
     lantern.add(this.add.rectangle(0, -28, 2, 24, 0x2a1a10));
-    lantern.add(this.add.circle(0, 0, 34, 0xff7a3a, 0.12));
-    lantern.add(this.add.ellipse(0, 0, 24, 34, 0xff5c3c));
+    const glow = this.add.circle(0, 0, 34, 0xff7a3a, 0.12);
+    const body = this.add.ellipse(0, 0, 24, 34, 0xff5c3c);
+    lantern.add(glow);
+    lantern.add(body);
     lantern.add(this.add.rectangle(0, -18, 15, 4, 0x2a1a10));
     lantern.add(this.add.rectangle(0, 18, 15, 4, 0x2a1a10));
     lantern.add(this.add.rectangle(0, 26, 2, 10, 0xd9b45a));
@@ -2331,6 +2386,23 @@ class TavernScene extends Phaser.Scene {
       repeat: -1,
       ease: "Sine.easeInOut",
       delay: Phaser.Math.Between(0, 800),
+    });
+    // 烛火轻闪
+    this.tweens.add({
+      targets: body,
+      alpha: { from: 0.82, to: 1 },
+      duration: Phaser.Math.Between(900, 1600),
+      yoyo: true,
+      repeat: -1,
+      ease: "Sine.easeInOut",
+    });
+    this.tweens.add({
+      targets: glow,
+      alpha: { from: 0.08, to: 0.16 },
+      duration: Phaser.Math.Between(1100, 1900),
+      yoyo: true,
+      repeat: -1,
+      ease: "Sine.easeInOut",
     });
   }
 
@@ -2587,16 +2659,16 @@ class TavernScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setDepth(30.5);
 
-    this.coinsText = this.addUiText(24, 10, "", "22px", "#7fe8dd");
-    this.inventoryText = this.addUiText(200, 10, "", "22px", "#9fe870");
-    this.levelText = this.addUiText(400, 10, "", "18px", "#87ceeb");
-    this.queueText = this.addUiText(24, 38, "", "20px", "#e0b0ff");
-    this.realmText = this.addUiText(400, 10, "", "18px", "#ffd98a");
-    this.cultivationText = this.addUiText(300, 38, "", "18px", "#d8c8ff");
-    this.goalText = this.addUiText(450, 38, "", "21px", "#9fdf6a");
-    this.goalText.setWordWrapWidth(280);
-    this.sessionText = this.addUiText(24, 64, "", "19px", "#a8d8ff");
-    this.chronicleText = this.addUiText(24, 92, "", "19px", "#cccccc");
+    this.coinsText = this.addUiText(24, 6, "", "26px", "#7fe8dd");
+    this.inventoryText = this.addUiText(190, 6, "", "26px", "#9fe870");
+    this.levelText = this.addUiText(400, 6, "", "18px", "#87ceeb");
+    this.queueText = this.addUiText(24, 40, "", "24px", "#e0b0ff");
+    this.realmText = this.addUiText(430, 9, "", "21px", "#ffd98a");
+    this.cultivationText = this.addUiText(300, 42, "", "21px", "#d8c8ff");
+    this.goalText = this.addUiText(440, 40, "", "25px", "#9fdf6a");
+    this.goalText.setWordWrapWidth(260);
+    this.sessionText = this.addUiText(24, 70, "", "21px", "#a8d8ff");
+    this.chronicleText = this.addUiText(24, 96, "", "17px", "#cccccc");
     [this.coinsText, this.inventoryText, this.queueText, this.realmText, this.cultivationText, this.goalText].forEach(
       (text) => text.setStyle({ fontStyle: "bold" }),
     );
@@ -3204,29 +3276,59 @@ class TavernScene extends Phaser.Scene {
         color: "#999999",
       }),
     );
-    const goal = this.currentDayGoal();
+    const goalOptions = getDailyGoalOptions(this.day, this.level);
+    this.dailyGoal =
+      goalOptions.find((o) => o.kind === this.dailyGoal?.kind) ?? goalOptions[(this.day - 1) % 3];
+    const goal = this.dailyGoal;
     layer.add(
       this.add.text(
         40,
         148,
-        `今日目标：${goal.label} · 库存 ${this.inventory} · 赏 ${goal.rewardCoins}灵石+收入15% · ${goal.rewardCultivation}修为`,
+        `今日目标：${goal.label} · 库存 ${this.inventory} · 日租 ${getDailyRent(this.level)} 灵石 · 赏 ${goal.rewardCoins}灵石+收入15% · ${goal.rewardCultivation}修为`,
         { fontSize: "15px", color: "#e0c060", wordWrap: { width: 640 } },
       ),
     );
+    // 三选一的目标卡：让玩家按今天想怎么打来选
+    goalOptions.forEach((option, i) => {
+      const x = 40 + i * 216;
+      const selected = option.kind === goal.kind;
+      const card = this.add
+        .rectangle(x, 176, 200, 62, selected ? 0x4a3a1a : 0x2a1e16)
+        .setOrigin(0, 0)
+        .setStrokeStyle(2, selected ? 0xd9b45a : 0x555555)
+        .setInteractive({ useHandCursor: true })
+        .on("pointerdown", () => {
+          this.dailyGoal = option;
+          this.buildMenuOverlay();
+        });
+      layer.add(card);
+      layer.add(
+        this.add.text(x + 10, 183, option.label, {
+          fontSize: "16px",
+          color: selected ? "#ffe6a8" : "#dddddd",
+        }),
+      );
+      layer.add(
+        this.add.text(x + 10, 208, `赏 ${option.rewardCoins} 灵石 · ${option.rewardCultivation} 修为`, {
+          fontSize: "13px",
+          color: selected ? "#e0c060" : "#999999",
+        }),
+      );
+    });
     const special = DISHES.find((d) => d.id === this.currentDailySpecial());
     if (special) {
       const base = this.baseDishPrice(special);
       const price = this.dishPrice(special);
       const pct = base > 0 ? Math.round((price / base - 1) * 100) : 0;
       layer.add(
-        this.add.text(40, 168, `今日招牌：${special.name} · ${base}→${price} 灵石（+${pct}%，◆ 标记）`, {
+        this.add.text(40, 252, `今日招牌：${special.name} · ${base}→${price} 灵石（+${pct}%，◆ 标记）`, {
           fontSize: "15px",
           color: "#ffd98a",
         }),
       );
     } else {
       layer.add(
-        this.add.text(40, 168, "今日招牌：再解锁一道菜后开启", {
+        this.add.text(40, 252, "今日招牌：再解锁一道菜后开启", {
           fontSize: "15px",
           color: "#8a7a62",
         }),
@@ -3236,7 +3338,7 @@ class TavernScene extends Phaser.Scene {
     const available = DISHES.filter((d) => d.unlockLevel <= this.level);
     const specialId = this.currentDailySpecial();
     available.forEach((dish, i) => {
-      const y = 205 + i * 92;
+      const y = 280 + i * 92;
       const selected = this.selectedDishIds.has(dish.id);
       const row = this.add
         .rectangle(40, y, 640, 76, selected ? 0x4a3a1a : 0x2a1e16)
@@ -3399,8 +3501,8 @@ class TavernScene extends Phaser.Scene {
       this.sessionGoal = this.currentDayGoal();
       const specialName = DISHES.find((d) => d.id === this.currentDailySpecial())?.name;
       if (specialName) this.log(`今日招牌：${specialName}，售价 +25%`);
-      // 第一天是教学局：给 90 秒读完提示、看几个人，之后回到 60 秒
-      this.sessionEndsAt = this.time.now + (this.day === 1 ? SESSION_DURATION_MS * 1.5 : SESSION_DURATION_MS);
+      // 第一天是教学局：多给时间读提示；之后每天 90 秒，不再 60 秒赶按钮
+      this.sessionEndsAt = this.time.now + SESSION_DURATION_MS;
       const firstArrival = getArrivalInterval(
         this.level,
         this.staffLevel.hawker,
@@ -3487,6 +3589,8 @@ class TavernScene extends Phaser.Scene {
     this.gainStaffExperience();
     this.lastWages = this.settleWages();
     this.lastLoanDues = this.settleLoans();
+    this.lastRent = getDailyRent(this.level);
+    this.coins -= this.lastRent;
     this.settleDailyGoal();
     this.meta = updateMeta(this.meta, {
       served: this.sessionServed,
@@ -4085,13 +4189,15 @@ class TavernScene extends Phaser.Scene {
     const roleName = { hawker: "迎客", server: "跑堂", cook: "灶上", buyer: "采买" } as const;
     const totalWage = this.lastWages.reduce((sum, w) => sum + w.wage, 0);
     const totalLoan = this.lastLoanDues.reduce((sum, d) => sum + d.due, 0);
+    const totalRent = this.lastRent;
     const summary = [
       `服务食客：${this.sessionServed} 位`,
       `总收益：${this.sessionRevenue} 灵石`,
       `修为增长：+${this.sessionCultivation}`,
       `工资合计：${totalWage} 灵石`,
+      `店面租金：${totalRent} 灵石`,
       `商行还账：${totalLoan} 灵石`,
-      `净收益：${this.sessionRevenue - totalWage - totalLoan} 灵石`,
+      `净收益：${this.sessionRevenue - totalWage - totalLoan - totalRent} 灵石`,
       `余下：${this.coins} 灵石（连亏 ${this.negativeStreak}/${BANKRUPT_STREAK} 日）`,
       `流失食客：${this.sessionLost} 位`,
     ];
@@ -4149,7 +4255,7 @@ class TavernScene extends Phaser.Scene {
       const { goal, met, partial, progress, rewardCoins, rewardCultivation } = this.lastGoalResult;
       panel.add(
         this.add
-          .rectangle(left - 8, y - 8, 624, 64, 0x2a2118, 0.95)
+          .rectangle(left - 8, y - 8, CARD_W - 20, 64, 0x2a2118, 0.95)
           .setOrigin(0, 0)
           .setStrokeStyle(1, 0xd9b45a, 0.55),
       );
@@ -5013,6 +5119,25 @@ class TavernScene extends Phaser.Scene {
     });
   }
 
+  /** 店里慢慢浮动的尘埃/灵光，让静态墙面有一点呼吸。 */
+  private emitInteriorMote() {
+    if (this.gameState !== "open" || this.settling) return;
+    const x = Phaser.Math.Between(-260, 260);
+    const y = Phaser.Math.Between(380, 960);
+    const mote = this.add
+      .circle(x, y, Phaser.Math.FloatBetween(0.8, 2), 0xffe0a0, 0.35)
+      .setDepth(6);
+    this.tweens.add({
+      targets: mote,
+      y: y - Phaser.Math.Between(24, 60),
+      x: x + Phaser.Math.Between(-18, 18),
+      alpha: 0,
+      duration: Phaser.Math.Between(2200, 3800),
+      ease: "Sine.easeOut",
+      onComplete: () => mote.destroy(),
+    });
+  }
+
   /** 门外空地的流萤，给营业中添一点活气。 */
   private emitFirefly() {
     if (this.gameState !== "open" || this.settling || this.fireflyCount >= 6) return;
@@ -5634,8 +5759,11 @@ class TavernScene extends Phaser.Scene {
     this.drawInterior(this.interiorGfx);
     // 多一张桌子就会多吃货，升级附赠一点灵材，避免第二天立刻断货
     this.inventory += 5;
-    // 打烊期升级发生在开张前：目标和菜单都应立即跟上新等级
-    if (this.gameState === "closed") this.dailyGoal = getDailyGoal(this.day, this.level);
+    // 打烊期升级发生在开张前：保持玩家已选的目标类型，只更新数值
+    if (this.gameState === "closed") {
+      const options = getDailyGoalOptions(this.day, this.level);
+      this.dailyGoal = options.find((o) => o.kind === this.dailyGoal?.kind) ?? options[0];
+    }
     const unlocked = DISHES.find((d) => d.unlockLevel === this.level);
     if (unlocked) this.selectedDishIds.add(unlocked.id);
     this.save();
@@ -6062,14 +6190,17 @@ class TavernScene extends Phaser.Scene {
       }
     } else {
       const goal = this.currentDayGoal();
-      this.sessionText.setText(
-        `第 ${this.day} 日 · 目标：${goal.label} · 赏 基础${goal.rewardCoins}灵石+当日收入15% · ${goal.rewardCultivation}修为`,
-      );
+      // 打烊页：奖励明细留给菜单目标卡，HUD 只留日期与目标，避免长行压到画面
+      this.sessionText.setText(`第 ${this.day} 日 · 今日目标：${goal.label}`);
       this.goalText.setText("");
     }
     this.chronicleText.setText(
       this.chronicleLines.map((line) => (line.length > 34 ? `${line.slice(0, 33)}…` : line)).join("\n"),
     );
+    // 营业中把常驻日志与声音开关收起：给主画面让位，日志在打烊视图里看
+    this.chronicleText.setVisible(!open);
+    this.sfxButton.setVisible(!open);
+    this.bgmButton.setVisible(!open);
 
     const menu = this.getMenuDishes();
     const canServeBeforeClose = menu.some((dish) => this.canFinishBeforeClose(dish, "player"));
