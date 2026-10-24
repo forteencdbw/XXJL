@@ -337,6 +337,8 @@ class TavernScene extends Phaser.Scene {
   private ascensions = 0;
   private ascending = false;
   private sessionGoal: DailyGoal | null = null;
+  /** 当天目标在进入这一天时锁定，之后升级装潢不会临时抬高目标。 */
+  private dailyGoal: DailyGoal | null = null;
   private lastGoalResult: { goal: DailyGoal; met: boolean; progress: number } | null = null;
 
   private playerSeat: SeatProgress | null = null;
@@ -1196,7 +1198,7 @@ class TavernScene extends Phaser.Scene {
     layer.add(
       this.add.text(40, 115, "至少选一道菜才能开张；营业中按顺序轮转上菜", { fontSize: "16px", color: "#999999" }),
     );
-    const goal = getDailyGoal(this.day, this.level);
+    const goal = this.currentDayGoal();
     layer.add(
       this.add.text(40, 148, `今日目标：${goal.label} · 奖励 ${goal.rewardCoins} 灵石 / ${goal.rewardCultivation} 修为`, {
         fontSize: "16px",
@@ -1306,7 +1308,7 @@ class TavernScene extends Phaser.Scene {
       this.sessionLost = 0;
       this.sessionWishes = 0;
       this.sessionCultivation = 0;
-      this.sessionGoal = getDailyGoal(this.day, this.level);
+      this.sessionGoal = this.currentDayGoal();
       this.sessionEndsAt = this.time.now + SESSION_DURATION_MS;
       this.nextArrivalAt =
         this.time.now +
@@ -2087,6 +2089,11 @@ class TavernScene extends Phaser.Scene {
     return getRealmIndex(this.cultivation);
   }
 
+  private currentDayGoal(): DailyGoal {
+    if (!this.dailyGoal) this.dailyGoal = getDailyGoal(this.day, this.level);
+    return this.dailyGoal;
+  }
+
   /** 售价按当前境界加成结算。 */
   private dishPrice(dish: Dish): number {
     return Math.round(
@@ -2569,6 +2576,7 @@ class TavernScene extends Phaser.Scene {
   private settleDailyGoal() {
     const goal = this.sessionGoal;
     this.day += 1;
+    this.dailyGoal = getDailyGoal(this.day, this.level);
     if (!goal) return;
     const stats = { served: this.sessionServed, revenue: this.sessionRevenue, wishes: this.sessionWishes };
     const met = isGoalMet(goal, stats);
@@ -2766,7 +2774,7 @@ class TavernScene extends Phaser.Scene {
       this.goalText.setText(reached ? "今日目标 ✓" : `目标 ${progress}/${this.sessionGoal.target}${spent}`);
       this.goalText.setColor(reached ? "#9fdf6a" : "#e0c060");
     } else {
-      const goal = getDailyGoal(this.day, this.level);
+      const goal = this.currentDayGoal();
       this.sessionText.setText(
         `第 ${this.day} 日 · 今日目标：${goal.label}（+${goal.rewardCoins} 灵石 / +${goal.rewardCultivation} 修为）`,
       );
