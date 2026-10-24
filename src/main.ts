@@ -100,8 +100,8 @@ const FLOOR_Y = 1010;
 const ACTOR_Y = FLOOR_Y - 34;
 const TABLE_X_MIN = -230;
 const TABLE_X_MAX = 170;
-const QUEUE_X = 330;
-const QUEUE_GAP = 46;
+const QUEUE_X = 320;
+const QUEUE_GAP = 40;
 const PLAYER_HOME = { x: 240, y: ACTOR_Y };
 const HAWKER_HOME = { x: 280, y: ACTOR_Y };
 const SERVER_HOME = { x: 120, y: ACTOR_Y };
@@ -655,19 +655,46 @@ class Character extends Phaser.GameObjects.Container {
   focusPose() {
     if (!this.scene || !this.visual?.active) return;
     this.stopIdle();
+    this.visual.setAngle(4);
+    const ring = this.scene.add
+      .circle(this.x, this.y + 24, 18, 0x000000, 0)
+      .setStrokeStyle(3, 0xffe08a, 0.9)
+      .setDepth(25);
+    this.scene.tweens.add({
+      targets: ring,
+      scale: 2.6,
+      alpha: 0,
+      duration: 750,
+      ease: "Sine.easeOut",
+      onComplete: () => ring.destroy(),
+    });
     this.scene.tweens.add({
       targets: this.visual,
-      y: -5,
-      scaleY: Character.ART_SCALE * 1.04,
-      duration: 180,
+      y: -16,
+      scaleY: Character.ART_SCALE * 1.07,
+      duration: 300,
       yoyo: true,
       repeat: 1,
       ease: "Sine.easeOut",
       onComplete: () => {
-        this.visual.setY(0).setScale(Character.ART_SCALE);
+        this.visual.setY(0).setScale(Character.ART_SCALE).setAngle(0);
         this.startIdle();
       },
     });
+    for (let i = 0; i < 4; i++) {
+      const spark = this.scene.add
+        .circle(this.x + Phaser.Math.Between(-18, 18), this.y - 70, 2.4, 0xffe08a, 0.9)
+        .setDepth(26);
+      this.scene.tweens.add({
+        targets: spark,
+        y: spark.y - Phaser.Math.Between(22, 46),
+        alpha: 0,
+        duration: 700 + i * 90,
+        delay: i * 50,
+        ease: "Sine.easeOut",
+        onComplete: () => spark.destroy(),
+      });
+    }
   }
 
   /** 偶尔的小动作：点一下头/耸肩，让静止画面里也有活气。 */
@@ -1850,7 +1877,7 @@ class TavernScene extends Phaser.Scene {
       gfx.fillCircle(-175, 790, 16);
       gfx.fillCircle(-162, 778, 12);
     }
-    if (this.level >= 6) {
+    if (this.level >= 2) {
       for (const lx of [-110, 110]) {
         gfx.fillStyle(0x6a4a2a, 1);
         gfx.fillRect(lx - 1, 320, 2, 18);
@@ -2223,7 +2250,7 @@ class TavernScene extends Phaser.Scene {
     this.goalText = this.addUiText(410, 38, "", "20px", "#9fdf6a");
     this.goalText.setWordWrapWidth(280);
     this.sessionText = this.addUiText(24, 64, "", "18px", "#a8d8ff");
-    this.chronicleText = this.addUiText(24, 88, "", "18px", "#cccccc");
+    this.chronicleText = this.addUiText(24, 88, "", "19px", "#cccccc");
     [this.coinsText, this.inventoryText, this.queueText, this.realmText, this.cultivationText, this.goalText].forEach(
       (text) => text.setStyle({ fontStyle: "bold" }),
     );
@@ -2276,7 +2303,7 @@ class TavernScene extends Phaser.Scene {
     this.serveButton.setBackgroundColor("#35543a");
     this.cookButton.setBackgroundColor("#5a3a1c");
     // 出菜行：点哪道菜就做哪道，优先端给想吃它的那一桌
-    this.dishChipLabel = this.addUiText(16, 1004, "出菜 · 点菜名", "15px", "#bbbbbb");
+    this.dishChipLabel = this.addUiText(16, 1004, "出菜 · 点菜名", "18px", "#e0c9a0");
     this.dishChips = DISHES.map((_, i) =>
       this.addUiButton(
         56 + (i % 4) * 150,
@@ -2287,7 +2314,7 @@ class TavernScene extends Phaser.Scene {
         },
         { x: 8, y: 22 },
         3,
-        "16px",
+        "17px",
       ),
     );
     this.dishChips.forEach((chip) => chip.setVisible(false));
@@ -2444,7 +2471,7 @@ class TavernScene extends Phaser.Scene {
     ];
     const label = this.add
       .text(0, 0, "", {
-        fontSize: "14px",
+        fontSize: "15px",
         color: "#ffe6c8",
         stroke: "#1a120a",
         strokeThickness: 3,
@@ -4758,7 +4785,9 @@ class TavernScene extends Phaser.Scene {
     else this.staffCookingBooth = index;
     this.moveActorTo(driver, "cook", Math.min(400, duration));
     this.log(
-      driver === "player" ? `你下厨烹制${chosen.name}` : `灶上伙计烹制${chosen.name}（雅座 ${index + 1}）`,
+      driver === "player"
+        ? `你下厨为 ${index + 1} 号桌烹制${chosen.name}`
+        : `灶上伙计烹制${chosen.name}（雅座 ${index + 1}）`,
     );
     if (driver === "player" && this.day === 1 && this.tutorialHintStage === 2) {
       this.tutorialHintStage = 3;
