@@ -1794,7 +1794,7 @@ class TavernScene extends Phaser.Scene {
         .on("pointerdown", () => {
           this.setGender(gender);
           this.save();
-          this.destroyOverlay();
+          this.showOpening();
         });
       layer.add(btn);
       this.expandHitArea(btn, 18);
@@ -1802,6 +1802,103 @@ class TavernScene extends Phaser.Scene {
     pick(180, "男", "male", "#3f5a7a");
     pick(540, "女", "female", "#7a3f5a");
     this.overlay = layer;
+  }
+
+  /** 新档进店前的四秒开场：一段旁白把“旧铺、灵火、今夜开张”立住，可点任意处跳过。 */
+  private showOpening() {
+    this.destroyOverlay();
+    const cam = this.cameras.main;
+    const layer = this.add.container(cam.scrollX, cam.scrollY).setDepth(130);
+    layer.add(
+      this.add
+        .rectangle(0, 0, SCREEN_W, SCREEN_H, 0x05080e, 1)
+        .setOrigin(0, 0)
+        .setInteractive()
+        .on("pointerdown", () => this.finishOpening(layer)),
+    );
+    layer.add(
+      this.add
+        .image(360, 980, "soft-glow")
+        .setTint(0xff8a4a)
+        .setAlpha(0.2)
+        .setScale(2.2)
+        .setBlendMode(Phaser.BlendModes.ADD),
+    );
+    const lantern = this.add.container(360, 980);
+    lantern.add(this.add.rectangle(0, -30, 2, 24, 0x2a1a10));
+    lantern.add(this.add.ellipse(0, 0, 22, 30, 0xff5c3c, 0.92));
+    lantern.add(this.add.rectangle(0, -15, 14, 4, 0x2a1a10));
+    lantern.add(this.add.rectangle(0, 15, 14, 4, 0x2a1a10));
+    lantern.add(this.add.rectangle(0, 22, 2, 9, 0xd9b45a));
+    layer.add(lantern);
+    for (const sx of [324, 396]) {
+      const steam = this.add.ellipse(sx, 960, 18, 8, 0xffe6c8, 0.12);
+      layer.add(steam);
+      this.tweens.add({
+        targets: steam,
+        y: 910,
+        alpha: 0,
+        duration: 2600,
+        delay: Phaser.Math.Between(0, 900),
+        repeat: -1,
+        ease: "Sine.easeOut",
+      });
+    }
+    const lines = [
+      { text: "青云镇外，夜雨初歇。", y: 500, delay: 250 },
+      { text: "一间旧铺，半炉灵火。", y: 574, delay: 1150 },
+      { text: "掌柜，今日开张吗？", y: 682, delay: 2150 },
+    ];
+    for (const [i, line] of lines.entries()) {
+      const text = this.add
+        .text(360, line.y, line.text, {
+          fontSize: i === 2 ? "32px" : "26px",
+          color: i === 2 ? "#ffe6a8" : "#c8b8a0",
+          fontFamily: XIAN_FONT,
+          stroke: i === 2 ? "#241506" : undefined,
+          strokeThickness: i === 2 ? 4 : 0,
+        })
+        .setOrigin(0.5)
+        .setAlpha(0)
+        .setLetterSpacing(4);
+      layer.add(text);
+      this.tweens.add({
+        targets: text,
+        alpha: 1,
+        duration: 520,
+        delay: line.delay,
+        hold: 900,
+        yoyo: true,
+        ease: "Sine.easeOut",
+      });
+    }
+    layer.add(
+      this.add
+        .text(360, 1122, "点任意处跳过", { fontSize: "16px", color: "#7a6a54", fontFamily: XIAN_FONT })
+        .setOrigin(0.5)
+        .setAlpha(0.7)
+        .setLetterSpacing(3),
+    );
+    layer.add(
+      this.add
+        .image(360, 640, "vignette")
+        .setDisplaySize(SCREEN_W, SCREEN_H)
+        .setAlpha(0.95),
+    );
+    layer.add(
+      this.add
+        .tileSprite(360, 640, SCREEN_W, SCREEN_H, "paper-grain")
+        .setAlpha(0.7),
+    );
+    this.overlay = layer;
+    this.time.delayedCall(4300, () => this.finishOpening(layer));
+  }
+
+  private finishOpening(layer: Phaser.GameObjects.Container) {
+    if (this.overlay !== layer) return;
+    playSfx("click");
+    layer.list.forEach((child) => this.tweens.killTweensOf(child));
+    this.destroyOverlay();
   }
 
   // ===== 存档 =====
