@@ -100,8 +100,8 @@ const FLOOR_Y = 1010;
 const ACTOR_Y = FLOOR_Y - 34;
 const TABLE_X_MIN = -230;
 const TABLE_X_MAX = 170;
-const QUEUE_X = 350;
-const QUEUE_GAP = 52;
+const QUEUE_X = 330;
+const QUEUE_GAP = 46;
 const PLAYER_HOME = { x: 240, y: ACTOR_Y };
 const HAWKER_HOME = { x: 280, y: ACTOR_Y };
 const SERVER_HOME = { x: 120, y: ACTOR_Y };
@@ -130,6 +130,7 @@ interface Booth {
 }
 interface BoothVisual {
   bg: Phaser.GameObjects.Rectangle;
+  runner: Phaser.GameObjects.Rectangle;
   label: Phaser.GameObjects.Text;
   legs: Phaser.GameObjects.Rectangle[];
   barBg: Phaser.GameObjects.Rectangle;
@@ -699,15 +700,17 @@ class Character extends Phaser.GameObjects.Container {
     this.bubble?.destroy();
     this.bubbleTail?.destroy();
     const cam = this.scene.cameras.main;
-    const bx = Phaser.Math.Clamp(this.x, cam.scrollX + 120, cam.scrollX + SCREEN_W - 120);
+    const view = cam.worldView;
+    const margin = Math.min(120, view.width * 0.22);
+    const bx = Phaser.Math.Clamp(this.x, view.x + margin, view.right - margin);
     const bubble = this.scene.add
       .text(bx, this.y - 76, text, {
-        fontSize: "17px",
+        fontSize: "18px",
         color: tone === "cold" ? "#d8e8ff" : "#2a1f14",
         backgroundColor: tone === "cold" ? "#2a3448" : "#f3e6cf",
         padding: { x: 8, y: 5 },
         fontFamily: '"KaiTi","STKaiti",serif',
-        wordWrap: { width: 190 },
+        wordWrap: { width: 200 },
         align: "center",
       })
       .setOrigin(0.5)
@@ -855,6 +858,9 @@ class TavernScene extends Phaser.Scene {
 
   private playerChar!: Character;
   private playerLabel!: Phaser.GameObjects.Text;
+  private hudBar!: Phaser.GameObjects.Rectangle;
+  private hudLine!: Phaser.GameObjects.Rectangle;
+  private tutorialBanner!: Phaser.GameObjects.Text;
   private staffChars: Partial<Record<StaffRole, Character>> = {};
   private playerGender: "male" | "female" = "male";
 
@@ -908,7 +914,10 @@ class TavernScene extends Phaser.Scene {
   private transitioning = false;
   private focusTimer?: Phaser.Time.TimerEvent;
   private focusVignette?: Phaser.GameObjects.Container;
+  private focusChar?: Character;
   private focusReturn = { x: CAMERA_OPEN_X, y: SCREEN_H / 2 };
+  private eventToast?: Phaser.GameObjects.Text;
+  private hintToast?: Phaser.GameObjects.Text;
   private focusing = false;
   private celebrating = false;
   private celebrationTimer?: Phaser.Time.TimerEvent;
@@ -1466,6 +1475,7 @@ class TavernScene extends Phaser.Scene {
     this.addGlow(EXTERIOR_X, 760, 0xffb060, 1.2, 0.18);
 
     // 营业时看的酒楼内部
+    this.add.graphics().setDepth(-1).fillStyle(0x140e0a, 1).fillRect(-820, 0, 460, 1400);
     this.interiorGfx = this.add.graphics().setDepth(0);
     this.drawInterior(this.interiorGfx);
     for (const [x, y, tint, scale, alpha] of [
@@ -1497,7 +1507,7 @@ class TavernScene extends Phaser.Scene {
     this.playerChar = new Character(this, PLAYER_HOME.x, PLAYER_HOME.y, 0x4a7ab8, 0x2b2b2b, false, "player");
     this.playerChar.setVisible(false);
     this.playerLabel = this.add
-      .text(PLAYER_HOME.x, PLAYER_HOME.y - 104, "掌柜", {
+      .text(PLAYER_HOME.x, PLAYER_HOME.y - 120, "掌柜", {
         fontSize: "12px",
         color: "#ffe6a8",
         backgroundColor: "rgba(30,22,15,0.78)",
@@ -1649,12 +1659,12 @@ class TavernScene extends Phaser.Scene {
 
     // 地面
     gfx.fillStyle(0x8a6a4a, 1);
-    gfx.fillRect(-360, FLOOR_Y, 720, 1280 - FLOOR_Y);
+    gfx.fillRect(-360, FLOOR_Y, 720, 1400 - FLOOR_Y);
     gfx.lineStyle(3, 0x5a4028, 1);
     gfx.lineBetween(-360, FLOOR_Y, 360, FLOOR_Y);
     gfx.lineStyle(2, 0x75583c, 0.6);
-    for (let y = FLOOR_Y + 34; y < 1280; y += 46) gfx.lineBetween(-360, y, 360, y);
-    for (let x = -320; x < 360; x += 96) gfx.lineBetween(x, FLOOR_Y, x, 1280);
+    for (let y = FLOOR_Y + 34; y < 1400; y += 46) gfx.lineBetween(-360, y, 360, y);
+    for (let x = -320; x < 360; x += 96) gfx.lineBetween(x, FLOOR_Y, x, 1400);
 
     // 左侧厨房：石灶、铁锅、火与挂着的炊具
     gfx.fillStyle(0xff9a3a, 0.14);
@@ -1708,11 +1718,11 @@ class TavernScene extends Phaser.Scene {
     gfx.fillPath();
     // 门外地面延伸
     gfx.fillStyle(0x6a5a44, 1);
-    gfx.fillRect(DOOR_X + 80, FLOOR_Y, 360 - DOOR_X - 80, 1280 - FLOOR_Y);
+    gfx.fillRect(DOOR_X + 80, FLOOR_Y, 360 - DOOR_X - 80, 1400 - FLOOR_Y);
 
     // 门外空地：一路延伸到队尾，镜头可以拉过去看
     gfx.fillStyle(0x7a6a4a, 1);
-    gfx.fillRect(360, FLOOR_Y, 1260, 1280 - FLOOR_Y);
+    gfx.fillRect(360, FLOOR_Y, 1260, 1400 - FLOOR_Y);
     gfx.lineStyle(3, 0x5a4028, 1);
     gfx.lineBetween(360, FLOOR_Y, 1620, FLOOR_Y);
     // 空地装饰：树和石头
@@ -1939,6 +1949,17 @@ class TavernScene extends Phaser.Scene {
     for (const wx of [-155, 65]) {
       g.fillStyle(0xffcf7a, 0.12);
       g.fillRect(wx, 275, 90, 110);
+      // 窗中远山、云与一点星/灯，别只留一块平色玻璃
+      g.fillStyle(0x2a4a6a, 0.35);
+      g.fillTriangle(wx, 380, wx + 26, 338, wx + 52, 380);
+      g.fillTriangle(wx + 30, 382, wx + 62, 348, wx + 90, 382);
+      g.fillStyle(0xffffff, 0.13);
+      g.fillEllipse(wx + 46, 306, 38, 8);
+      g.fillEllipse(wx + 24, 318, 26, 6);
+      g.fillStyle(0xffe6a8, 0.35);
+      g.fillCircle(wx + 72, 292, 1.6);
+      g.fillStyle(0xffcf7a, 0.2);
+      g.fillCircle(wx + 20, 296, 1.2);
       g.lineStyle(5, 0x2a1a10, 1);
       g.strokeRect(wx, 275, 90, 110);
       g.lineStyle(2, 0x2a1a10, 0.85);
@@ -2163,28 +2184,45 @@ class TavernScene extends Phaser.Scene {
     this.buildWindowFrames();
 
     // 顶部 HUD 悬浮条
-    const hud = this.add
+    this.hudBar = this.add
       .rectangle(0, 0, SCREEN_W, STATUS_BAR_H, 0x000000, 0.72)
       .setOrigin(0, 0)
       .setScrollFactor(0)
       .setDepth(30);
-    hud.setVisible(true);
-    this.add
+    this.hudBar.setVisible(true);
+    this.hudLine = this.add
       .rectangle(0, STATUS_BAR_H - 2, SCREEN_W, 2, 0xd9b45a, 0.35)
       .setOrigin(0, 0)
       .setScrollFactor(0)
       .setDepth(30.5);
 
-    this.coinsText = this.addUiText(24, 10, "", "20px", "#7fe8dd");
-    this.inventoryText = this.addUiText(200, 10, "", "20px", "#9fe870");
+    this.coinsText = this.addUiText(24, 10, "", "22px", "#7fe8dd");
+    this.inventoryText = this.addUiText(200, 10, "", "22px", "#9fe870");
     this.levelText = this.addUiText(400, 10, "", "18px", "#87ceeb");
     this.queueText = this.addUiText(24, 38, "", "20px", "#e0b0ff");
     this.realmText = this.addUiText(400, 10, "", "18px", "#ffd98a");
     this.cultivationText = this.addUiText(230, 38, "", "18px", "#d8c8ff");
-    this.goalText = this.addUiText(410, 38, "", "18px", "#9fdf6a");
+    this.goalText = this.addUiText(410, 38, "", "20px", "#9fdf6a");
     this.goalText.setWordWrapWidth(280);
-    this.sessionText = this.addUiText(24, 64, "", "17px", "#a8d8ff");
-    this.chronicleText = this.addUiText(24, 88, "", "17px", "#cccccc");
+    this.sessionText = this.addUiText(24, 64, "", "18px", "#a8d8ff");
+    this.chronicleText = this.addUiText(24, 88, "", "18px", "#cccccc");
+    [this.coinsText, this.inventoryText, this.queueText, this.realmText, this.cultivationText, this.goalText].forEach(
+      (text) => text.setStyle({ fontStyle: "bold" }),
+    );
+    this.tutorialBanner = this.add
+      .text(360, 1140, "", {
+        fontSize: "18px",
+        color: "#ffe6c8",
+        backgroundColor: "rgba(30,22,15,0.92)",
+        padding: { x: 14, y: 7 },
+        align: "center",
+        wordWrap: { width: 640 },
+        fontFamily: XIAN_FONT,
+      })
+      .setOrigin(0.5)
+      .setScrollFactor(0)
+      .setDepth(32)
+      .setVisible(false);
     this.levelText.setVisible(false);
 
     const audio = loadAudioSettings();
@@ -2217,6 +2255,8 @@ class TavernScene extends Phaser.Scene {
     // 营业中操作按钮：与采购/打烊同处底部操作区
     this.serveButton = this.addUiButton(346, 1186, () => this.startSeat("player"), { x: 14, y: 28 }, 6, "20px");
     this.cookButton = this.addUiButton(460, 1186, () => this.manualCook(), { x: 14, y: 28 }, 6, "20px");
+    this.serveButton.setBackgroundColor("#35543a");
+    this.cookButton.setBackgroundColor("#5a3a1c");
     // 出菜行：点哪道菜就做哪道，优先端给想吃它的那一桌
     this.dishChipLabel = this.addUiText(16, 1004, "出菜 · 点菜名", "15px", "#bbbbbb");
     this.dishChips = DISHES.map((_, i) =>
@@ -2379,28 +2419,29 @@ class TavernScene extends Phaser.Scene {
 
   private addBoothVisual(_i: number) {
     const bg = this.add.rectangle(0, 0, 80, 16, 0x6a4a2a).setDepth(2).setStrokeStyle(2, 0x8a6a4a);
+    const runner = this.add.rectangle(0, 0, 60, 6, 0x8a2a22).setDepth(2.5).setStrokeStyle(1, 0xd9b45a, 0.7);
     const legs = [
       this.add.rectangle(0, 0, 7, 32, 0x4a3420).setDepth(1),
       this.add.rectangle(0, 0, 7, 32, 0x4a3420).setDepth(1),
     ];
     const label = this.add
       .text(0, 0, "", {
-        fontSize: "12px",
+        fontSize: "14px",
         color: "#ffe6c8",
         stroke: "#1a120a",
         strokeThickness: 3,
         padding: { x: 2, y: 1 },
         align: "center",
         lineSpacing: 1,
-        wordWrap: { width: 118 },
+        wordWrap: { width: 130 },
       })
       .setOrigin(0.5, 1)
       .setDepth(3);
     const barBg = this.add.rectangle(0, 0, 80, 8, 0x1a1a1a).setOrigin(0, 0.5).setDepth(3);
     const barFill = this.add.rectangle(0, 0, 0, 8, COLOR_PLAYER).setOrigin(0, 0.5).setDepth(4);
     const visible = this.gameState === "open";
-    [bg, label, ...legs, barBg, barFill].forEach((o) => o.setVisible(visible));
-    this.boothVisuals.push({ bg, label, legs, barBg, barFill });
+    [bg, runner, label, ...legs, barBg, barFill].forEach((o) => o.setVisible(visible));
+    this.boothVisuals.push({ bg, runner, label, legs, barBg, barFill });
     this.relayoutTables();
   }
 
@@ -2411,6 +2452,11 @@ class TavernScene extends Phaser.Scene {
     this.boothVisuals.forEach((v, i) => {
       const x = total === 1 ? (TABLE_X_MIN + TABLE_X_MAX) / 2 : TABLE_X_MIN + (i * (TABLE_X_MAX - TABLE_X_MIN)) / (total - 1);
       v.bg.setPosition(x, FLOOR_Y - 30).setSize(width, 16);
+      v.bg.setStrokeStyle(2, this.level >= 2 ? 0xd9b45a : 0x8a6a4a);
+      v.runner
+        .setPosition(x, FLOOR_Y - 34)
+        .setSize(Math.max(30, width - 14), 5)
+        .setVisible(this.gameState === "open" && this.level >= 2);
       v.legs[0].setPosition(x - width / 2 + 10, FLOOR_Y - 14);
       v.legs[1].setPosition(x + width / 2 - 10, FLOOR_Y - 14);
       // 桌子多时交错两行放标签，避免相邻两桌的文字叠在一起
@@ -2865,8 +2911,8 @@ class TavernScene extends Phaser.Scene {
         Phaser.Math.Between(4000, 7000),
         getRealmArrivalFactor(this.realmIndex()) * getSignArrivalFactor(this.signLevel),
       );
-      // 第一天第一位客人很快就到，减少开局干等
-      this.nextArrivalAt = this.time.now + (this.day === 1 ? 1600 : firstArrival);
+      // 每天开门后第一位客人都在 2.2 秒内到，避免开局长时间空等
+      this.nextArrivalAt = this.time.now + Math.min(firstArrival, 2200);
       this.lastCallTriggered = false;
       this.eventsThisSession = 0;
       this.nextEventAt = this.time.now + Phaser.Math.Between(9000, 16000);
@@ -2881,10 +2927,17 @@ class TavernScene extends Phaser.Scene {
   }
 
   private endSession() {
+    const wasFocusing = this.focusing;
     this.focusTimer?.remove();
     this.focusVignette?.destroy();
     this.focusVignette = undefined;
     this.focusing = false;
+    this.focusChar = undefined;
+    this.setFocusUiHidden(false);
+    if (wasFocusing) {
+      this.cameras.main.setZoom(1);
+      this.cameras.main.centerOn(this.focusReturn.x, this.focusReturn.y);
+    }
     this.settling = true;
     this.sessionEndsAt = 0;
     if (this.playerPurchasing) {
@@ -3858,6 +3911,7 @@ class TavernScene extends Phaser.Scene {
     });
     this.boothVisuals.forEach((v) => {
       v.bg.setVisible(isOpen);
+      v.runner.setVisible(isOpen && this.level >= 2);
       v.label.setVisible(isOpen);
       v.legs.forEach((l) => l.setVisible(isOpen));
       v.barBg.setVisible(isOpen);
@@ -4159,15 +4213,25 @@ class TavernScene extends Phaser.Scene {
     chars[Math.floor(Math.random() * chars.length)]?.twitch();
   }
 
-  /** 点人物时的短暂特写：镜头推近、停两秒、再拉回原视角。 */
+  /** 点人物时的短暂特写：镜头推近、清空 HUD、停四秒、再拉回原视角。 */
   private focusOnCharacter(char: Character) {
     if (this.gameState !== "open" || this.settling) return;
+    if (this.focusing && this.focusChar === char) {
+      this.returnFromFocus();
+      return;
+    }
     const cam = this.cameras.main;
     if (!this.focusing) {
       this.focusReturn = { x: cam.midPoint.x, y: cam.midPoint.y };
       this.focusing = true;
+      this.setFocusUiHidden(true);
     }
+    this.focusChar = char;
     this.focusTimer?.remove();
+    this.eventToast?.destroy();
+    this.eventToast = undefined;
+    this.hintToast?.destroy();
+    this.hintToast = undefined;
     if (!this.focusVignette) {
       const v = this.add.container(0, 0).setScrollFactor(0).setDepth(28).setAlpha(0);
       v.add(this.add.rectangle(0, 0, SCREEN_W, 150, 0x05070b, 0.55).setOrigin(0, 0));
@@ -4183,26 +4247,62 @@ class TavernScene extends Phaser.Scene {
       this.focusVignette = v;
     }
     this.tweens.add({ targets: this.focusVignette, alpha: 1, duration: 250 });
-    cam.pan(char.x, Math.min(char.y - 14, SCREEN_H - SCREEN_H / 3.2 - 20), 320, "Sine.easeInOut");
-    cam.zoomTo(1.6, 320, "Sine.easeInOut");
-    this.focusTimer = this.time.delayedCall(2300, () => {
-      this.focusing = false;
-      if (this.focusVignette) {
-        const v = this.focusVignette;
-        this.tweens.add({
-          targets: v,
-          alpha: 0,
-          duration: 250,
-          onComplete: () => {
-            v.destroy();
-            if (this.focusVignette === v) this.focusVignette = undefined;
-          },
-        });
-      }
-      if (this.gameState !== "open") return;
-      cam.pan(this.focusReturn.x, this.focusReturn.y, 360, "Sine.easeInOut");
-      cam.zoomTo(1, 360, "Sine.easeInOut");
+    cam.pan(char.x, char.y - 14, 320, "Sine.easeInOut");
+    cam.zoomTo(1.8, 320, "Sine.easeInOut");
+    this.focusTimer = this.time.delayedCall(4200, () => this.returnFromFocus());
+  }
+
+  /** 退出人物特写：恢复 HUD、镜头和原视角；再点同一人也会立即退出。 */
+  private returnFromFocus() {
+    this.focusTimer?.remove();
+    this.focusTimer = undefined;
+    this.focusing = false;
+    this.focusChar = undefined;
+    if (this.focusVignette) {
+      const v = this.focusVignette;
+      this.tweens.add({
+        targets: v,
+        alpha: 0,
+        duration: 250,
+        onComplete: () => {
+          v.destroy();
+          if (this.focusVignette === v) this.focusVignette = undefined;
+        },
+      });
+    }
+    const cam = this.cameras.main;
+    cam.pan(this.focusReturn.x, this.focusReturn.y, 360, "Sine.easeInOut");
+    cam.zoomTo(1, 360, "Sine.easeInOut");
+    this.time.delayedCall(380, () => {
+      this.setFocusUiHidden(false);
+      this.refreshHud();
     });
+  }
+
+  /** 特写期间收起界面；否则相机缩放会把屏幕固定的 HUD 一起放大、错位。 */
+  private setFocusUiHidden(hidden: boolean) {
+    const ui: { setVisible(visible: boolean): unknown }[] = [
+      this.hudBar,
+      this.hudLine,
+      this.coinsText,
+      this.inventoryText,
+      this.queueText,
+      this.realmText,
+      this.cultivationText,
+      this.goalText,
+      this.sessionText,
+      this.chronicleText,
+      this.sfxButton,
+      this.bgmButton,
+      this.startButton,
+      this.serveButton,
+      this.cookButton,
+      this.dishChipLabel,
+      ...this.dishChips,
+    ];
+    ui.forEach((obj) => obj.setVisible(!hidden));
+    this.purchaseButton.setVisible(!hidden);
+    this.tutorialBanner.setVisible(false);
   }
 
   /** 玩家亲自下厨/招待时，身周升起灵气微光。 */
@@ -4362,7 +4462,6 @@ class TavernScene extends Phaser.Scene {
     this.queue.push({ expiresAt: time + patience, patienceMs: patience, char, kind, wish });
     if (this.day === 1 && this.tutorialHintStage === 0) {
       this.tutorialHintStage = 1;
-      this.showHint("门口来客了——点「招待入座」把人领进来");
     }
     this.staffChars.hawker?.pulse();
     playSfx(rare ? "event" : "arrival");
@@ -4409,6 +4508,7 @@ class TavernScene extends Phaser.Scene {
   }
 
   private showEventToast(message: string, good: boolean) {
+    if (this.focusing) return;
     const toast = this.add
       .text(SCREEN_W / 2, 600, message, {
         fontSize: "19px",
@@ -4422,6 +4522,8 @@ class TavernScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setDepth(45)
       .setAlpha(0);
+    this.eventToast?.destroy();
+    this.eventToast = toast;
     this.tweens.add({
       targets: toast,
       alpha: 1,
@@ -4430,7 +4532,10 @@ class TavernScene extends Phaser.Scene {
       yoyo: true,
       hold: 1800,
       ease: "Sine.easeOut",
-      onComplete: () => toast.destroy(),
+      onComplete: () => {
+        if (this.eventToast === toast) this.eventToast = undefined;
+        toast.destroy();
+      },
     });
   }
 
@@ -4533,7 +4638,6 @@ class TavernScene extends Phaser.Scene {
       this.showBoothOrder(progress.boothIndex);
       if (this.day === 1 && this.tutorialHintStage <= 1) {
         this.tutorialHintStage = 2;
-        this.showHint("点下方菜名出菜；★是客人想吃的菜");
       }
     }
     this.moveActorHome(driver, "seat");
@@ -4870,11 +4974,12 @@ class TavernScene extends Phaser.Scene {
 
   /** 对无效操作给出一次可见提示，避免“点了没反应”的错觉。 */
   private showHint(message: string) {
+    if (this.focusing) return;
     if (this.time.now - this.lastHintAt < 1400) return;
     this.lastHintAt = this.time.now;
     const toast = this.add
       .text(SCREEN_W / 2, 142, message, {
-        fontSize: "17px",
+        fontSize: "18px",
         color: "#ffe6c8",
         backgroundColor: "rgba(30,22,15,0.9)",
         padding: { x: 12, y: 6 },
@@ -4886,6 +4991,8 @@ class TavernScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setDepth(45)
       .setAlpha(0);
+    this.hintToast?.destroy();
+    this.hintToast = toast;
     this.tweens.add({
       targets: toast,
       alpha: 1,
@@ -4894,7 +5001,10 @@ class TavernScene extends Phaser.Scene {
       yoyo: true,
       hold: 1400,
       ease: "Sine.easeOut",
-      onComplete: () => toast.destroy(),
+      onComplete: () => {
+        if (this.hintToast === toast) this.hintToast = undefined;
+        toast.destroy();
+      },
     });
   }
 
@@ -5049,9 +5159,10 @@ class TavernScene extends Phaser.Scene {
   }
 
   private refreshHud() {
+    if (this.focusing) return;
     const open = this.gameState === "open";
     this.playerLabel.setVisible(open);
-    if (open) this.playerLabel.setPosition(this.playerChar.x, this.playerChar.y - 104);
+    if (open) this.playerLabel.setPosition(this.playerChar.x, this.playerChar.y - 120);
 
     this.coinsText.setText(`灵石：${this.displayedCoins}`);
     this.inventoryText.setText(`灵材：${this.inventory}`);
@@ -5072,8 +5183,17 @@ class TavernScene extends Phaser.Scene {
       this.sessionText.setText("已打烊");
       this.goalText.setText("");
     } else if (open && this.sessionGoal) {
+      const busyLabel = this.playerSeat
+        ? "招待中"
+        : this.playerCookingBooth !== null
+          ? "烹饪中"
+          : this.playerPurchasing
+            ? "采购中"
+            : "";
       this.sessionText.setText(
-        `营业中 · 剩余 ${Math.max(0, Math.ceil((this.sessionEndsAt - this.time.now) / 1000))}s · 本局 ${this.sessionServed} 位 / ${this.sessionRevenue} 灵石`,
+        `营业 ${Math.max(0, Math.ceil((this.sessionEndsAt - this.time.now) / 1000))}s · ${this.sessionServed}位 / ${
+          this.sessionRevenue
+        }灵石${busyLabel ? ` · 掌柜${busyLabel}` : ""}`,
       );
       const progress = getGoalProgress(this.sessionGoal, {
         served: this.sessionServed,
@@ -5158,11 +5278,24 @@ class TavernScene extends Phaser.Scene {
     });
 
     this.startButton.setText(open ? "提前打烊" : "开始营业");
+    this.serveButton.setText(this.playerSeat ? "招待中…" : "招待入座");
+    this.cookButton.setText(this.playerCookingBooth !== null ? "烹饪中…" : "动手烹饪");
 
-    const actionAlpha = this.settling ? 0.4 : busy ? 0.5 : 1;
+    const actionAlpha = this.settling ? 0.4 : busy ? 0.35 : 1;
     this.startButton.setAlpha(this.settling ? 0.4 : 1);
     this.serveButton.setAlpha(actionAlpha);
     this.cookButton.setAlpha(actionAlpha);
+
+    const guideVisible =
+      open && this.day === 1 && this.tutorialHintStage >= 1 && this.tutorialHintStage <= 2 && !this.focusing;
+    this.tutorialBanner.setVisible(guideVisible);
+    if (guideVisible) {
+      this.tutorialBanner.setText(
+        this.tutorialHintStage === 1
+          ? "① 点「招待入座」把客人领进来"
+          : "② 点下方菜名出菜；★是客人想吃的菜",
+      );
+    }
 
     this.serveButton.setVisible(open);
     this.cookButton.setVisible(open);
