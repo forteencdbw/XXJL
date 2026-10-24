@@ -1888,16 +1888,20 @@ class TavernScene extends Phaser.Scene {
       gfx.fillCircle(-162, 778, 12);
     }
     if (this.level >= 2) {
-      for (const lx of [-110, 110]) {
-        gfx.fillStyle(0xff7a3a, 0.16);
-        gfx.fillCircle(lx, 348, 28);
-        gfx.fillStyle(0x6a4a2a, 1);
-        gfx.fillRect(lx - 1, 320, 2, 18);
-        gfx.fillStyle(0xff5c3c, 1);
-        gfx.fillEllipse(lx, 348, 18, 26);
-        gfx.fillStyle(0xffd98a, 0.9);
-        gfx.fillRect(lx - 1, 360, 2, 9);
-      }
+      // 正中一盏大红灯笼：Lv2 回店最直观的变化
+      gfx.fillStyle(0xff7a3a, 0.3);
+      gfx.fillCircle(0, 332, 56);
+      gfx.fillStyle(0x6a4a2a, 1);
+      gfx.fillRect(-1, 266, 2, 38);
+      gfx.fillStyle(0x2a1a10, 1);
+      gfx.fillRect(-16, 302, 32, 6);
+      gfx.fillStyle(0xff5c3c, 1);
+      gfx.fillEllipse(0, 334, 36, 48);
+      gfx.fillStyle(0xd9b45a, 0.95);
+      gfx.fillRect(-16, 358, 32, 5);
+      gfx.fillStyle(0xffd98a, 0.9);
+      gfx.fillRect(-1, 366, 2, 16);
+      gfx.fillCircle(0, 384, 3);
     }
     if (this.level >= 8) {
       gfx.fillStyle(0x6a2a22, 0.5);
