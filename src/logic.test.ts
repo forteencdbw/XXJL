@@ -7,7 +7,9 @@ import {
   MAX_STAFF_LEVEL,
   NIGHT_COLOR,
   PATRON_KINDS,
+  RANDOM_EVENTS,
   REALMS,
+  applyEvent,
   getArrivalInterval,
   getBoothCount,
   getCultivationGain,
@@ -16,6 +18,7 @@ import {
   getLoanDue,
   isGoalMet,
   getNextRealm,
+  pickRandomEvent,
   getPlayerDuration,
   getPurchaseDiscount,
   getPurchaseDuration,
@@ -194,6 +197,43 @@ describe("食客类型与口味", () => {
     expect(getWishPrice(6, true)).toBe(9);
     expect(getWishPrice(6, false)).toBe(6);
     expect(getWishPrice(6, true)).toBeGreaterThan(getWishPrice(6, false));
+  });
+});
+
+describe("随机事件", () => {
+  it("按权重抽满整个池子，roll 边界不越界", () => {
+    const ids = new Set<number>();
+    for (let i = 0; i < 1000; i++) ids.add(RANDOM_EVENTS.indexOf(pickRandomEvent(i / 1000)));
+    expect(ids.size).toBe(RANDOM_EVENTS.length);
+    expect(pickRandomEvent(0)).toBe(RANDOM_EVENTS[0]);
+    expect(pickRandomEvent(0.999999)).toBe(RANDOM_EVENTS[RANDOM_EVENTS.length - 1]);
+  });
+
+  it("事件池整体期望为正，单次损失有上限", () => {
+    const totalWeight = RANDOM_EVENTS.reduce((sum, e) => sum + e.weight, 0);
+    const ev = (key: "coins" | "ingredients" | "cultivation") =>
+      RANDOM_EVENTS.reduce((sum, e) => sum + e[key] * e.weight, 0) / totalWeight;
+    expect(ev("coins")).toBeGreaterThan(0);
+    expect(ev("ingredients")).toBeGreaterThan(0);
+    expect(ev("cultivation")).toBeGreaterThan(0);
+    for (const event of RANDOM_EVENTS) {
+      expect(event.coins).toBeGreaterThanOrEqual(-4);
+      expect(event.ingredients).toBeGreaterThanOrEqual(-2);
+      expect(event.cultivation).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it("结算后灵材与修为不为负，灵石可扣成欠款", () => {
+    const wind = RANDOM_EVENTS.find((e) => e.id === "wind")!;
+    expect(applyEvent(wind, { coins: 10, ingredients: 1, cultivation: 5 })).toEqual({
+      coins: 10,
+      ingredients: 0,
+      cultivation: 5,
+    });
+    const thief = RANDOM_EVENTS.find((e) => e.id === "thief")!;
+    expect(applyEvent(thief, { coins: 3, ingredients: 2, cultivation: 0 }).coins).toBe(-1);
+    const rain = RANDOM_EVENTS.find((e) => e.id === "rain")!;
+    expect(applyEvent(rain, { coins: 0, ingredients: 0, cultivation: 0 }).ingredients).toBe(3);
   });
 });
 

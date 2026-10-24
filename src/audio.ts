@@ -1,7 +1,7 @@
 // 程序合成的占位音效（Web Audio）。后续可整体替换为真实音频资源。
 // shortcut: 只支持 Web Audio；接入微信小游戏时需换成 wx.createInnerAudioContext 或适配层。
 
-type SfxName = "click" | "arrival" | "seat" | "cook" | "coin" | "upgrade" | "open" | "close";
+type SfxName = "click" | "arrival" | "seat" | "cook" | "coin" | "upgrade" | "event" | "open" | "close";
 
 const SFX_DEFS: Record<SfxName, { notes: number[]; dur: number; type: OscillatorType; gain: number }> = {
   click: { notes: [720], dur: 0.05, type: "square", gain: 0.03 },
@@ -10,6 +10,7 @@ const SFX_DEFS: Record<SfxName, { notes: number[]; dur: number; type: Oscillator
   cook: { notes: [600, 800], dur: 0.12, type: "triangle", gain: 0.07 },
   coin: { notes: [800, 1050], dur: 0.1, type: "sine", gain: 0.08 },
   upgrade: { notes: [440, 550, 660], dur: 0.12, type: "triangle", gain: 0.07 },
+  event: { notes: [330, 415, 494], dur: 0.16, type: "sine", gain: 0.06 },
   open: { notes: [392, 523, 659], dur: 0.16, type: "sine", gain: 0.08 },
   close: { notes: [523, 392, 294], dur: 0.16, type: "sine", gain: 0.08 },
 };

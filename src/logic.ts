@@ -148,6 +148,57 @@ export function getWishPrice(base: number, matched: boolean): number {
   return matched ? Math.round(base * (1 + WISH_PRICE_BONUS)) : base;
 }
 
+// ===== 随机事件 =====
+export interface RandomEventDef {
+  id: string;
+  text: string;
+  kind: "good" | "bad" | "mixed";
+  coins: number;
+  ingredients: number;
+  cultivation: number;
+  weight: number;
+}
+
+/** 事件池整体期望为正，单次损失有硬上限（灵石 -4、灵材 -2）。 */
+export const RANDOM_EVENTS: RandomEventDef[] = [
+  { id: "rain", text: "灵雨润田，后厨凭空多出一筐灵材", kind: "good", coins: 0, ingredients: 3, cultivation: 0, weight: 2 },
+  { id: "immortal", text: "一位过路仙长尝了口小菜，留下几块灵石", kind: "good", coins: 6, ingredients: 0, cultivation: 0, weight: 2 },
+  { id: "guidance", text: "仙人指路，你在灶火间窥见一丝道韵", kind: "good", coins: 0, ingredients: 0, cultivation: 3, weight: 2 },
+  { id: "tip", text: "食客吃得尽兴，多留了一份赏钱", kind: "good", coins: 5, ingredients: 0, cultivation: 0, weight: 2 },
+  { id: "oldfriend", text: "旧友来访，叙旧之余留下一壶灵酒", kind: "good", coins: 3, ingredients: 0, cultivation: 2, weight: 1 },
+  { id: "crane", text: "仙鹤衔芝落在檐角，赠你一味灵材与一段感悟", kind: "good", coins: 0, ingredients: 4, cultivation: 6, weight: 1 },
+  { id: "beggar", text: "小妖讨食，你舍了一味灵材，换得它口中一段修行心得", kind: "mixed", coins: 0, ingredients: -1, cultivation: 4, weight: 2 },
+  { id: "wind", text: "妖风过境，吹散了后厨晾着的一味灵材", kind: "bad", coins: 0, ingredients: -2, cultivation: 0, weight: 1 },
+  { id: "thief", text: "蟊贼光顾，柜上少了几块灵石", kind: "bad", coins: -4, ingredients: 0, cultivation: 0, weight: 1 },
+  { id: "mishap", text: "灶台走了水，赔了些灵石与灵材", kind: "bad", coins: -3, ingredients: -1, cultivation: 0, weight: 1 },
+];
+
+/** 按权重抽一个事件；roll 取 [0,1) 方便测试。 */
+export function pickRandomEvent(roll: number): RandomEventDef {
+  const total = RANDOM_EVENTS.reduce((sum, event) => sum + event.weight, 0);
+  let cursor = Math.min(0.999999, Math.max(0, roll)) * total;
+  for (const event of RANDOM_EVENTS) {
+    cursor -= event.weight;
+    if (cursor < 0) return event;
+  }
+  return RANDOM_EVENTS[RANDOM_EVENTS.length - 1];
+}
+
+export interface EventState {
+  coins: number;
+  ingredients: number;
+  cultivation: number;
+}
+
+/** 结算事件：灵材与修为不为负，灵石按事件允许扣成欠款。 */
+export function applyEvent(event: RandomEventDef, state: EventState): EventState {
+  return {
+    coins: state.coins + event.coins,
+    ingredients: Math.max(0, state.ingredients + event.ingredients),
+    cultivation: Math.max(0, state.cultivation + event.cultivation),
+  };
+}
+
 // ===== 每日目标 =====
 export type DailyGoalKind = "serve" | "revenue" | "wish";
 

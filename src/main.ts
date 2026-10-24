@@ -9,6 +9,7 @@ import {
   NIGHT_COLOR,
   PATRON_KINDS,
   REALMS,
+  applyEvent,
   getArrivalInterval,
   getBoothCount,
   getCultivationGain,
@@ -31,6 +32,7 @@ import {
   getWishPrice,
   isGoalMet,
   pickPatronWish,
+  pickRandomEvent,
   skyColorAt,
 } from "./logic";
 import { EXP_PER_LEVEL } from "./logic";
@@ -52,6 +54,7 @@ const HIRE_COST_BUYER = 35;
 const CHRONICLE_MAX_LINES = 5;
 const SAVE_KEY = "tavern_save_v1";
 const AUTOSAVE_MS = 2000;
+const MAX_EVENTS_PER_SESSION = 2;
 
 const SEAT_BASE_MS = 1200;
 const SEAT_TAVERN_SHRINK_PER_LEVEL_MS = 120;
@@ -349,6 +352,8 @@ class TavernScene extends Phaser.Scene {
   private boothVisuals: BoothVisual[] = [];
 
   private nextArrivalAt = 0;
+  private nextEventAt = 0;
+  private eventsThisSession = 0;
   private lastCallTriggered = false;
   /** HUD 上显示的灵石数，收益到账时从这里滚动到真实值。 */
   private displayedCoins = STARTING_COINS;
@@ -866,6 +871,10 @@ class TavernScene extends Phaser.Scene {
         );
     }
 
+    if (this.eventsThisSession < MAX_EVENTS_PER_SESSION && time >= this.nextEventAt && remaining > LAST_CALL_MS) {
+      this.triggerRandomEvent(time);
+    }
+
     this.queue = this.queue.filter((patron) => {
       if (time >= patron.expiresAt) {
         this.sessionLost += 1;
@@ -1142,6 +1151,8 @@ class TavernScene extends Phaser.Scene {
           getRealmArrivalFactor(this.realmIndex()),
         );
       this.lastCallTriggered = false;
+      this.eventsThisSession = 0;
+      this.nextEventAt = this.time.now + Phaser.Math.Between(9000, 16000);
       playSfx("open");
       startBgm();
       this.log("开张大吉，今日营业开始");
@@ -1812,6 +1823,56 @@ class TavernScene extends Phaser.Scene {
       p.char.walkTo(1120, ACTOR_Y, 600, () => p.char.destroy());
     });
     this.queue = [];
+  }
+
+  /** 随机事件：不打断操作，直接把结果记进见闻录并飘一条提示。 */
+  private triggerRandomEvent(time: number) {
+    const event = pickRandomEvent(Math.random());
+    const next = applyEvent(event, {
+      coins: this.coins,
+      ingredients: this.inventory,
+      cultivation: this.cultivation,
+    });
+    const gainedCultivation = next.cultivation - this.cultivation;
+    this.coins = next.coins;
+    this.displayedCoins = this.coins;
+    this.inventory = next.ingredients;
+    this.eventsThisSession += 1;
+    this.nextEventAt = time + Phaser.Math.Between(14000, 24000);
+    const parts: string[] = [];
+    if (event.coins !== 0) parts.push(`灵石 ${event.coins > 0 ? "+" : ""}${event.coins}`);
+    if (event.ingredients !== 0) parts.push(`灵材 ${event.ingredients > 0 ? "+" : ""}${event.ingredients}`);
+    if (event.cultivation !== 0) parts.push(`修为 +${event.cultivation}`);
+    this.log(`【事件】${event.text}${parts.length ? `（${parts.join("，")}）` : ""}`);
+    if (gainedCultivation > 0) this.gainCultivation(gainedCultivation);
+    this.showEventToast(event.text, event.kind !== "bad");
+    playSfx("event");
+  }
+
+  private showEventToast(message: string, good: boolean) {
+    const toast = this.add
+      .text(SCREEN_W / 2, 600, message, {
+        fontSize: "19px",
+        color: good ? "#ffd98a" : "#ff9a8a",
+        backgroundColor: good ? "#2a3a1a" : "#3a1a1a",
+        padding: { x: 16, y: 10 },
+        align: "center",
+        wordWrap: { width: 600 },
+      })
+      .setOrigin(0.5)
+      .setScrollFactor(0)
+      .setDepth(45)
+      .setAlpha(0);
+    this.tweens.add({
+      targets: toast,
+      alpha: 1,
+      y: 580,
+      duration: 260,
+      yoyo: true,
+      hold: 1800,
+      ease: "Sine.easeOut",
+      onComplete: () => toast.destroy(),
+    });
   }
 
   /** 玩家瞬移到目标点并做动作；伙计走过去再做动作。 */
