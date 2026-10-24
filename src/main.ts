@@ -4617,9 +4617,22 @@ class TavernScene extends Phaser.Scene {
 
   /** 小人偶尔冒一句话：排队、等菜、用膳和伙计各有台词，让画面不只剩数字。 */
   private ambientBark() {
-    if (this.gameState !== "open" || this.settling) return;
+    if (this.gameState !== "open" || this.settling || this.focusing) return;
     if (Math.random() < 0.35) return;
     const pick = (lines: string[]) => lines[Math.floor(Math.random() * lines.length)];
+    const diningNow = this.booths.filter((b) => b.state === "dining" && b.patronChar);
+    // 两桌都在用膳时，优先让他们真的碰一次杯（两人一起动 + 金色酒花），而不只是各说各话
+    if (diningNow.length >= 2 && Math.random() < 0.55) {
+      const i = Math.floor(Math.random() * diningNow.length);
+      let j = Math.floor(Math.random() * (diningNow.length - 1));
+      if (j >= i) j += 1;
+      const a = diningNow[i].patronChar;
+      const b = diningNow[j].patronChar;
+      if (a && b) {
+        this.showClink(a, b);
+        return;
+      }
+    }
     const speakers: { char: Character; text: string; cold?: boolean }[] = [];
     this.booths.forEach((booth) => {
       const char = booth.patronChar;
@@ -4672,6 +4685,29 @@ class TavernScene extends Phaser.Scene {
     if (speakers.length === 0) return;
     const chosen = speakers[Math.floor(Math.random() * speakers.length)];
     chosen.char.say(chosen.text, chosen.cold ? "cold" : "warm");
+  }
+
+  /** 两桌食客碰杯：两人同时欠身，桌间升起几粒金色酒花。 */
+  private showClink(a: Character, b: Character) {
+    a.pulse();
+    b.pulse();
+    a.say("道友，共饮一杯？");
+    const x = (a.x + b.x) / 2;
+    const y = ACTOR_Y - 58;
+    for (let i = 0; i < 4; i++) {
+      const spark = this.add
+        .circle(x + Phaser.Math.Between(-10, 10), y + Phaser.Math.Between(-8, 8), 2, 0xffe08a, 0.95)
+        .setDepth(25);
+      this.tweens.add({
+        targets: spark,
+        y: spark.y - Phaser.Math.Between(18, 30),
+        alpha: 0,
+        duration: 620,
+        delay: i * 60,
+        ease: "Sine.easeOut",
+        onComplete: () => spark.destroy(),
+      });
+    }
   }
 
   private getMenuDishes(): Dish[] {
