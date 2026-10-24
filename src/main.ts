@@ -97,7 +97,6 @@ const SCREEN_H = 1280;
 /** 界面分区（见 GLOSSARY）：状态栏 / 主屏 / 副屏。 */
 const STATUS_BAR_H = 124;
 const XIAN_FONT = '"KaiTi","STKaiti","Kaiti SC","Noto Serif SC",serif';
-const SECONDARY_TOP = 1077;
 const CARD_W = 600;
 
 const EXTERIOR_X = -2000;
@@ -1816,6 +1815,13 @@ class TavernScene extends Phaser.Scene {
         .setInteractive()
         .on("pointerdown", () => this.finishOpening(layer)),
     );
+    const ink = this.add.graphics();
+    ink.fillStyle(0xc8d8e8, 0.035);
+    ink.fillCircle(560, 330, 72);
+    ink.fillStyle(0x8aa0b8, 0.05);
+    ink.fillTriangle(-20, 1280, 210, 1030, 440, 1280);
+    ink.fillTriangle(280, 1280, 480, 1080, 740, 1280);
+    layer.add(ink);
     layer.add(
       this.add
         .image(360, 980, "soft-glow")
@@ -3736,6 +3742,38 @@ class TavernScene extends Phaser.Scene {
           { fontSize: "17px", color: "#cccccc" },
         ),
       );
+      // 每道菜一个小碗：菜单至少有“菜”，而不是只有一行价格
+      const icon = this.add.graphics();
+      const ix = 620;
+      const iy = y + 40;
+      const soup = [0x9fbf6a, 0xd8c8a8, 0x7ab0c8, 0xc87a5a, 0xd9b45a, 0x8a6a9a, 0xb8d8a0][i % 7];
+      icon.fillStyle(0x000000, 0.2);
+      icon.fillEllipse(ix, iy + 15, 54, 9);
+      icon.fillStyle(0xe8dcc0, 0.96);
+      icon.fillEllipse(ix, iy + 7, 54, 18);
+      icon.fillStyle(0xc8b89a, 1);
+      icon.fillEllipse(ix, iy + 10, 43, 12);
+      icon.fillStyle(soup, 1);
+      icon.fillEllipse(ix, iy + 4, 37, 10);
+      icon.fillStyle(0xffffff, 0.18);
+      icon.fillEllipse(ix - 7, iy, 17, 4);
+      icon.fillStyle(0x6a8a4a, 1);
+      icon.fillCircle(ix - 8, iy + 1, 2);
+      icon.fillCircle(ix + 5, iy + 3, 1.8);
+      icon.fillStyle(0xffe6c8, 0.28);
+      icon.fillEllipse(ix - 5, iy - 12, 12, 4);
+      icon.fillEllipse(ix + 7, iy - 16, 8, 3);
+      icon.lineStyle(2, 0x8a5a32, 0.9);
+      icon.lineBetween(ix + 18, iy - 16, ix + 29, iy + 10);
+      icon.lineBetween(ix + 23, iy - 16, ix + 34, iy + 10);
+      layer.add(icon);
+      if (dish.id === specialId) {
+        layer.add(
+          this.add
+            .text(ix + 24, iy - 26, "◆", { fontSize: "16px", color: "#ffd98a" })
+            .setOrigin(0.5),
+        );
+      }
     });
 
     if (this.inventory <= 0) {
@@ -4434,10 +4472,7 @@ class TavernScene extends Phaser.Scene {
     const layer = this.add.container(cam.scrollX, cam.scrollY).setDepth(depth);
     // 遮罩只盖主屏并吞掉主屏内的点击；状态栏与副屏保持原样
     layer.add(
-      this.add
-        .rectangle(0, STATUS_BAR_H, SCREEN_W, SECONDARY_TOP - STATUS_BAR_H, 0x000000, 0.3)
-        .setOrigin(0, 0)
-        .setInteractive(),
+      this.add.rectangle(0, 0, SCREEN_W, SCREEN_H, 0x000000, 0.58).setOrigin(0, 0).setInteractive(),
     );
     const panel = this.add.container(SCREEN_W / 2, STATUS_BAR_H + 16);
     panel.add(
@@ -4557,14 +4592,12 @@ class TavernScene extends Phaser.Scene {
     const totalWage = this.lastWages.reduce((sum, w) => sum + w.wage, 0);
     const totalLoan = this.lastLoanDues.reduce((sum, d) => sum + d.due, 0);
     const totalRent = this.lastRent;
+    const netIncome = this.sessionRevenue - totalWage - totalLoan - totalRent;
     const summary = [
-      `服务食客：${this.sessionServed} 位`,
-      `总收益：${this.sessionRevenue} 灵石`,
       `修为增长：+${this.sessionCultivation}`,
       `工资合计：${totalWage} 灵石`,
       `店面租金：${totalRent} 灵石`,
       `商行还账：${totalLoan} 灵石`,
-      `净收益：${this.sessionRevenue - totalWage - totalLoan - totalRent} 灵石`,
       `余下：${this.coins} 灵石（连亏 ${this.negativeStreak}/${BANKRUPT_STREAK} 日）`,
       `流失食客：${this.sessionLost} 位`,
     ];
@@ -4587,18 +4620,53 @@ class TavernScene extends Phaser.Scene {
     summary.push(`下一阶：${nextCost} 灵石 → Lv${this.level + 1}，店内会添新陈设`);
     // 卡片高度按明细行数算，保证内容不溢出
     const cardHeight =
-      76 +
+      212 +
       (this.lastWages.length > 0 ? 30 + this.lastWages.length * 28 + 10 : 0) +
       (this.lastLoanDues.length > 0 ? 30 + this.lastLoanDues.length * 28 + 10 : 0) +
       (this.lastGoalResult ? 86 : 0) +
       summary.length * 34 +
-      18 +
-      46 +
-      20;
+      100;
     const { panel, left } = this.buildPopupCard(cardHeight, 100);
 
     panel.add(this.add.text(left, 20, "今日营业结束", { fontSize: "34px", color: "#ffe6a8", fontFamily: XIAN_FONT }));
-    let y = 76;
+    // 第一眼先给一天的结论：净赚多少、目标怎么样，而不是一屏会计科目
+    panel.add(this.add.text(left, 76, "今日净收益", { fontSize: "17px", color: "#a89472" }));
+    panel.add(
+      this.add.text(left, 94, `${netIncome >= 0 ? "+" : ""}${netIncome} 灵石`, {
+        fontSize: "54px",
+        color: netIncome >= 0 ? "#9fe870" : "#ff9a8a",
+        fontFamily: XIAN_FONT,
+      }),
+    );
+    panel.add(
+      this.add.text(
+        left,
+        158,
+        `服务 ${this.sessionServed} 位 · 收入 ${this.sessionRevenue} · 支出 ${
+          totalWage + totalLoan + totalRent
+        }`,
+        { fontSize: "17px", color: "#c8b8a0" },
+      ),
+    );
+    const goalState = this.lastGoalResult
+      ? this.lastGoalResult.met
+        ? "目标达成"
+        : this.lastGoalResult.partial
+          ? "目标差一点"
+          : "目标未达成"
+      : "";
+    const streakState = this.lastGoalResult
+      ? this.lastGoalResult.streakComplete
+        ? "三日之约达成"
+        : `三日之约 ${this.lastGoalResult.streakCount}/${GOAL_STREAK_TARGET}`
+      : "";
+    panel.add(
+      this.add.text(left, 184, [goalState, streakState].filter(Boolean).join(" · "), {
+        fontSize: "17px",
+        color: this.lastGoalResult?.met ? "#e0c060" : "#a89472",
+      }),
+    );
+    let y = 212;
 
     if (this.lastWages.length > 0) {
       panel.add(this.add.text(left, y, "伙计工钱", { fontSize: "18px", color: "#aaaaaa" }));
@@ -4679,20 +4747,27 @@ class TavernScene extends Phaser.Scene {
       y += 34;
     });
 
-    const close = this.add
-      .text(left, y + 18, "打烊", {
-        fontSize: "24px",
-        color: "#ffffff",
-        backgroundColor: "#3f5a7a",
-        padding: { x: 16, y: 10 },
-      })
-      .setInteractive({ useHandCursor: true })
-      .on("pointerdown", () => {
-        this.stopCelebration();
-        this.destroyOverlay();
-        this.transitionToClosedView();
-      });
-    panel.add(close);
+    const closeY = y + 16;
+    panel.add(
+      this.add
+        .rectangle(left + 272, closeY + 32, 544, 64, 0x3f6a3f)
+        .setStrokeStyle(2, 0x9fdf6a, 0.6)
+        .setInteractive({ useHandCursor: true })
+        .on("pointerdown", () => {
+          this.stopCelebration();
+          this.destroyOverlay();
+          this.transitionToClosedView();
+        }),
+    );
+    panel.add(
+      this.add
+        .text(left + 272, closeY + 32, `打烊 · 进入第 ${this.day} 日`, {
+          fontSize: "25px",
+          color: "#f5e6c8",
+          fontFamily: XIAN_FONT,
+        })
+        .setOrigin(0.5),
+    );
   }
 
   private destroyOverlay() {
