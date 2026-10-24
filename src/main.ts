@@ -2000,6 +2000,13 @@ class TavernScene extends Phaser.Scene {
   }
 
   private positionUi(isOpen: boolean) {
+    // 打烊时「开始营业」是主行动，放大突出；营业中收成普通大小的「提前打烊」
+    this.startButton.setStyle({
+      fontSize: isOpen ? "15px" : "22px",
+      color: "#ffffff",
+      backgroundColor: isOpen ? "#5a2a2a" : "#3f6a3f",
+      padding: isOpen ? { x: 10, y: 8 } : { x: 24, y: 12 },
+    });
     this.boothVisuals.forEach((v) => {
       v.bg.setVisible(isOpen);
       v.label.setVisible(isOpen);
@@ -2821,8 +2828,8 @@ class TavernScene extends Phaser.Scene {
     const purchasePriceLabel = getPurchasePrice(this.staffLevel.buyer, open);
     this.purchaseButton.setLabel(
       open
-        ? `紧急采购（${purchasePriceLabel} 灵石 → +${PURCHASE_AMOUNT} 灵材）`
-        : `采购灵材（${purchasePriceLabel} 灵石 → +${PURCHASE_AMOUNT} 灵材）`,
+        ? `紧急采购（${purchasePriceLabel} 灵石 → +${PURCHASE_AMOUNT}）`
+        : `采购灵材（${purchasePriceLabel} 灵石 → +${PURCHASE_AMOUNT}）`,
     );
     const unlockedNext = DISHES.find((d) => d.unlockLevel === this.level + 1);
     this.upgradeButton.setText(
