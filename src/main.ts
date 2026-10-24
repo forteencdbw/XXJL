@@ -144,6 +144,7 @@ interface BoothVisual {
   legs: Phaser.GameObjects.Rectangle[];
   barBg: Phaser.GameObjects.Rectangle;
   barFill: Phaser.GameObjects.Rectangle;
+  zone: Phaser.GameObjects.Zone;
 }
 interface QueuedPatron {
   expiresAt: number;
@@ -2714,7 +2715,7 @@ class TavernScene extends Phaser.Scene {
     this.booths.forEach((_, i) => this.addBoothVisual(i));
   }
 
-  private addBoothVisual(_i: number) {
+  private addBoothVisual(i: number) {
     const bg = this.add.rectangle(0, 0, 80, 16, 0x6a4a2a).setDepth(2).setStrokeStyle(2, 0x8a6a4a);
     const runner = this.add.rectangle(0, 0, 60, 6, 0x8a2a22).setDepth(2.5).setStrokeStyle(1, 0xd9b45a, 0.7);
     const number = this.add
@@ -2747,9 +2748,24 @@ class TavernScene extends Phaser.Scene {
       .setDepth(3);
     const barBg = this.add.rectangle(0, 0, 80, 8, 0x1a1a1a).setOrigin(0, 0.5).setDepth(3);
     const barFill = this.add.rectangle(0, 0, 0, 8, COLOR_PLAYER).setOrigin(0, 0.5).setDepth(4);
+    // 整张桌子都是「看这位客人」的点击区，别让玩家去点米粒大的人
+    const zone = this.add.zone(0, 0, 80, 150).setOrigin(0.5, 0).setDepth(5);
+    let zx = 0;
+    let zy = 0;
+    zone
+      .setInteractive({ useHandCursor: true })
+      .on("pointerdown", (p: Phaser.Input.Pointer) => {
+        zx = p.x;
+        zy = p.y;
+      })
+      .on("pointerup", (p: Phaser.Input.Pointer) => {
+        if (Math.hypot(p.x - zx, p.y - zy) >= 12) return;
+        const patron = this.booths[i]?.patronChar;
+        if (patron) this.focusOnCharacter(patron);
+      });
     const visible = this.gameState === "open";
     [bg, runner, number, label, ...legs, barBg, barFill].forEach((o) => o.setVisible(visible));
-    this.boothVisuals.push({ bg, runner, number, label, legs, barBg, barFill });
+    this.boothVisuals.push({ bg, runner, number, label, legs, barBg, barFill, zone });
     this.relayoutTables();
   }
 
@@ -2774,6 +2790,9 @@ class TavernScene extends Phaser.Scene {
       v.legs[0].setPosition(x - width / 2 + 10, FLOOR_Y - 14);
       v.legs[1].setPosition(x + width / 2 - 10, FLOOR_Y - 14);
       v.label.setPosition(x, FLOOR_Y - 120 - stagger);
+      const zoneWidth = Math.max(36, Math.min(90, 320 / total));
+      v.zone.setPosition(x, FLOOR_Y - 170).setSize(zoneWidth, 160);
+      if (v.zone.input) v.zone.input.hitArea.setSize(zoneWidth, 160);
       const barW = Math.max(36, width - 8);
       v.barBg.setPosition(x - barW / 2, FLOOR_Y - 70).setSize(barW, 8);
       v.barFill.setPosition(x - barW / 2, FLOOR_Y - 70);
@@ -3285,7 +3304,8 @@ class TavernScene extends Phaser.Scene {
       this.sessionGoal = this.currentDayGoal();
       const specialName = DISHES.find((d) => d.id === this.currentDailySpecial())?.name;
       if (specialName) this.log(`今日招牌：${specialName}，售价 +25%`);
-      this.sessionEndsAt = this.time.now + SESSION_DURATION_MS;
+      // 第一天是教学局：给 90 秒读完提示、看几个人，之后回到 60 秒
+      this.sessionEndsAt = this.time.now + (this.day === 1 ? SESSION_DURATION_MS * 1.5 : SESSION_DURATION_MS);
       const firstArrival = getArrivalInterval(
         this.level,
         this.staffLevel.hawker,
