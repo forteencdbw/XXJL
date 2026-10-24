@@ -240,14 +240,19 @@ class ProgressButton {
   ) {
     this.track = scene.add
       .rectangle(x + width / 2, y + height / 2, width, height, 0x3a3a3a)
-      .setStrokeStyle(1, 0x666666);
+      .setStrokeStyle(1, 0x666666)
+      .setDepth(31);
     const barX = x + width - ProgressButton.BAR_WIDTH - 10;
-    this.staffFill = scene.add.rectangle(barX, y + 5, 0, 11, COLOR_STAFF).setOrigin(0, 0);
-    this.playerFill = scene.add.rectangle(barX, y + height - 16, 0, 11, COLOR_PLAYER).setOrigin(0, 0);
+    this.staffFill = scene.add.rectangle(barX, y + 5, 0, 11, COLOR_STAFF).setOrigin(0, 0).setDepth(31);
+    this.playerFill = scene.add
+      .rectangle(barX, y + height - 16, 0, 11, COLOR_PLAYER)
+      .setOrigin(0, 0)
+      .setDepth(31);
     this.label = scene.add
       .text(x + 10, y + height / 2, "", { fontSize: "15px", color: "#ffffff" })
-      .setOrigin(0, 0.5);
-    this.zone = scene.add.zone(x, y, width, height).setOrigin(0, 0);
+      .setOrigin(0, 0.5)
+      .setDepth(31);
+    this.zone = scene.add.zone(x, y, width, height).setOrigin(0, 0).setDepth(31);
     register(this.zone, x);
     register(this.track, x);
     register(this.playerFill, barX);
@@ -1214,6 +1219,7 @@ class TavernScene extends Phaser.Scene {
   private hudLine!: Phaser.GameObjects.Rectangle;
   private hudChips!: Phaser.GameObjects.Graphics;
   private rightFrame!: Phaser.GameObjects.Container;
+  private closedBackdrop!: Phaser.GameObjects.Image;
   private tutorialBanner!: Phaser.GameObjects.Text;
   private staffChars: Partial<Record<StaffRole, Character>> = {};
   private playerGender: "male" | "female" = "male";
@@ -1303,6 +1309,7 @@ class TavernScene extends Phaser.Scene {
     this.ensurePaperTextures();
     this.ensureDishTexture();
     this.ensureInkTitleTexture();
+    this.ensureClosedInkTexture();
     this.booths = Array.from({ length: getBoothCount(this.level) }, () => this.makeBooth());
     if (this.selectedDishIds.size === 0) {
       this.selectedDishIds = new Set(DISHES.filter((d) => d.unlockLevel <= this.level).map((d) => d.id));
@@ -1749,6 +1756,147 @@ class TavernScene extends Phaser.Scene {
       px(cx - 2, cy, 1, 1, "#0a1018");
       px(cx + 1, cy, 1, 1, "#0a1018");
     }
+    tex.refresh();
+    tex.setFilter(Phaser.Textures.FilterMode.NEAREST);
+  }
+
+  /** 打烊页的像素酒楼：夜空、山、门窗、灯笼，替掉平滑矢量立面。 */
+  private ensureClosedInkTexture() {
+    if (this.textures.exists("ink-closed")) return;
+    const W = 360;
+    const H = 640;
+    const tex = this.textures.createCanvas("ink-closed", W, H);
+    if (!tex) return;
+    const c = tex.getContext();
+    const px = (x: number, y: number, w: number, h: number, col: string) => {
+      c.fillStyle = col;
+      c.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h));
+    };
+    c.fillStyle = "#070b14";
+    c.fillRect(0, 0, W, H);
+    for (let i = 0; i < 6500; i++) {
+      const a = Math.random();
+      px(Math.random() * W, Math.random() * 420, 1, 1, a > 0.9 ? "#2a3a50" : a > 0.65 ? "#122032" : "#0b1421");
+    }
+    for (let i = 0; i < 30; i++) px(Math.random() * W, Math.random() * 220, 1, 1, "#6a7a8a");
+    // 月
+    for (let y = -16; y <= 16; y++) {
+      for (let x = -16; x <= 16; x++) {
+        if (x * x + y * y <= 256) px(292 + x, 86 + y, 1, 1, "#f2e6c2");
+        else if (x * x + y * y <= 400 && Math.random() < 0.25) px(292 + x, 86 + y, 1, 1, "#2a3a4c");
+      }
+    }
+    // 山
+    const tri = (pts: [number, number][], col: string, edge: string) => {
+      const ys = pts.map((p) => p[1]);
+      for (let y = Math.floor(Math.min(...ys)); y <= Math.max(...ys); y++) {
+        const xs: number[] = [];
+        for (let i = 0; i < pts.length; i++) {
+          const [x1, y1] = pts[i];
+          const [x2, y2] = pts[(i + 1) % pts.length];
+          if ((y1 <= y && y2 >= y) || (y2 <= y && y1 >= y)) {
+            xs.push(y1 === y2 ? x1 : x1 + ((y - y1) / (y2 - y1)) * (x2 - x1));
+          }
+        }
+        if (xs.length < 2) continue;
+        const x0 = Math.floor(Math.min(...xs));
+        const x1 = Math.ceil(Math.max(...xs));
+        px(x0, y, Math.max(1, x1 - x0), 1, col);
+        if (Math.random() > 0.6) px(x0, y, 1, 1, edge);
+      }
+    };
+    tri(
+      [
+        [0, 330],
+        [90, 235],
+        [190, 330],
+      ],
+      "#101b2a",
+      "#1c2b3e",
+    );
+    tri(
+      [
+        [130, 340],
+        [250, 225],
+        [380, 340],
+      ],
+      "#0d1724",
+      "#182638",
+    );
+    for (let i = 0; i < 500; i++) {
+      px(Math.random() * W, 315 + Math.random() * 30, 1, 1, Math.random() > 0.5 ? "#1a2838" : "#243448");
+    }
+    // 两层屋檐
+    tri(
+      [
+        [180, 146],
+        [56, 206],
+        [304, 206],
+      ],
+      "#4a201a",
+      "#9a3a2a",
+    );
+    px(48, 204, 34, 4, "#6a2a20");
+    px(278, 204, 34, 4, "#6a2a20");
+    tri(
+      [
+        [180, 138],
+        [82, 188],
+        [278, 188],
+      ],
+      "#2a1411",
+      "#7a2f22",
+    );
+    for (let y = 150; y < 206; y += 5) {
+      const half = Math.floor(((y - 138) / 50) * 98);
+      px(180 - half, y, half * 2, 1, "#5a241a");
+    }
+    // 墙体
+    px(96, 208, 168, 190, "#2a1c14");
+    px(104, 216, 152, 180, "#3a2818");
+    px(96, 208, 12, 190, "#20140d");
+    px(252, 208, 12, 190, "#20140d");
+    px(96, 208, 168, 4, "#5a3a22");
+    // 匾额
+    px(150, 208, 60, 18, "#1a120c");
+    px(153, 211, 54, 12, "#3a2416");
+    px(153, 211, 54, 1, "#d9b45a");
+    px(153, 222, 54, 1, "#d9b45a");
+    for (const gx of [168, 178, 188]) px(gx, 214, 4, 5, "#e8c070");
+    // 窗与暖光
+    for (const wx of [118, 206]) {
+      px(wx, 236, 36, 34, "#3a2a1a");
+      px(wx + 3, 239, 30, 28, "#e0a050");
+      px(wx + 3, 239, 30, 3, "#f4c878");
+      px(wx + 17, 239, 3, 28, "#3a2a1a");
+      px(wx + 3, 252, 30, 2, "#3a2a1a");
+      for (let i = 0; i < 22; i++) px(wx + 2 + Math.random() * 32, 235 - Math.random() * 12, 1, 1, "#5a4a3a");
+      for (let i = 0; i < 18; i++) px(wx + 5 + Math.random() * 26, 242 + Math.random() * 22, 1, 1, "#ffd08a");
+    }
+    // 门与台阶
+    px(168, 282, 24, 116, "#160f0a");
+    px(171, 285, 18, 110, "#0b0806");
+    px(165, 396, 30, 5, "#4a3420");
+    px(160, 401, 40, 4, "#3a2818");
+    // 灯笼
+    for (const lx of [78, 282]) {
+      px(lx - 1, 194, 2, 10, "#1a120a");
+      px(lx - 5, 204, 11, 14, "#a02a20");
+      px(lx - 4, 205, 9, 10, "#ff6a3a");
+      px(lx - 2, 206, 4, 6, "#ffd08a");
+      px(lx - 1, 218, 2, 6, "#d9b45a");
+      for (let i = 0; i < 14; i++) px(lx - 10 + Math.random() * 20, 202 + Math.random() * 20, 1, 1, "#6a3a2a");
+    }
+    // 竹与石径
+    for (const [bx, top] of [
+      [36, 230],
+      [326, 214],
+    ] as const) {
+      px(bx, top, 3, 180, "#101a14");
+      for (let i = 0; i < 4; i++) px(bx - 7, top + 22 + i * 34, 14, 2, "#16241a");
+    }
+    for (let i = 0; i < 70; i++) px(130 + Math.random() * 100, 404 + Math.random() * 90, 1, 1, "#3a3a30");
+    for (let i = 0; i < 120; i++) px(Math.random() * 360, 500 + Math.random() * 140, 1, 1, "#0a0f16");
     tex.refresh();
     tex.setFilter(Phaser.Textures.FilterMode.NEAREST);
   }
@@ -2233,6 +2381,7 @@ class TavernScene extends Phaser.Scene {
   }
 
   private showGenderPicker() {
+    this.destroyOverlay();
     const cam = this.cameras.main;
     const layer = this.add.container(cam.scrollX, cam.scrollY).setDepth(120);
     layer.add(this.add.rectangle(0, 0, SCREEN_W, SCREEN_H, 0x000000, 0.97).setOrigin(0, 0).setInteractive());
@@ -3415,6 +3564,12 @@ class TavernScene extends Phaser.Scene {
     this.rightFrame.add(this.add.rectangle(710, 640, 20, 1280, 0x1a120c, 1));
     this.rightFrame.add(this.add.rectangle(700, 640, 3, 1280, 0x8a2a22, 0.85));
     this.rightFrame.add(this.add.rectangle(704, 640, 1.5, 1280, 0xd9b45a, 0.35));
+    this.closedBackdrop = this.add
+      .image(360, 640, "ink-closed")
+      .setDisplaySize(SCREEN_W, SCREEN_H)
+      .setScrollFactor(0)
+      .setDepth(0.2)
+      .setVisible(false);
 
     // 顶部 HUD 悬浮条
     this.hudBar = this.add
@@ -3529,9 +3684,9 @@ class TavernScene extends Phaser.Scene {
     this.navPanel = this.add.container(0, 0).setScrollFactor(0).setDepth(30);
     this.navPanel.add(
       this.add
-        .rectangle(8, 720, 704, 430, 0x1a120c, 0.72)
+        .rectangle(8, 720, 704, 430, 0x0d0a08, 0.9)
         .setOrigin(0, 0)
-        .setStrokeStyle(2, 0x8a6a3a, 0.45),
+        .setStrokeStyle(2, 0x9a3a2a, 0.55),
     );
     this.navPanel.add(
       this.add
@@ -3672,8 +3827,8 @@ class TavernScene extends Phaser.Scene {
     };
     // 卡片不进 navPanel：容器 + scrollFactor(0) 会让命中区按世界坐标偏移。
     const card = this.add
-      .rectangle(x, y, 332, 82, cool ? 0x1e222b : 0x241a12, 0.96)
-      .setStrokeStyle(2, cool ? 0x5a6a7a : 0x8a6a3a, 0.7)
+      .rectangle(x, y, 332, 82, cool ? 0x10151c : 0x14100c, 0.97)
+      .setStrokeStyle(2, cool ? 0x8a7a5a : 0x9a3a2a, 0.75)
       .setScrollFactor(0)
       .setDepth(31)
       .setInteractive({ useHandCursor: true })
@@ -4221,9 +4376,9 @@ class TavernScene extends Phaser.Scene {
       const caption = option.kind === "serve" ? "接待" : option.kind === "revenue" ? "本日收入" : "满足口味";
       const value = option.kind === "revenue" ? `${option.target} 灵石` : `${option.target} 位`;
       const card = this.add
-        .rectangle(x, 174, 200, 92, selected ? 0x4a3a1a : 0x2a1e16)
+        .rectangle(x, 174, 200, 92, selected ? 0x3a1a14 : 0x14100c)
         .setOrigin(0, 0)
-        .setStrokeStyle(2, selected ? 0xd9b45a : 0x555555)
+        .setStrokeStyle(2, selected ? 0xd9b45a : 0x4a3a2a)
         .setInteractive({ useHandCursor: true })
         .on("pointerdown", () => {
           this.dailyGoal = option;
@@ -4289,9 +4444,9 @@ class TavernScene extends Phaser.Scene {
       const y = 316 + i * 96;
       const selected = this.selectedDishIds.has(dish.id);
       const row = this.add
-        .rectangle(40, y, 640, 82, selected ? 0x4a3a1a : 0x2a1e16)
+        .rectangle(40, y, 640, 82, selected ? 0x3a1a14 : 0x14100c)
         .setOrigin(0, 0)
-        .setStrokeStyle(2, selected ? 0x9fdf6a : 0x555555);
+        .setStrokeStyle(2, selected ? 0xd9b45a : 0x4a3a2a);
       row.setInteractive({ useHandCursor: true }).on("pointerdown", () => {
         if (this.selectedDishIds.has(dish.id)) this.selectedDishIds.delete(dish.id);
         else this.selectedDishIds.add(dish.id);
@@ -4425,7 +4580,7 @@ class TavernScene extends Phaser.Scene {
     const start = this.add.text(40, 1120, startLabel, {
       fontSize: "24px",
       color: canStart ? "#ffffff" : "#777777",
-      backgroundColor: canStart ? "#3f7a3f" : "#333333",
+      backgroundColor: canStart ? "#8a2a22" : "#333333",
       padding: { x: 16, y: 12 },
     });
     if (canStart) {
@@ -5366,8 +5521,8 @@ class TavernScene extends Phaser.Scene {
     const closeY = y + 16;
     panel.add(
       this.add
-        .rectangle(left + 272, closeY + 32, 544, 64, 0x3f6a3f)
-        .setStrokeStyle(2, 0x9fdf6a, 0.6)
+        .rectangle(left + 272, closeY + 32, 544, 64, 0x8a2a22)
+        .setStrokeStyle(2, 0xd9b45a, 0.75)
         .setInteractive({ useHandCursor: true })
         .on("pointerdown", () => {
           this.stopCelebration();
@@ -5614,7 +5769,7 @@ class TavernScene extends Phaser.Scene {
     this.startButton.setStyle({
       fontSize: isOpen ? "18px" : "24px",
       color: "#f5e6c8",
-      backgroundColor: isOpen ? "#3f2a22" : "#3f6a3f",
+      backgroundColor: isOpen ? "#2a1c18" : "#8a2a22",
       padding: isOpen ? { x: 20, y: 28 } : { x: 30, y: 26 },
     });
     this.boothVisuals.forEach((v) => {
@@ -5635,6 +5790,7 @@ class TavernScene extends Phaser.Scene {
     this.shoutButton.setVisible(isOpen);
     this.setClosedNavVisible(!isOpen && !this.overlay);
     this.rightFrame.setVisible(isOpen);
+    this.closedBackdrop.setVisible(!isOpen);
 
     this.playerChar.setVisible(isOpen);
     Object.values(this.staffChars).forEach((c) => c?.setVisible(isOpen));
@@ -7427,6 +7583,7 @@ class TavernScene extends Phaser.Scene {
     this.cookButton.setVisible(open);
     this.shoutButton.setVisible(open);
     this.rightFrame.setVisible(open);
+    this.closedBackdrop.setVisible(!open);
     // 菜单/店铺面板打开时也收起事务卡，避免透明卡片的命中区压到面板按钮上
     this.setClosedNavVisible(this.gameState === "closed" && !this.overlay);
     this.purchaseButton.setVisible(true);
