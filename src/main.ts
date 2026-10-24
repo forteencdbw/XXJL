@@ -61,7 +61,7 @@ import { decodeSaveCode, encodeSaveCode } from "./savecode";
 const QUEUE_PATIENCE_MS = 8000;
 const LAST_CALL_MS = 10000;
 const SHOUT_COOLDOWN_MS = 10000;
-const DINING_MS = 3000;
+const DINING_MS = 4500;
 /** 桌子入座后先给玩家这么久亲手出菜，伙计再接手。 */
 const COOK_PRIORITY_MS = 1500;
 const SESSION_DURATION_MS = 60000;
@@ -1017,6 +1017,8 @@ class TavernScene extends Phaser.Scene {
   /** 视图过渡中，防止重复触发。 */
   private transitioning = false;
   private focusTimer?: Phaser.Time.TimerEvent;
+  /** 两桌同时用膳时的碰杯节流，保证不靠 5.6 秒随机闲聊也能看到。 */
+  private lastClinkAt = 0;
   private focusChar?: Character;
   private focusCaption?: Phaser.GameObjects.Text;
   private focusReturn = { x: CAMERA_OPEN_X, y: SCREEN_H / 2 };
@@ -2732,6 +2734,15 @@ class TavernScene extends Phaser.Scene {
         booth.patronChar?.setDining(true);
         this.showDiningProp(this.tablePosition(index).x);
         this.log("出餐完毕，食客开始用膳");
+        // 另一桌正在用膳时，给一次看得见的碰杯，而不是只等 5.6 秒的随机闲聊
+        const other = this.booths.find((b) => b !== booth && b.state === "dining" && b.patronChar);
+        const clinkA = booth.patronChar;
+        const clinkB = other?.patronChar;
+        if (clinkA && clinkB) {
+          this.time.delayedCall(250, () => {
+            if (clinkA.active && clinkB.active) this.showClink(clinkA, clinkB);
+          });
+        }
         if (booth.cookingDriver === "player" && this.playerCookingBooth === index) {
           this.playerCookingBooth = null;
           this.moveActorHome("player", "cook");
@@ -2806,6 +2817,13 @@ class TavernScene extends Phaser.Scene {
           (booth) => booth.state === "awaitingCook" && time - booth.awaitingSince >= COOK_PRIORITY_MS,
         );
         if (index !== -1) this.startCook(this.booths[index], index, "staff");
+      }
+    }
+    // 两桌同时用膳时，每 7 秒至少给一次碰杯，不靠随机闲聊撞运气
+    if (!this.focusing && time - this.lastClinkAt > 7000) {
+      const dining = this.booths.filter((b) => b.state === "dining" && b.patronChar);
+      if (dining.length >= 2) {
+        this.showClink(dining[0].patronChar!, dining[1].patronChar!);
       }
     }
   }
@@ -2926,7 +2944,7 @@ class TavernScene extends Phaser.Scene {
     this.destroyOverlay();
     const cam = this.cameras.main;
     const layer = this.add.container(cam.scrollX, cam.scrollY).setDepth(100);
-    layer.add(this.add.rectangle(0, 0, SCREEN_W, SCREEN_H, 0x000000, 0.97).setOrigin(0, 0).setInteractive());
+    layer.add(this.add.rectangle(0, 0, SCREEN_W, SCREEN_H, 0x000000, 0.995).setOrigin(0, 0).setInteractive());
     layer.add(this.add.text(40, 70, "选择今日菜单", { fontSize: "30px", color: "#ffe6a8", fontFamily: XIAN_FONT }));
     layer.add(
       this.add.text(40, 115, "至少选一道菜才能开张；营业中可按顺序轮转，也可在出菜行指定", {
@@ -2945,10 +2963,20 @@ class TavernScene extends Phaser.Scene {
     );
     const special = DISHES.find((d) => d.id === this.currentDailySpecial());
     if (special) {
+      const base = this.baseDishPrice(special);
+      const price = this.dishPrice(special);
+      const pct = base > 0 ? Math.round((price / base - 1) * 100) : 0;
       layer.add(
-        this.add.text(40, 168, `今日招牌：${special.name} · 售价 +25%（◆ 标记，上菜单更划算）`, {
+        this.add.text(40, 168, `今日招牌：${special.name} · ${base}→${price} 灵石（+${pct}%，◆ 标记）`, {
           fontSize: "15px",
           color: "#ffd98a",
+        }),
+      );
+    } else {
+      layer.add(
+        this.add.text(40, 168, "今日招牌：再解锁一道菜后开启", {
+          fontSize: "15px",
+          color: "#8a7a62",
         }),
       );
     }
@@ -3112,6 +3140,7 @@ class TavernScene extends Phaser.Scene {
       this.goalAnnounced = false;
       this.regularsToday.clear();
       this.shoutReadyAt = 0;
+      this.lastClinkAt = 0;
       this.sessionGoal = this.currentDayGoal();
       const specialName = DISHES.find((d) => d.id === this.currentDailySpecial())?.name;
       if (specialName) this.log(`今日招牌：${specialName}，售价 +25%`);
@@ -4229,13 +4258,16 @@ class TavernScene extends Phaser.Scene {
     return getDailySpecial(this.day, this.level, this.unlockedDishIds());
   }
 
-  private dishPrice(dish: Dish): number {
-    const base = Math.round(
+  private baseDishPrice(dish: Dish): number {
+    return Math.round(
       dish.price *
         getRealmPriceMultiplier(this.realmIndex()) *
         getAscensionPriceMultiplier(this.ascensions),
     );
-    return getSpecialPrice(base, this.currentDailySpecial() === dish.id);
+  }
+
+  private dishPrice(dish: Dish): number {
+    return getSpecialPrice(this.baseDishPrice(dish), this.currentDailySpecial() === dish.id);
   }
 
   private gainCultivation(amount: number) {
@@ -4464,6 +4496,21 @@ class TavernScene extends Phaser.Scene {
       this.setFocusUiHidden(true);
     }
     this.focusChar = char;
+    // 刚进门的客人还在走：镜头对准队列/桌位终点，别对着它路过的一帧
+    let targetX = char.x;
+    let targetY = char.y;
+    const queueIndex = this.queue.findIndex((p) => p.char === char);
+    if (queueIndex >= 0) {
+      targetX = QUEUE_X + queueIndex * this.queueGap();
+      targetY = ACTOR_Y;
+    } else {
+      const boothIndex = this.booths.findIndex((b) => b.patronChar === char);
+      if (boothIndex >= 0) {
+        const table = this.tablePosition(boothIndex);
+        targetX = table.x;
+        targetY = table.y;
+      }
+    }
     // 特写期间让用膳中的客人多坐一会儿，否则 3 秒的饭会在镜头里提前离席
     const diningBooth = this.booths.find((b) => b.patronChar === char && b.state === "dining");
     if (diningBooth) diningBooth.departAt = Math.max(diningBooth.departAt, this.time.now + 4500);
@@ -4472,7 +4519,7 @@ class TavernScene extends Phaser.Scene {
     this.eventToast = undefined;
     this.hintToast?.destroy();
     this.hintToast = undefined;
-    cam.pan(char.x, char.y - 14, 320, "Sine.easeInOut");
+    cam.pan(targetX, targetY - 14, 320, "Sine.easeInOut");
     cam.zoomTo(2.2, 320, "Sine.easeInOut");
     char.focusPose();
     char.clearBubble();
@@ -4480,7 +4527,7 @@ class TavernScene extends Phaser.Scene {
     const who = char.displayName ?? "人物";
     const line = this.focusLineFor(char);
     this.focusCaption = this.add
-      .text(char.x, char.y - 152, `${who}${line ? `：「${line}」` : ""}\n再点一次退出`, {
+      .text(targetX, targetY - 152, `${who}${line ? `：「${line}」` : ""}\n再点一次退出 · 3.6s`, {
         fontSize: "14px",
         color: "#ffe6c8",
         backgroundColor: "rgba(30,22,15,0.85)",
@@ -4491,7 +4538,7 @@ class TavernScene extends Phaser.Scene {
       })
       .setOrigin(0.5)
       .setDepth(27);
-    this.focusTimer = this.time.delayedCall(4200, () => this.returnFromFocus());
+    this.focusTimer = this.time.delayedCall(3600, () => this.returnFromFocus());
   }
 
   /** 特写台词按此人此刻在做什么来取，避免排队客人说"结账"。 */
@@ -4687,13 +4734,36 @@ class TavernScene extends Phaser.Scene {
     chosen.char.say(chosen.text, chosen.cold ? "cold" : "warm");
   }
 
-  /** 两桌食客碰杯：两人同时欠身，桌间升起几粒金色酒花。 */
+  /** 两桌食客碰杯：两人同时欠身，桌间升起金色酒花与「碰杯」。 */
   private showClink(a: Character, b: Character) {
+    this.lastClinkAt = this.time.now;
     a.pulse();
     b.pulse();
-    a.say("道友，共饮一杯？");
+    a.say(
+      ["道友，共饮一杯？", "此味配灵茶，正好。", "同席是缘，干杯。"][
+        Math.floor(Math.random() * 3)
+      ],
+    );
     const x = (a.x + b.x) / 2;
     const y = ACTOR_Y - 58;
+    const label = this.add
+      .text(x, y - 16, "碰杯", {
+        fontSize: "15px",
+        color: "#ffe6a8",
+        backgroundColor: "rgba(30,22,15,0.9)",
+        padding: { x: 6, y: 3 },
+        fontFamily: XIAN_FONT,
+      })
+      .setOrigin(0.5)
+      .setDepth(25);
+    this.tweens.add({
+      targets: label,
+      y: y - 44,
+      alpha: 0,
+      duration: 1050,
+      ease: "Sine.easeOut",
+      onComplete: () => label.destroy(),
+    });
     for (let i = 0; i < 4; i++) {
       const spark = this.add
         .circle(x + Phaser.Math.Between(-10, 10), y + Phaser.Math.Between(-8, 8), 2, 0xffe08a, 0.95)
@@ -4702,7 +4772,7 @@ class TavernScene extends Phaser.Scene {
         targets: spark,
         y: spark.y - Phaser.Math.Between(18, 30),
         alpha: 0,
-        duration: 620,
+        duration: 760,
         delay: i * 60,
         ease: "Sine.easeOut",
         onComplete: () => spark.destroy(),
@@ -5188,6 +5258,8 @@ class TavernScene extends Phaser.Scene {
         ? `酒楼扩建到 ${this.level} 级，解锁新菜品「${unlocked.name}」并加入今日菜单`
         : `酒楼扩建到 ${this.level} 级`,
     );
+    this.destroyOverlay();
+    this.showEventToast(`营造升至 Lv${this.level}`, true);
   }
 
   private upgradeStove() {
@@ -5203,6 +5275,8 @@ class TavernScene extends Phaser.Scene {
     this.save();
     playSfx("upgrade");
     this.log(`灶台精修至 Lv${this.stoveLevel}，烹饪耗时再降一成`);
+    this.destroyOverlay();
+    this.showEventToast(`灶台升至 Lv${this.stoveLevel}`, true);
   }
 
   private upgradeSign() {
@@ -5218,6 +5292,8 @@ class TavernScene extends Phaser.Scene {
     this.save();
     playSfx("upgrade");
     this.log(`门面挂上新幡，到店间隔再缩短一些`);
+    this.destroyOverlay();
+    this.showEventToast(`门幡升至 Lv${this.signLevel}`, true);
   }
 
   private hireStaff(role: StaffRole) {
@@ -5552,7 +5628,7 @@ class TavernScene extends Phaser.Scene {
       this.queueText.setColor("#ff9a8a");
     } else if (open && !this.settling && !this.lastCallTriggered) {
       const nextIn = Math.max(0, Math.ceil((this.nextArrivalAt - this.time.now) / 1000));
-      this.queueText.setText(`排队 ${this.queue.length}/${queueCap} · ${nextIn}s`);
+      this.queueText.setText(`排队 ${this.queue.length}/${queueCap} · 下位 ${nextIn}s`);
       this.queueText.setColor("#e0b0ff");
     } else {
       this.queueText.setText(`排队：${this.queue.length}/${queueCap}`);
@@ -5654,9 +5730,14 @@ class TavernScene extends Phaser.Scene {
     const showChips = open && !this.settling;
     const specialId = this.currentDailySpecial();
     const specialDish = specialId ? DISHES.find((d) => d.id === specialId) : undefined;
+    const specialBase = specialDish ? this.baseDishPrice(specialDish) : 0;
+    const specialPrice = specialDish ? this.dishPrice(specialDish) : 0;
+    const specialPct = specialBase > 0 ? Math.round((specialPrice / specialBase - 1) * 100) : 0;
     this.dishChipLabel.setVisible(showChips);
     this.dishChipLabel.setText(
-      `出菜 · 点菜名${specialDish ? ` · 今日招牌：${specialDish.name} +25%` : ""}`,
+      `出菜 · 点菜名${
+        specialDish ? ` · 今日招牌：${specialDish.name} ${specialPrice}（+${specialPct}%）` : ""
+      }`,
     );
     this.dishChips.forEach((chip, i) => {
       const dish = menu[i];
