@@ -78,8 +78,9 @@ export function getPlayerDuration(
   shrinkPerLevel: number,
   floor: number,
   tavernLevel: number,
+  speedFactor = 1,
 ): number {
-  return Math.max(floor, base - (tavernLevel - 1) * shrinkPerLevel);
+  return Math.max(floor, base * speedFactor - (tavernLevel - 1) * shrinkPerLevel);
 }
 
 export function getStaffDuration(
@@ -89,17 +90,84 @@ export function getStaffDuration(
   floor: number,
   tavernLevel: number,
   staffLevel: number,
+  speedFactor = 1,
 ): number {
   const raw =
-    base * STAFF_SPEED_PENALTY * Math.pow(STAFF_LEVEL_SPEEDUP[role], Math.max(staffLevel, 1) - 1) -
+    base *
+      STAFF_SPEED_PENALTY *
+      Math.pow(STAFF_LEVEL_SPEEDUP[role], Math.max(staffLevel, 1) - 1) *
+      speedFactor -
     (tavernLevel - 1) * shrinkPerLevel;
   return Math.max(floor, raw);
 }
 
 /** 到店间隔。base 由调用方传入随机值，保持函数纯净可测。 */
-export function getArrivalInterval(tavernLevel: number, hawkerLevel: number, base: number): number {
+export function getArrivalInterval(
+  tavernLevel: number,
+  hawkerLevel: number,
+  base: number,
+  speedFactor = 1,
+): number {
   const hawkerFactor = Math.max(0.35, 1 - ARRIVAL_HAWKER_SHRINK * hawkerLevel);
-  return Math.max(ARRIVAL_FLOOR_MS, base * hawkerFactor - (tavernLevel - 1) * ARRIVAL_TAVERN_SHRINK_MS);
+  return Math.max(
+    ARRIVAL_FLOOR_MS,
+    base * hawkerFactor * speedFactor - (tavernLevel - 1) * ARRIVAL_TAVERN_SHRINK_MS,
+  );
+}
+
+// ===== 修为与境界 =====
+/** 境界越高，酒楼的仙缘越盛：售价、操作速度、客流依次获得加成。 */
+export interface RealmDef {
+  name: string;
+  cultivation: number;
+  perk: string;
+}
+
+export const REALMS: RealmDef[] = [
+  { name: "炼气", cultivation: 0, perk: "初入仙途" },
+  { name: "筑基", cultivation: 30, perk: "菜品售价 +10%" },
+  { name: "金丹", cultivation: 80, perk: "玩家操作速度 +10%" },
+  { name: "元婴", cultivation: 160, perk: "顾客到店间隔 -15%" },
+  { name: "化神", cultivation: 280, perk: "打烊时自动领悟 3 灵材" },
+  { name: "炼虚", cultivation: 450, perk: "伙计操作速度 +10%" },
+  { name: "合体", cultivation: 700, perk: "菜品售价 +20%" },
+  { name: "大乘", cultivation: 1000, perk: "菜品售价 +30%" },
+];
+
+export function getRealmIndex(cultivation: number): number {
+  let index = 0;
+  for (let i = 0; i < REALMS.length; i++) {
+    if (cultivation >= REALMS[i].cultivation) index = i;
+  }
+  return index;
+}
+
+export function getNextRealm(cultivation: number): RealmDef | null {
+  return REALMS[getRealmIndex(cultivation) + 1] ?? null;
+}
+
+/** 亲自下厨比让伙计代劳多一倍悟性：修行与赚钱是一组取舍。 */
+export function getCultivationGain(personal: boolean): number {
+  return personal ? 2 : 1;
+}
+
+export function getRealmPriceMultiplier(realmIndex: number): number {
+  if (realmIndex >= 7) return 1.3;
+  if (realmIndex >= 6) return 1.2;
+  if (realmIndex >= 1) return 1.1;
+  return 1;
+}
+
+export function getRealmPlayerSpeedFactor(realmIndex: number): number {
+  return realmIndex >= 2 ? 0.9 : 1;
+}
+
+export function getRealmStaffSpeedFactor(realmIndex: number): number {
+  return realmIndex >= 5 ? 0.9 : 1;
+}
+
+export function getRealmArrivalFactor(realmIndex: number): number {
+  return realmIndex >= 3 ? 0.85 : 1;
 }
 
 export function getStaffLevel(exp: number): number {

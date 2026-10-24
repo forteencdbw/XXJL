@@ -6,13 +6,21 @@ import {
   LOAN_PERIODS,
   MAX_STAFF_LEVEL,
   NIGHT_COLOR,
+  REALMS,
   getArrivalInterval,
   getBoothCount,
+  getCultivationGain,
   getLoanDue,
+  getNextRealm,
   getPlayerDuration,
   getPurchaseDiscount,
   getPurchaseDuration,
   getPurchasePrice,
+  getRealmArrivalFactor,
+  getRealmIndex,
+  getRealmPlayerSpeedFactor,
+  getRealmPriceMultiplier,
+  getRealmStaffSpeedFactor,
   getStaffDuration,
   getStaffLevel,
   getStaffWage,
@@ -148,5 +156,47 @@ describe("菜品与昼夜", () => {
     expect(skyColorAt(0)).not.toBe(skyColorAt(1));
     expect(skyColorAt(1)).toBe(NIGHT_COLOR);
     expect(skyColorAt(1.5)).toBe(NIGHT_COLOR);
+  });
+});
+
+describe("修为与境界", () => {
+  it("境界阈值严格递增，起点为炼气", () => {
+    expect(REALMS[0].name).toBe("炼气");
+    expect(REALMS[0].cultivation).toBe(0);
+    for (let i = 1; i < REALMS.length; i++) {
+      expect(REALMS[i].cultivation).toBeGreaterThan(REALMS[i - 1].cultivation);
+    }
+  });
+
+  it("修为落在区间内取对应境界，下一境界在阈值处推进", () => {
+    expect(getRealmIndex(0)).toBe(0);
+    expect(getRealmIndex(29)).toBe(0);
+    expect(getRealmIndex(30)).toBe(1);
+    expect(getRealmIndex(99999)).toBe(REALMS.length - 1);
+    expect(getNextRealm(0)?.name).toBe("筑基");
+    expect(getNextRealm(1000)).toBeNull();
+  });
+
+  it("境界加成在对应境界开启后单调不降", () => {
+    const last = REALMS.length - 1;
+    expect(getRealmPriceMultiplier(0)).toBe(1);
+    expect(getRealmPriceMultiplier(1)).toBeGreaterThan(1);
+    expect(getRealmPriceMultiplier(last)).toBeGreaterThan(getRealmPriceMultiplier(1));
+    expect(getRealmPlayerSpeedFactor(0)).toBe(1);
+    expect(getRealmPlayerSpeedFactor(2)).toBeLessThan(1);
+    expect(getRealmStaffSpeedFactor(0)).toBe(1);
+    expect(getRealmStaffSpeedFactor(5)).toBeLessThan(1);
+    expect(getRealmArrivalFactor(0)).toBe(1);
+    expect(getRealmArrivalFactor(3)).toBeLessThan(1);
+  });
+
+  it("亲自下厨悟性翻倍", () => {
+    expect(getCultivationGain(true)).toBe(getCultivationGain(false) * 2);
+  });
+
+  it("境界速度加成会缩短操作耗时，且仍受下限约束", () => {
+    const normal = getPlayerDuration(1200, 0, 300, 1);
+    expect(getPlayerDuration(1200, 0, 300, 1, 0.9)).toBeLessThan(normal);
+    expect(getPlayerDuration(100, 0, 300, 1, 0.9)).toBe(300);
   });
 });
