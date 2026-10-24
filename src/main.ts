@@ -265,12 +265,12 @@ class Character extends Phaser.GameObjects.Container {
   }
 
   /** 境界灵气：脚下的一圈光晕，随境界与仙缘变强。 */
-  setAura(color: number, scale = 1) {
+  setAura(color: number, scale = 1, alpha = 0.18) {
     if (!this.aura) {
-      this.aura = this.scene.add.circle(0, 30, 26, color, 0.18);
+      this.aura = this.scene.add.circle(0, 30, 26, color, alpha);
       this.addAt(this.aura, 0);
     }
-    this.aura.setFillStyle(color, 0.18).setScale(scale);
+    this.aura.setFillStyle(color, alpha).setScale(scale);
   }
 
   /** 操作中的占位动画：竖向缩放脉冲 + 上下浮动（不碰 scaleX，避免破坏朝向翻转）。 */
@@ -332,6 +332,7 @@ class TavernScene extends Phaser.Scene {
   private sessionRevenue = 0;
   private sessionLost = 0;
   private sessionWishes = 0;
+  private sessionCultivation = 0;
   private day = 1;
   private ascensions = 0;
   private ascending = false;
@@ -1304,6 +1305,7 @@ class TavernScene extends Phaser.Scene {
       this.sessionRevenue = 0;
       this.sessionLost = 0;
       this.sessionWishes = 0;
+      this.sessionCultivation = 0;
       this.sessionGoal = getDailyGoal(this.day, this.level);
       this.sessionEndsAt = this.time.now + SESSION_DURATION_MS;
       this.nextArrivalAt =
@@ -1838,6 +1840,7 @@ class TavernScene extends Phaser.Scene {
     const summary = [
       `服务食客：${this.sessionServed} 位`,
       `总收益：${this.sessionRevenue} 灵石`,
+      `修为增长：+${this.sessionCultivation}`,
       `工资合计：${totalWage} 灵石`,
       `商行还账：${totalLoan} 灵石`,
       `净收益：${this.sessionRevenue - totalWage - totalLoan} 灵石`,
@@ -2096,6 +2099,7 @@ class TavernScene extends Phaser.Scene {
   private gainCultivation(amount: number) {
     const before = this.realmIndex();
     this.cultivation += amount;
+    this.sessionCultivation += amount;
     const after = this.realmIndex();
     if (after > before) {
       const realm = REALMS[after];
@@ -2215,7 +2219,7 @@ class TavernScene extends Phaser.Scene {
     const rare = kind.priceFactor >= 1.8;
     const char = new Character(this, 980, ACTOR_Y, kind.bodyColor, kind.hairColor);
     char.setVisible(this.gameState === "open");
-    if (rare) char.setAura(kind.id === "elder" ? 0xffe08a : 0xff6a6a, 0.9);
+    if (rare) char.setAura(kind.id === "elder" ? 0xffe08a : 0xff6a6a, 0.9, 0.35);
     const wish = pickPatronWish(kind, this.getMenuDishes().map((d) => d.id), Math.random());
 
     if (this.queue.length >= getBoothCount(this.level)) {
