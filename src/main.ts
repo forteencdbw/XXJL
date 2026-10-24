@@ -1016,8 +1016,8 @@ class TavernScene extends Phaser.Scene {
     this.refreshAudioButtons();
 
     // 营业中操作按钮：与采购/打烊同处底部操作区
-    this.serveButton = this.addUiButton(330, 1186, () => this.startSeat("player"), { x: 12, y: 11 });
-    this.cookButton = this.addUiButton(440, 1186, () => this.manualCook(), { x: 12, y: 11 });
+    this.serveButton = this.addUiButton(346, 1186, () => this.startSeat("player"), { x: 14, y: 16 }, 6, "20px");
+    this.cookButton = this.addUiButton(460, 1186, () => this.manualCook(), { x: 14, y: 16 }, 6, "20px");
     // 出菜行：点哪道菜就做哪道，优先端给想吃它的那一桌
     this.dishChipLabel = this.addUiText(16, 1102, "出菜", "13px", "#bbbbbb");
     this.dishChips = DISHES.map((_, i) =>
@@ -1035,11 +1035,11 @@ class TavernScene extends Phaser.Scene {
     this.dishChips.forEach((chip) => chip.setVisible(false));
 
     // 通用按钮：底部固定
-    this.purchaseButton = new ProgressButton(this, 16, 1186, 200, 42, () => this.startPurchase(), this.registerUi);
-    this.startButton = this.addUiButton(230, 1186, () => this.onStartButton());
+    this.purchaseButton = new ProgressButton(this, 16, 1186, 200, 50, () => this.startPurchase(), this.registerUi);
+    this.startButton = this.addUiButton(222, 1186, () => this.onStartButton(), { x: 12, y: 14 }, 6, "20px");
 
     // 打烊期的经营按钮（屏幕左侧竖排）
-    const nav = { x: 12, y: 11 };
+    const nav = { x: 12, y: 14 };
     this.staffButton = this.addUiButton(
       16,
       700,
@@ -1049,14 +1049,15 @@ class TavernScene extends Phaser.Scene {
       },
       nav,
       6,
+      "20px",
     );
-    this.upgradeButton = this.addUiButton(16, 760, () => this.buildBuildOverlay(), nav, 6);
-    this.genderButton = this.addUiButton(16, 820, () => this.toggleGender(), nav, 6);
-    this.bankButton = this.addUiButton(16, 880, () => this.buildBankOverlay(), nav, 6);
-    this.cultivationButton = this.addUiButton(16, 940, () => this.buildCultivationOverlay(), nav, 6);
-    this.helpButton = this.addUiButton(16, 1000, () => this.showHelp(), nav, 6);
-    this.recordButton = this.addUiButton(16, 1060, () => this.buildRecordOverlay(), nav, 6);
-    this.saveButton = this.addUiButton(16, 1120, () => this.openSaveDialog("export"), nav, 6);
+    this.upgradeButton = this.addUiButton(16, 760, () => this.buildBuildOverlay(), nav, 6, "20px");
+    this.genderButton = this.addUiButton(16, 820, () => this.toggleGender(), nav, 6, "20px");
+    this.bankButton = this.addUiButton(16, 880, () => this.buildBankOverlay(), nav, 6, "20px");
+    this.cultivationButton = this.addUiButton(16, 940, () => this.buildCultivationOverlay(), nav, 6, "20px");
+    this.helpButton = this.addUiButton(16, 1000, () => this.showHelp(), nav, 6, "20px");
+    this.recordButton = this.addUiButton(16, 1060, () => this.buildRecordOverlay(), nav, 6, "20px");
+    this.saveButton = this.addUiButton(16, 1120, () => this.openSaveDialog("export"), nav, 6, "20px");
 
     this.buildBoothVisuals();
     this.positionUi(false);
@@ -1087,12 +1088,13 @@ class TavernScene extends Phaser.Scene {
     onClick: () => void,
     padding: { x: number; y: number } = { x: 10, y: 8 },
     expand = 6,
+    fontSize = "15px",
   ): TapText {
     let sx = 0;
     let sy = 0;
     const t = this.add
       .text(x, y, "", {
-        fontSize: "15px",
+        fontSize,
         color: "#ffffff",
         backgroundColor: "#3a3a3a",
         padding,
@@ -3674,8 +3676,8 @@ class TavernScene extends Phaser.Scene {
     const purchasePriceLabel = getPurchasePrice(this.staffLevel.buyer, open);
     this.purchaseButton.setLabel(
       open
-        ? `紧急采购（${purchasePriceLabel} 灵石 → +${PURCHASE_AMOUNT}）`
-        : `采购灵材（${purchasePriceLabel} 灵石 → +${PURCHASE_AMOUNT}）`,
+        ? `急购 +${PURCHASE_AMOUNT}（${purchasePriceLabel} 灵石）`
+        : `备货 +${PURCHASE_AMOUNT}（${purchasePriceLabel} 灵石）`,
     );
     this.upgradeButton.setText("营造·升级");
   }
