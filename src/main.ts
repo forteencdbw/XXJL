@@ -1201,6 +1201,8 @@ class TavernScene extends Phaser.Scene {
   private interiorSign?: Phaser.GameObjects.Text;
   private hudBar!: Phaser.GameObjects.Rectangle;
   private hudLine!: Phaser.GameObjects.Rectangle;
+  private hudChips!: Phaser.GameObjects.Graphics;
+  private rightFrame!: Phaser.GameObjects.Container;
   private tutorialBanner!: Phaser.GameObjects.Text;
   private staffChars: Partial<Record<StaffRole, Character>> = {};
   private playerGender: "male" | "female" = "male";
@@ -2186,14 +2188,14 @@ class TavernScene extends Phaser.Scene {
     gfx.clear();
     // 背景墙：暗木与暖灰泥
     gfx.fillStyle(0x493629, 1);
-    gfx.fillRect(-360, 0, 720, FLOOR_Y);
+    gfx.fillRect(-360, 0, 790, FLOOR_Y);
     gfx.fillStyle(0x5a4332, 1);
-    gfx.fillRect(-360, 0, 720, 18);
+    gfx.fillRect(-360, 0, 790, 18);
     gfx.fillStyle(0x33251b, 1);
-    gfx.fillRect(-360, FLOOR_Y - 20, 720, 20);
-    for (const x of [-310, -180, -55, 55, 180, 310]) gfx.fillRect(x - 5, 0, 10, FLOOR_Y);
+    gfx.fillRect(-360, FLOOR_Y - 20, 790, 20);
+    for (const x of [-310, -180, -55, 55, 180, 310, 420]) gfx.fillRect(x - 5, 0, 10, FLOOR_Y);
     gfx.lineStyle(2, 0x5a4434, 0.5);
-    for (let y = 130; y < FLOOR_Y - 20; y += 110) gfx.lineBetween(-360, y, 360, y);
+    for (let y = 130; y < FLOOR_Y - 20; y += 110) gfx.lineBetween(-360, y, 430, y);
 
     // 山水挂画
     gfx.fillStyle(0x2a1a10, 1);
@@ -2321,12 +2323,12 @@ class TavernScene extends Phaser.Scene {
 
     // 地面
     gfx.fillStyle(0x8a6a4a, 1);
-    gfx.fillRect(-360, FLOOR_Y, 720, 1400 - FLOOR_Y);
+    gfx.fillRect(-360, FLOOR_Y, 790, 1400 - FLOOR_Y);
     gfx.lineStyle(3, 0x5a4028, 1);
-    gfx.lineBetween(-360, FLOOR_Y, 360, FLOOR_Y);
+    gfx.lineBetween(-360, FLOOR_Y, 430, FLOOR_Y);
     gfx.lineStyle(2, 0x75583c, 0.6);
-    for (let y = FLOOR_Y + 34; y < 1400; y += 46) gfx.lineBetween(-360, y, 360, y);
-    for (let x = -320; x < 360; x += 96) gfx.lineBetween(x, FLOOR_Y, x, 1400);
+    for (let y = FLOOR_Y + 34; y < 1400; y += 46) gfx.lineBetween(-360, y, 430, y);
+    for (let x = -320; x < 430; x += 96) gfx.lineBetween(x, FLOOR_Y, x, 1400);
 
     // 左侧厨房：石灶、铁锅、火与挂着的炊具
     gfx.fillStyle(0xff9a3a, 0.14);
@@ -2903,6 +2905,11 @@ class TavernScene extends Phaser.Scene {
     this.buildWindowFrames();
     this.buildWindowLight();
     this.buildSceneGrade();
+    // 营业镜头右缘的立柱/帘：遮住墙外的天空色条，同时像一道前景画框
+    this.rightFrame = this.add.container(0, 0).setScrollFactor(0).setDepth(22).setVisible(false);
+    this.rightFrame.add(this.add.rectangle(710, 640, 20, 1280, 0x1a120c, 1));
+    this.rightFrame.add(this.add.rectangle(700, 640, 3, 1280, 0x8a2a22, 0.85));
+    this.rightFrame.add(this.add.rectangle(704, 640, 1.5, 1280, 0xd9b45a, 0.35));
 
     // 顶部 HUD 悬浮条
     this.hudBar = this.add
@@ -2916,17 +2923,29 @@ class TavernScene extends Phaser.Scene {
       .setOrigin(0, 0)
       .setScrollFactor(0)
       .setDepth(30.5);
+    // 四块很淡的底，把资源 / 境界 / 排队 / 进度分组，不再像一排调试数字
+    this.hudChips = this.add.graphics().setScrollFactor(0).setDepth(30.2);
+    this.hudChips.fillStyle(0x0a0704, 0.42);
+    this.hudChips.fillRoundedRect(12, 2, 362, 34, 8);
+    this.hudChips.fillRoundedRect(404, 2, 168, 34, 8);
+    this.hudChips.fillRoundedRect(12, 36, 254, 30, 7);
+    this.hudChips.fillRoundedRect(270, 36, 434, 30, 7);
+    this.hudChips.lineStyle(1, 0x8a6a3a, 0.28);
+    this.hudChips.strokeRoundedRect(12, 2, 362, 34, 8);
+    this.hudChips.strokeRoundedRect(404, 2, 168, 34, 8);
+    this.hudChips.strokeRoundedRect(12, 36, 254, 30, 7);
+    this.hudChips.strokeRoundedRect(270, 36, 434, 30, 7);
 
-    this.coinsText = this.addUiText(24, 6, "", "26px", "#7fe8dd");
-    this.inventoryText = this.addUiText(190, 6, "", "26px", "#9fe870");
+    this.coinsText = this.addUiText(24, 6, "", "26px", "#ffe6a8");
+    this.inventoryText = this.addUiText(190, 6, "", "26px", "#a8d8b0");
     this.levelText = this.addUiText(400, 6, "", "18px", "#87ceeb");
-    this.queueText = this.addUiText(24, 40, "", "24px", "#e0b0ff");
-    this.realmText = this.addUiText(430, 9, "", "21px", "#ffd98a");
-    this.cultivationText = this.addUiText(300, 42, "", "21px", "#d8c8ff");
-    this.goalText = this.addUiText(440, 40, "", "25px", "#9fdf6a");
+    this.queueText = this.addUiText(24, 40, "", "24px", "#d8c8a8");
+    this.realmText = this.addUiText(430, 9, "", "21px", "#e0c9a0");
+    this.cultivationText = this.addUiText(300, 42, "", "21px", "#b8d8c8");
+    this.goalText = this.addUiText(440, 40, "", "25px", "#e0c060");
     this.goalText.setWordWrapWidth(260);
-    this.sessionText = this.addUiText(24, 70, "", "21px", "#a8d8ff");
-    this.chronicleText = this.addUiText(24, 96, "", "17px", "#cccccc");
+    this.sessionText = this.addUiText(24, 70, "", "21px", "#a8b8c8");
+    this.chronicleText = this.addUiText(24, 96, "", "17px", "#b8b0a0");
     [this.coinsText, this.inventoryText, this.queueText, this.realmText, this.cultivationText, this.goalText].forEach(
       (text) => text.setStyle({ fontStyle: "bold" }),
     );
@@ -3246,12 +3265,21 @@ class TavernScene extends Phaser.Scene {
     const candleGlow = this.add
       .image(0, 0, "soft-glow")
       .setTint(0xffa050)
-      .setAlpha(0.12)
-      .setScale(0.24)
+      .setAlpha(0.16)
+      .setScale(0.6)
       .setBlendMode(Phaser.BlendModes.ADD)
       .setDepth(1.9);
-    const candleBody = this.add.rectangle(0, 0, 6, 11, 0xf0e2c8).setDepth(2.7);
-    const candleFlame = this.add.ellipse(0, 0, 5, 9, 0xffd98a).setDepth(2.8);
+    const candleBody = this.add.rectangle(0, 0, 7, 13, 0xf0e2c8).setDepth(2.7);
+    const candleFlame = this.add.ellipse(0, 0, 7, 11, 0xffd98a).setDepth(2.8);
+    this.tweens.add({
+      targets: candleGlow,
+      alpha: { from: 0.12, to: 0.2 },
+      duration: Phaser.Math.Between(900, 1500),
+      yoyo: true,
+      repeat: -1,
+      delay: Phaser.Math.Between(0, 500),
+      ease: "Sine.easeInOut",
+    });
     this.tweens.add({
       targets: candleFlame,
       alpha: { from: 0.65, to: 1 },
@@ -5124,6 +5152,7 @@ class TavernScene extends Phaser.Scene {
     this.cookButton.setVisible(isOpen);
     this.shoutButton.setVisible(isOpen);
     this.setClosedNavVisible(!isOpen && !this.overlay);
+    this.rightFrame.setVisible(isOpen);
 
     this.playerChar.setVisible(isOpen);
     Object.values(this.staffChars).forEach((c) => c?.setVisible(isOpen));
@@ -5657,6 +5686,8 @@ class TavernScene extends Phaser.Scene {
     const ui: { setVisible(visible: boolean): unknown }[] = [
       this.hudBar,
       this.hudLine,
+      this.hudChips,
+      this.rightFrame,
       this.coinsText,
       this.inventoryText,
       this.queueText,
@@ -6760,7 +6791,7 @@ class TavernScene extends Phaser.Scene {
 
     this.coinsText.setText(`灵石：${this.displayedCoins}`);
     this.inventoryText.setText(`灵材：${this.inventory}`);
-    this.inventoryText.setColor(this.inventory <= 0 ? "#ff9a8a" : "#9fe870");
+    this.inventoryText.setColor(this.inventory <= 0 ? "#ff9a8a" : "#a8d8b0");
     this.levelText.setText(`酒楼等级：${this.level}`);
     const queueCap = getBoothCount(this.level);
     if (open && !this.settling && this.queue.length >= queueCap) {
@@ -6769,10 +6800,10 @@ class TavernScene extends Phaser.Scene {
     } else if (open && !this.settling && !this.lastCallTriggered) {
       const nextIn = Math.max(0, Math.ceil((this.nextArrivalAt - this.time.now) / 1000));
       this.queueText.setText(`排队 ${this.queue.length}/${queueCap} · 下位 ${nextIn}s`);
-      this.queueText.setColor("#e0b0ff");
+      this.queueText.setColor("#a8d8b0");
     } else {
       this.queueText.setText(`排队：${this.queue.length}/${queueCap}`);
-      this.queueText.setColor("#e0b0ff");
+      this.queueText.setColor("#d8c8a8");
     }
     const next = getNextRealm(this.cultivation);
     this.realmText.setText(`境界：${REALMS[this.realmIndex()].name}`);
@@ -6807,7 +6838,7 @@ class TavernScene extends Phaser.Scene {
       this.goalText.setText(
         reached ? "今日目标 ✓" : `${prefix} ${progress}/${this.sessionGoal.target}${unit}`,
       );
-      this.goalText.setColor(reached ? "#9fdf6a" : "#e0c060");
+      this.goalText.setColor(reached ? "#a8d8b0" : "#e0c060");
       if (reached && !this.goalAnnounced) {
         this.goalAnnounced = true;
         playSfx("upgrade");
@@ -6913,6 +6944,7 @@ class TavernScene extends Phaser.Scene {
     this.serveButton.setVisible(open);
     this.cookButton.setVisible(open);
     this.shoutButton.setVisible(open);
+    this.rightFrame.setVisible(open);
     // 菜单/店铺面板打开时也收起事务卡，避免透明卡片的命中区压到面板按钮上
     this.setClosedNavVisible(this.gameState === "closed" && !this.overlay);
     this.purchaseButton.setVisible(true);
