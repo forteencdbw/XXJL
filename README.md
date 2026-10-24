@@ -44,6 +44,7 @@ npm run build   # 生产构建
 ## 画面
 
 ![标题页](docs/screenshots/title.png)
+![选择形象](docs/screenshots/gender.png)
 ![营业视图](docs/screenshots/busy-tavern.png)
 ![跨周目账簿](docs/screenshots/ledger.png)
 

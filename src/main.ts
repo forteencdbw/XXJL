@@ -547,6 +547,7 @@ class Character extends Phaser.GameObjects.Container {
 
   /** 呼吸/轻微摇晃；只动内部 visual，不打断外层的行走与朝向。 */
   private startIdle() {
+    if (!this.scene || !this.visual?.active) return;
     this.stopIdle();
     this.idleTween = this.scene.tweens.add({
       targets: this.visual,
@@ -583,7 +584,7 @@ class Character extends Phaser.GameObjects.Container {
 
   /** 用膳：收起腿、压低身子并做咀嚼起伏，看起来是坐着吃而不是站着。 */
   setDining(on: boolean) {
-    if (this.dining === on) return;
+    if (this.dining === on || !this.scene || !this.visual?.active) return;
     this.dining = on;
     this.draw();
     this.stopIdle();
@@ -604,7 +605,7 @@ class Character extends Phaser.GameObjects.Container {
 
   /** 偶尔的小动作：点一下头/耸肩，让静止画面里也有活气。 */
   twitch() {
-    if (this.dining) return;
+    if (this.dining || !this.scene || !this.visual?.active) return;
     this.stopIdle();
     this.scene.tweens.add({
       targets: this.visual,
@@ -846,6 +847,7 @@ class TavernScene extends Phaser.Scene {
   private sparkles: Phaser.GameObjects.Arc[] = [];
   private fireflyCount = 0;
   private lastHintAt = -9999;
+  private tutorialHintStage = 0;
   private staffNotice = "";
   private staffNoticeGood = true;
 
@@ -1056,6 +1058,31 @@ class TavernScene extends Phaser.Scene {
         .setLetterSpacing(3),
     );
 
+    // 前景屋脊与窗火，填住标题下方的空黑
+    const foreground = this.add.graphics();
+    foreground.fillStyle(0x05080e, 1);
+    foreground.beginPath();
+    foreground.moveTo(0, 1280);
+    foreground.lineTo(0, 1120);
+    foreground.lineTo(140, 1058);
+    foreground.lineTo(280, 1132);
+    foreground.lineTo(430, 1072);
+    foreground.lineTo(600, 1148);
+    foreground.lineTo(720, 1096);
+    foreground.lineTo(720, 1280);
+    foreground.closePath();
+    foreground.fillPath();
+    foreground.fillStyle(0x0a0f18, 1);
+    foreground.fillRect(292, 1120, 136, 76);
+    foreground.fillTriangle(276, 1120, 444, 1120, 360, 1068);
+    foreground.fillStyle(0xffb060, 0.65);
+    foreground.fillRect(322, 1148, 10, 12);
+    foreground.fillRect(388, 1148, 10, 12);
+    foreground.fillStyle(0x0a0f18, 1);
+    foreground.fillRect(468, 1160, 60, 40);
+    foreground.fillTriangle(460, 1160, 536, 1160, 498, 1134);
+    layer.add(foreground);
+
     // 浮尘/灵火
     for (let i = 0; i < 14; i++) {
       const mote = this.add.circle(
@@ -1087,15 +1114,46 @@ class TavernScene extends Phaser.Scene {
     const cam = this.cameras.main;
     const layer = this.add.container(cam.scrollX, cam.scrollY).setDepth(120);
     layer.add(this.add.rectangle(0, 0, SCREEN_W, SCREEN_H, 0x000000, 0.97).setOrigin(0, 0).setInteractive());
-    layer.add(this.add.text(60, 220, "选择你的形象", { fontSize: "30px", color: "#ffe6a8", fontFamily: XIAN_FONT }));
+    layer.add(
+      this.add
+        .text(360, 200, "选择你的形象", { fontSize: "30px", color: "#ffe6a8", fontFamily: XIAN_FONT })
+        .setOrigin(0.5)
+        .setLetterSpacing(4),
+    );
+    layer.add(
+      this.add
+        .text(360, 248, "踏进灵膳楼之前，先定一个行走江湖的模样", {
+          fontSize: "15px",
+          color: "#8a7a62",
+          fontFamily: XIAN_FONT,
+        })
+        .setOrigin(0.5),
+    );
+    for (const x of [180, 540]) {
+      layer.add(
+        this.add
+          .image(x, 500, "soft-glow")
+          .setTint(0xffb060)
+          .setAlpha(0.32)
+          .setScale(1.25)
+          .setBlendMode(Phaser.BlendModes.ADD),
+      );
+    }
+    const male = new Character(this, 180, 500, 0x4a7ab8, 0x2b2b2b, false, "player");
+    male.setScale(2.2).disableInteractive();
+    const female = new Character(this, 540, 500, 0xc86a9e, 0x4a2b1a, true, "player");
+    female.setScale(-2.2, 2.2).disableInteractive();
+    layer.add([male, female]);
+
     const pick = (x: number, label: string, gender: "male" | "female", color: string) => {
       const btn = this.add
-        .text(x, 360, label, {
-          fontSize: "32px",
-          color: "#ffffff",
+        .text(x, 660, label, {
+          fontSize: "30px",
+          color: "#ffe6c8",
           backgroundColor: color,
-          padding: { x: 40, y: 28 },
+          padding: { x: 44, y: 18 },
         })
+        .setOrigin(0.5)
         .setInteractive({ useHandCursor: true })
         .on("pointerdown", () => {
           this.setGender(gender);
@@ -1105,8 +1163,8 @@ class TavernScene extends Phaser.Scene {
       layer.add(btn);
       this.expandHitArea(btn, 18);
     };
-    pick(120, "男", "male", "#3f5a7a");
-    pick(400, "女", "female", "#7a3f5a");
+    pick(180, "男", "male", "#3f5a7a");
+    pick(540, "女", "female", "#7a3f5a");
     this.overlay = layer;
   }
 
@@ -1613,6 +1671,16 @@ class TavernScene extends Phaser.Scene {
       gfx.fillStyle(0xffd98a, 0.55);
       gfx.fillRect(hx - 6, FLOOR_Y - 82, 8, 10);
     }
+    // 低处雾带：把远处山影和近处棕金内景揉在一起
+    gfx.fillStyle(0xc8d8e8, 0.06);
+    for (const [mx, my, mw] of [
+      [520, 930, 300],
+      [820, 916, 340],
+      [1180, 934, 300],
+      [1450, 922, 260],
+    ] as const) {
+      gfx.fillEllipse(mx, my, mw, 42);
+    }
 
     // 排队区标记
     gfx.lineStyle(2, 0x8a7a5a, 1);
@@ -1934,16 +2002,17 @@ class TavernScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setDepth(30.5);
 
-    this.coinsText = this.addUiText(16, 10, "", "18px", "#7fe8dd");
-    this.inventoryText = this.addUiText(16, 36, "", "18px", "#9fe870");
-    this.levelText = this.addUiText(250, 10, "", "18px", "#87ceeb");
-    this.queueText = this.addUiText(250, 36, "", "18px", "#e0b0ff");
-    this.realmText = this.addUiText(400, 10, "", "16px", "#ffd98a");
-    this.cultivationText = this.addUiText(400, 36, "", "16px", "#d8c8ff");
-    this.goalText = this.addUiText(400, 62, "", "16px", "#9fdf6a");
-    this.goalText.setWordWrapWidth(300);
-    this.sessionText = this.addUiText(16, 62, "", "16px", "#a8d8ff");
-    this.chronicleText = this.addUiText(16, 82, "", "18px", "#cccccc");
+    this.coinsText = this.addUiText(16, 10, "", "20px", "#7fe8dd");
+    this.inventoryText = this.addUiText(200, 10, "", "20px", "#9fe870");
+    this.levelText = this.addUiText(400, 10, "", "18px", "#87ceeb");
+    this.queueText = this.addUiText(16, 38, "", "20px", "#e0b0ff");
+    this.realmText = this.addUiText(400, 10, "", "18px", "#ffd98a");
+    this.cultivationText = this.addUiText(230, 38, "", "18px", "#d8c8ff");
+    this.goalText = this.addUiText(410, 38, "", "18px", "#9fdf6a");
+    this.goalText.setWordWrapWidth(280);
+    this.sessionText = this.addUiText(16, 64, "", "17px", "#a8d8ff");
+    this.chronicleText = this.addUiText(16, 88, "", "17px", "#cccccc");
+    this.levelText.setVisible(false);
 
     const audio = loadAudioSettings();
     this.sfxMuted = audio.sfxMuted;
@@ -2125,10 +2194,11 @@ class TavernScene extends Phaser.Scene {
     ];
     const label = this.add
       .text(0, 0, "", {
-        fontSize: "11px",
+        fontSize: "12px",
         color: "#ffe6c8",
-        backgroundColor: "rgba(30,22,15,0.78)",
-        padding: { x: 4, y: 2 },
+        stroke: "#1a120a",
+        strokeThickness: 3,
+        padding: { x: 2, y: 1 },
         align: "center",
         lineSpacing: 1,
         wordWrap: { width: 118 },
@@ -2149,9 +2219,9 @@ class TavernScene extends Phaser.Scene {
     const width = Math.min(84, 320 / total);
     this.boothVisuals.forEach((v, i) => {
       const x = total === 1 ? (TABLE_X_MIN + TABLE_X_MAX) / 2 : TABLE_X_MIN + (i * (TABLE_X_MAX - TABLE_X_MIN)) / (total - 1);
-      v.bg.setPosition(x, FLOOR_Y - 48).setSize(width, 16);
-      v.legs[0].setPosition(x - width / 2 + 10, FLOOR_Y - 30);
-      v.legs[1].setPosition(x + width / 2 - 10, FLOOR_Y - 30);
+      v.bg.setPosition(x, FLOOR_Y - 30).setSize(width, 16);
+      v.legs[0].setPosition(x - width / 2 + 10, FLOOR_Y - 14);
+      v.legs[1].setPosition(x + width / 2 - 10, FLOOR_Y - 14);
       // 桌子多时交错两行放标签，避免相邻两桌的文字叠在一起
       const stagger = total > 4 ? (i % 2) * 46 : 0;
       v.label.setPosition(x, FLOOR_Y - 92 - stagger);
@@ -2225,6 +2295,7 @@ class TavernScene extends Phaser.Scene {
     this.queue = this.queue.filter((patron) => {
       if (time >= patron.expiresAt) {
         this.sessionLost += 1;
+        patron.char.say("等太久了……", "cold");
         patron.char.walkTo(1620, ACTOR_Y, 500, () => patron.char.destroy());
         this.log(`${patron.kind.name}候得不耐，拂袖离去`);
         return false;
@@ -2371,7 +2442,13 @@ class TavernScene extends Phaser.Scene {
     this.stars.forEach((star) => star.setVisible(showStars));
     // 室内窗户透出的天光与外面同步；打烊时窗户只剩余夜色
     if (this.windowViews.length) {
-      const winColor = this.gameState === "open" ? color : NIGHT_COLOR;
+      let winColor = NIGHT_COLOR;
+      if (this.gameState === "open") {
+        const sky = Phaser.Display.Color.IntegerToColor(color);
+        const warm = Phaser.Display.Color.IntegerToColor(0x8a6a4a);
+        const mixed = Phaser.Display.Color.Interpolate.ColorWithColor(sky, warm, 100, 28);
+        winColor = Phaser.Display.Color.GetColor(mixed.r, mixed.g, mixed.b);
+      }
       this.windowViews.forEach((w) => w.setFillStyle(winColor, 1));
     }
 
@@ -2607,9 +2684,6 @@ class TavernScene extends Phaser.Scene {
 
       this.cameras.main.fadeIn(450, 0, 0, 0);
       this.transitioning = false;
-      if (this.day === 1) {
-        this.time.delayedCall(500, () => this.showEventToast("点「招待入座」→ 入座后点下方菜名", true));
-      }
     });
   }
 
@@ -3150,9 +3224,9 @@ class TavernScene extends Phaser.Scene {
     const panel = this.add.container(SCREEN_W / 2, STATUS_BAR_H + 16);
     panel.add(
       this.add
-        .rectangle(0, 0, CARD_W, cardHeight, 0x1b2440, 0.98)
+        .rectangle(0, 0, CARD_W, cardHeight, 0x241a12, 1)
         .setOrigin(0.5, 0)
-        .setStrokeStyle(2, 0x3f5a7a),
+        .setStrokeStyle(2, 0x8a6a3a),
     );
     panel.setAlpha(0).setScale(0.92);
     this.tweens.add({ targets: panel, alpha: 1, scale: 1, duration: 200, ease: "Sine.easeOut" });
@@ -3580,7 +3654,7 @@ class TavernScene extends Phaser.Scene {
     this.startButton.setStyle({
       fontSize: isOpen ? "17px" : "20px",
       color: "#f5e6c8",
-      backgroundColor: isOpen ? "#5a2a2a" : "#3f6a3f",
+      backgroundColor: isOpen ? "#3f2a22" : "#3f6a3f",
     });
     this.boothVisuals.forEach((v) => {
       v.bg.setVisible(isOpen);
@@ -3751,8 +3825,8 @@ class TavernScene extends Phaser.Scene {
 
   /** 上菜后桌上出现碗筷与热气，让「用膳」这件事看得见。 */
   private showDiningProp(x: number) {
-    const px = x + 12;
-    const y = FLOOR_Y - 50;
+    const px = x + 16;
+    const y = FLOOR_Y - 24;
     const bowl = this.add.ellipse(px, y, 32, 12, 0xf1e4cc).setDepth(21);
     const soup = this.add.ellipse(px, y - 2, 22, 6, 0xd98a4a).setDepth(21);
     const stick = this.add.rectangle(px + 13, y - 6, 2, 24, 0x6a4a2a).setAngle(26).setDepth(21);
@@ -4039,6 +4113,10 @@ class TavernScene extends Phaser.Scene {
     char.walkTo(slotX, ACTOR_Y, 700);
     const patience = QUEUE_PATIENCE_MS * kind.patienceFactor * (this.day === 1 ? 1.8 : 1);
     this.queue.push({ expiresAt: time + patience, patienceMs: patience, char, kind, wish });
+    if (this.day === 1 && this.tutorialHintStage === 0) {
+      this.tutorialHintStage = 1;
+      this.showHint("门口来客了——点「招待入座」把人领进来");
+    }
     this.staffChars.hawker?.pulse();
     playSfx(rare ? "event" : "arrival");
     const wishName = DISHES.find((d) => d.id === wish)?.name;
@@ -4146,15 +4224,19 @@ class TavernScene extends Phaser.Scene {
       return;
     }
 
-    const boothIndex = this.booths.findIndex((booth) => booth.state === "empty");
-    if (boothIndex === -1) {
+    const emptyBooths = this.booths
+      .map((booth, index) => ({ booth, index }))
+      .filter(({ booth }) => booth.state === "empty");
+    if (emptyBooths.length === 0) {
       if (driver === "player") this.showHint("雅座满了，先出菜");
       return;
     }
+    // 不总是从最左一张开始，客人分散入座，画面更像一间活着的店
+    const { booth, index: boothIndex } =
+      emptyBooths[Math.floor(Math.random() * emptyBooths.length)];
 
     const patron = this.queue.shift()!;
     patron.char.setPatience(null);
-    const booth = this.booths[boothIndex];
     booth.state = "seating";
     const progress: SeatProgress = {
       startedAt: this.time.now,
@@ -4202,6 +4284,10 @@ class TavernScene extends Phaser.Scene {
       booth.awaitingSince = time;
       this.log(driver === "player" ? "你领食客入座雅座，等候烹饪" : "跑堂伙计领食客入座雅座");
       this.showBoothOrder(progress.boothIndex);
+      if (this.day === 1 && this.tutorialHintStage <= 1) {
+        this.tutorialHintStage = 2;
+        this.showHint("点下方菜名出菜；★是客人想吃的菜");
+      }
     }
     this.moveActorHome(driver, "seat");
     return null;
@@ -4530,9 +4616,32 @@ class TavernScene extends Phaser.Scene {
 
   /** 对无效操作给出一次可见提示，避免“点了没反应”的错觉。 */
   private showHint(message: string) {
-    if (this.time.now - this.lastHintAt < 1500) return;
+    if (this.time.now - this.lastHintAt < 1400) return;
     this.lastHintAt = this.time.now;
-    this.showEventToast(message, true);
+    const toast = this.add
+      .text(SCREEN_W / 2, 142, message, {
+        fontSize: "17px",
+        color: "#ffe6c8",
+        backgroundColor: "rgba(30,22,15,0.9)",
+        padding: { x: 12, y: 6 },
+        align: "center",
+        wordWrap: { width: 560 },
+        fontFamily: XIAN_FONT,
+      })
+      .setOrigin(0.5, 0)
+      .setScrollFactor(0)
+      .setDepth(45)
+      .setAlpha(0);
+    this.tweens.add({
+      targets: toast,
+      alpha: 1,
+      y: 146,
+      duration: 180,
+      yoyo: true,
+      hold: 1400,
+      ease: "Sine.easeOut",
+      onComplete: () => toast.destroy(),
+    });
   }
 
   private boothColor(state: BoothState): number {
@@ -4823,7 +4932,7 @@ class TavernScene extends Phaser.Scene {
         ? `急购 +${PURCHASE_AMOUNT}（${purchasePriceLabel} 灵石）`
         : `备货 +${PURCHASE_AMOUNT}（${purchasePriceLabel} 灵石）`,
     );
-    this.upgradeButton.setText("营造·升级");
+    this.upgradeButton.setText(`营造 Lv${this.level}`);
   }
 }
 
