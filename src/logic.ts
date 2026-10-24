@@ -302,6 +302,13 @@ export function getRealmArrivalFactor(realmIndex: number): number {
   return realmIndex >= 3 ? 0.85 : 1;
 }
 
+/** 飞升一次留一重仙缘，跨周目永久提高售价。 */
+export const ASCENSION_PRICE_BONUS = 0.1;
+
+export function getAscensionPriceMultiplier(ascensions: number): number {
+  return 1 + ASCENSION_PRICE_BONUS * Math.max(0, Math.floor(ascensions));
+}
+
 export function getStaffLevel(exp: number): number {
   return Math.min(MAX_STAFF_LEVEL, 1 + Math.floor(exp / EXP_PER_LEVEL));
 }

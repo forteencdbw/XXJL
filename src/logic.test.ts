@@ -11,6 +11,7 @@ import {
   REALMS,
   applyEvent,
   getArrivalInterval,
+  getAscensionPriceMultiplier,
   getBoothCount,
   getCultivationGain,
   getDailyGoal,
@@ -303,6 +304,14 @@ describe("修为与境界", () => {
 
   it("亲自下厨悟性翻倍", () => {
     expect(getCultivationGain(true)).toBe(getCultivationGain(false) * 2);
+  });
+
+  it("每次飞升留一重仙缘，售价永久提高且无负数副作用", () => {
+    expect(getAscensionPriceMultiplier(0)).toBe(1);
+    expect(getAscensionPriceMultiplier(1)).toBeCloseTo(1.1);
+    expect(getAscensionPriceMultiplier(3)).toBeCloseTo(1.3);
+    expect(getAscensionPriceMultiplier(-5)).toBe(1);
+    expect(getAscensionPriceMultiplier(2.9)).toBeCloseTo(1.2);
   });
 
   it("境界速度加成会缩短操作耗时，且仍受下限约束", () => {

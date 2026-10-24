@@ -11,6 +11,7 @@ import {
   REALMS,
   applyEvent,
   getArrivalInterval,
+  getAscensionPriceMultiplier,
   getBoothCount,
   getCultivationGain,
   getDailyGoal,
@@ -150,6 +151,7 @@ interface SaveData {
   negativeStreak: number;
   cultivation: number;
   day: number;
+  ascensions: number;
   selectedDishIds: string[];
   playerGender: "male" | "female";
 }
@@ -319,6 +321,8 @@ class TavernScene extends Phaser.Scene {
   private sessionLost = 0;
   private sessionWishes = 0;
   private day = 1;
+  private ascensions = 0;
+  private ascending = false;
   private sessionGoal: DailyGoal | null = null;
   private lastGoalResult: { goal: DailyGoal; met: boolean; progress: number } | null = null;
 
@@ -457,6 +461,7 @@ class TavernScene extends Phaser.Scene {
   // ===== 存档 =====
   /** 只存经营进度与选择；营业中不落盘——中途刷新等于放弃本局，避免带着收益跳过工资与还账。 */
   private save() {
+    if (this.ascending || this.gameState === "bankrupt") return;
     if (this.gameState === "open" && !this.settling) return;
     const data: SaveData = {
       v: 1,
@@ -470,14 +475,39 @@ class TavernScene extends Phaser.Scene {
       negativeStreak: this.negativeStreak,
       cultivation: this.cultivation,
       day: this.day,
+      ascensions: this.ascensions,
       selectedDishIds: [...this.selectedDishIds],
       playerGender: this.playerGender,
     };
+    this.writeSave(data);
+  }
+
+  private writeSave(data: SaveData) {
     try {
       localStorage.setItem(SAVE_KEY, JSON.stringify(data));
     } catch {
       // 隐私模式或存储已满：放弃本次存档，不影响当前对局
     }
+  }
+
+  /** 新周目存档：飞升后保留仙缘与形象，其余归零。 */
+  private freshSave(ascensions: number): SaveData {
+    return {
+      v: 1,
+      coins: STARTING_COINS + ascensions * 20,
+      inventory: STARTING_INVENTORY + ascensions * 2,
+      level: 1,
+      staffLevel: { hawker: 0, server: 0, cook: 0, buyer: 0 },
+      staffExp: { hawker: 0, server: 0, cook: 0, buyer: 0 },
+      borrowedIds: [],
+      activeLoans: [],
+      negativeStreak: 0,
+      cultivation: 0,
+      day: 1,
+      ascensions,
+      selectedDishIds: DISHES.filter((d) => d.unlockLevel <= 1).map((d) => d.id),
+      playerGender: this.playerGender,
+    };
   }
 
   /** 读档，返回是否读到有效存档；损坏或版本不符时按新档处理。 */
@@ -496,6 +526,7 @@ class TavernScene extends Phaser.Scene {
       this.cultivation = count(data.cultivation);
       this.negativeStreak = count(data.negativeStreak);
       this.day = Math.max(1, Math.floor(num(data.day, 1)));
+      this.ascensions = Math.max(0, Math.floor(num(data.ascensions, 0)));
       this.playerGender = data.playerGender === "female" ? "female" : "male";
       for (const role of ["hawker", "server", "cook", "buyer"] as const) {
         this.staffLevel[role] = Math.min(MAX_STAFF_LEVEL, count(data.staffLevel?.[role]));
@@ -528,14 +559,6 @@ class TavernScene extends Phaser.Scene {
       return true;
     } catch {
       return false;
-    }
-  }
-
-  private removeSave() {
-    try {
-      localStorage.removeItem(SAVE_KEY);
-    } catch {
-      // 存储不可用时无需处理
     }
   }
 
@@ -1208,8 +1231,8 @@ class TavernScene extends Phaser.Scene {
       this.inventory += 3;
       this.log("化神境心念一动，打烊时凭空凝出 3 灵材");
     }
-    // 破产不再保留存档，刷新或重开都是一局新的；其余情况立刻落盘
-    if (this.gameState === "bankrupt") this.removeSave();
+    // 破产只重置本局，仙缘保留；其余情况立刻落盘
+    if (this.gameState === "bankrupt") this.writeSave(this.freshSave(this.ascensions));
     else this.save();
     // 破产时 update() 不再刷新 HUD，这里只补状态栏的营业提示
     this.sessionText.setText("已打烊");
@@ -1309,15 +1332,25 @@ class TavernScene extends Phaser.Scene {
       ),
     );
     layer.add(
-      this.add.text(40, 146, "每道菜离店得 1 点修为，亲自下厨得 2 点；突破自动发生", {
-        fontSize: "15px",
+      this.add.text(
+        40,
+        146,
+        this.ascensions > 0
+          ? `仙缘 ${this.ascensions} 重 · 菜品售价 +${Math.round((getAscensionPriceMultiplier(this.ascensions) - 1) * 100)}%`
+          : "尚未飞升 · 每次飞升留一重仙缘，永久提高售价",
+        { fontSize: "15px", color: "#c8a8ff" },
+      ),
+    );
+    layer.add(
+      this.add.text(40, 170, "每道菜离店得 1 点修为，亲自下厨得 2 点；突破自动发生", {
+        fontSize: "14px",
         color: "#999999",
       }),
     );
 
     const current = this.realmIndex();
     REALMS.forEach((realm, i) => {
-      const y = 190 + i * 68;
+      const y = 200 + i * 68;
       const unlocked = this.cultivation >= realm.cultivation;
       const isCurrent = i === current;
       layer.add(
@@ -1341,17 +1374,93 @@ class TavernScene extends Phaser.Scene {
       if (isCurrent) layer.add(this.add.text(610, y + 18, "当前", { fontSize: "16px", color: "#ffd98a" }));
     });
 
-    const close = this.add
-      .text(40, 790, "关闭", {
-        fontSize: "20px",
-        color: "#ffffff",
-        backgroundColor: "#3a3a3a",
-        padding: { x: 16, y: 10 },
-      })
-      .setInteractive({ useHandCursor: true })
-      .on("pointerup", () => this.destroyOverlay());
-    layer.add(close);
+    const maxed = current === REALMS.length - 1;
+    if (maxed) {
+      layer.add(
+        this.add
+          .text(40, 780, "渡劫飞升（仙缘 +1）", {
+            fontSize: "20px",
+            color: "#3a2a10",
+            backgroundColor: "#ffd98a",
+            padding: { x: 16, y: 10 },
+          })
+          .setInteractive({ useHandCursor: true })
+          .on("pointerup", () => this.buildAscendConfirmOverlay()),
+      );
+    }
+    layer.add(
+      this.add
+        .text(maxed ? 300 : 40, 780, "关闭", {
+          fontSize: "20px",
+          color: "#ffffff",
+          backgroundColor: "#3a3a3a",
+          padding: { x: 16, y: 10 },
+        })
+        .setInteractive({ useHandCursor: true })
+        .on("pointerup", () => this.destroyOverlay()),
+    );
     this.overlay = layer;
+  }
+
+  /** 飞升前的确认页：写清保留什么、失去什么。 */
+  private buildAscendConfirmOverlay() {
+    this.destroyOverlay();
+    const cam = this.cameras.main;
+    const layer = this.add.container(cam.scrollX, cam.scrollY).setDepth(100);
+    layer.add(this.add.rectangle(0, 0, SCREEN_W, SCREEN_H, 0x000000, 0.95).setOrigin(0, 0));
+    layer.add(this.add.text(40, 90, "渡劫飞升", { fontSize: "32px", color: "#ffd98a" }));
+    const next = this.ascensions + 1;
+    const lines = [
+      "踏破虚空，此局经营从头再来。",
+      "",
+      "保留：仙缘、玩家形象",
+      `失去：灵石、灵材、酒楼 ${this.level} 级、伙计、借据、修为、天数`,
+      "",
+      `飞升后：仙缘 ${next} 重，菜品售价 +${Math.round((getAscensionPriceMultiplier(next) - 1) * 100)}%`,
+      `开局灵石 ${STARTING_COINS + next * 20}、灵材 ${STARTING_INVENTORY + next * 2}`,
+    ];
+    lines.forEach((line, i) => {
+      layer.add(
+        this.add.text(40, 170 + i * 34, line, {
+          fontSize: "18px",
+          color: line.startsWith("失去") ? "#ff9a8a" : "#dddddd",
+        }),
+      );
+    });
+    layer.add(
+      this.add
+        .text(40, 500, "确认飞升", {
+          fontSize: "20px",
+          color: "#3a2a10",
+          backgroundColor: "#ffd98a",
+          padding: { x: 16, y: 10 },
+        })
+        .setInteractive({ useHandCursor: true })
+        .on("pointerup", () => this.ascend()),
+    );
+    layer.add(
+      this.add
+        .text(220, 500, "再等等", {
+          fontSize: "20px",
+          color: "#ffffff",
+          backgroundColor: "#3a3a3a",
+          padding: { x: 16, y: 10 },
+        })
+        .setInteractive({ useHandCursor: true })
+        .on("pointerup", () => this.buildCultivationOverlay()),
+    );
+    this.overlay = layer;
+  }
+
+  /** 飞升：写入新周目存档后刷新页面，避免逐个重建场景对象。 */
+  private ascend() {
+    if (this.ascending) return;
+    this.ascending = true;
+    this.destroyOverlay();
+    playSfx("open");
+    this.cameras.main.flash(1200, 255, 255, 220);
+    this.writeSave(this.freshSave(this.ascensions + 1));
+    this.time.delayedCall(1100, () => location.reload());
   }
 
   /** 二级页面：灵石商行，按酒楼等级解锁三档借贷。 */
@@ -1525,6 +1634,14 @@ class TavernScene extends Phaser.Scene {
       }),
     );
     panel.add(
+      this.add.text(
+        left,
+        this.ascensions > 0 ? 194 : 200,
+        this.ascensions > 0 ? `仙缘 ${this.ascensions} 重仍在，重开后带走。` : "一切从头再来。",
+        { fontSize: "16px", color: this.ascensions > 0 ? "#c8a8ff" : "#999999" },
+      ),
+    );
+    panel.add(
       this.add
         .text(left, 226, "重开酒楼", {
           fontSize: "20px",
@@ -1533,10 +1650,7 @@ class TavernScene extends Phaser.Scene {
           padding: { x: 16, y: 10 },
         })
         .setInteractive({ useHandCursor: true })
-        .on("pointerdown", () => {
-          this.removeSave();
-          location.reload();
-        }),
+        .on("pointerdown", () => location.reload()),
     );
   }
 
@@ -1730,7 +1844,11 @@ class TavernScene extends Phaser.Scene {
 
   /** 售价按当前境界加成结算。 */
   private dishPrice(dish: Dish): number {
-    return Math.round(dish.price * getRealmPriceMultiplier(this.realmIndex()));
+    return Math.round(
+      dish.price *
+        getRealmPriceMultiplier(this.realmIndex()) *
+        getAscensionPriceMultiplier(this.ascensions),
+    );
   }
 
   private gainCultivation(amount: number) {
