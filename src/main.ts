@@ -1382,6 +1382,7 @@ class TavernScene extends Phaser.Scene {
   private focusProp?: Phaser.GameObjects.Container;
   private focusTable?: Phaser.GameObjects.Graphics;
   private focusName?: Phaser.GameObjects.Text;
+  private focusRole?: Phaser.GameObjects.Text;
   private eventToast?: Phaser.GameObjects.Text;
   private hintToast?: Phaser.GameObjects.Text;
   private focusing = false;
@@ -6481,6 +6482,15 @@ class TavernScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setScrollFactor(0)
       .setDepth(102);
+    this.focusRole = this.add
+      .text(360, 634, this.focusRoleLine(spec.look), {
+        fontSize: "16px",
+        color: "#c8b89a",
+        fontFamily: XIAN_FONT,
+      })
+      .setOrigin(0.5)
+      .setScrollFactor(0)
+      .setDepth(102);
     if (spec.seated || spec.dining) {
       // 卡内也给出桌沿/桌面，坐下的人不是悬空半身像
       const table = this.add.graphics().setScrollFactor(0).setDepth(101.55);
@@ -6545,9 +6555,28 @@ class TavernScene extends Phaser.Scene {
     this.focusCaption = undefined;
     this.focusName?.destroy();
     this.focusName = undefined;
+    this.focusRole?.destroy();
+    this.focusRole = undefined;
   }
 
   /** 特写台词按此人此刻在做什么来取，避免排队客人说"结账"。 */
+  private focusRoleLine(look: CharacterLook): string {
+    const lines: Record<CharacterLook, string> = {
+      player: "掌柜 · 青锋剑",
+      sword: "剑修 · 飞剑「青霜」",
+      rogue: "散修 · 短刃「无咎」",
+      alchemist: "丹修 · 紫金丹葫",
+      elder: "仙门长老 · 竹节杖",
+      demon: "妖修 · 赤尾利爪",
+      demonlord: "魔道散人 · 玄骨扇",
+      mortal: "凡人 · 一副挑担",
+      server: "跑堂 · 托盘",
+      cook: "灶上 · 铁锅勺",
+      hawker: "迎客 · 酒旗",
+    };
+    return lines[look] ?? "灵膳楼 · 食客";
+  }
+
   private focusLineFor(char: Character): string {
     if (this.queue.some((p) => p.char === char)) return "前面还有几位？";
     const booth = this.booths.find((b) => b.patronChar === char);
@@ -6873,6 +6902,19 @@ class TavernScene extends Phaser.Scene {
     char.arrived = false;
     char.setScale(char.x < slotX ? 1 : -1, 1);
     const id = kind.id;
+    const bark =
+      {
+        sword: "御剑而来。",
+        elder: "乘云而至。",
+        alchemist: "丹香先到。",
+        demon: "让开！",
+        demonlord: "这方天地，太窄。",
+        rogue: "道友，请了。",
+        mortal: "来碗热的。",
+      }[id] ?? "";
+    const sayOnArrive = () => {
+      if (char.active && bark) char.say(bark);
+    };
     const spark = (x: number, y: number, color: number, count = 2) => {
       for (let i = 0; i < count; i++) {
         const dot = this.add
@@ -6927,6 +6969,7 @@ class TavernScene extends Phaser.Scene {
             ease: "Bounce.easeOut",
             onComplete: () => {
               char.arrived = true;
+              sayOnArrive();
             },
           });
           spark(char.x, char.y + 30, 0xffe6a8, 6);
@@ -6963,6 +7006,7 @@ class TavernScene extends Phaser.Scene {
             ease: "Sine.easeOut",
             onComplete: () => {
               char.arrived = true;
+              sayOnArrive();
             },
           });
           spark(char.x, char.y + 30, green ? 0xa8e8c0 : 0xffe6a8, 5);
@@ -6994,6 +7038,7 @@ class TavernScene extends Phaser.Scene {
         ease: "Bounce.easeOut",
         onComplete: () => {
           char.arrived = true;
+          sayOnArrive();
         },
       });
       return;
@@ -7017,6 +7062,7 @@ class TavernScene extends Phaser.Scene {
             duration: 220,
             onComplete: () => {
               char.arrived = true;
+              sayOnArrive();
             },
           });
           this.time.delayedCall(180, () => {
@@ -7036,6 +7082,7 @@ class TavernScene extends Phaser.Scene {
     const walkMs = id === "rogue" ? 430 : 760;
     char.walkTo(slotX, ACTOR_Y, walkMs, () => {
       char.arrived = true;
+      sayOnArrive();
     });
     for (let i = 0; i < 4; i++) {
       this.time.delayedCall(120 * i, () => {
