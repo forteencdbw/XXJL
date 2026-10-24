@@ -292,6 +292,7 @@ class Character extends Phaser.GameObjects.Container {
   private patienceBg?: Phaser.GameObjects.Rectangle;
   private patienceFill?: Phaser.GameObjects.Rectangle;
   private idleTween?: Phaser.Tweens.Tween;
+  private walkTween?: Phaser.Tweens.Tween;
   private bubble?: Phaser.GameObjects.Text;
   private bubbleTail?: Phaser.GameObjects.Triangle;
   private dining = false;
@@ -503,6 +504,14 @@ class Character extends Phaser.GameObjects.Container {
     g.lineBetween(-2.5, -13, 2.5, -13);
 
     // 身份道具：画在前面
+    if (this.look === "player") {
+      g.lineStyle(1.5, 0xd9b45a, 0.9);
+      g.lineBetween(-9, -6, -13, 28);
+      g.lineBetween(9, -6, 13, 28);
+      g.lineBetween(-13, 27, 13, 27);
+      g.fillStyle(0xffe6a8, 1);
+      g.fillCircle(0, 10, 2.5);
+    }
     if (this.look === "alchemist" || this.look === "demonlord") {
       g.fillStyle(0xb8742a, 1);
       g.fillCircle(15, 10, 5);
@@ -714,6 +723,15 @@ class Character extends Phaser.GameObjects.Container {
       this.draw();
     }
     this.stopIdle();
+    this.walkTween?.remove();
+    this.walkTween = this.scene.tweens.add({
+      targets: this.visual,
+      y: -3,
+      duration: 150,
+      yoyo: true,
+      repeat: -1,
+      ease: "Sine.easeInOut",
+    });
     this.scaleY = 1;
     if (x < this.x - 2) this.setScale(-1, 1);
     else if (x > this.x + 2) this.setScale(1, 1);
@@ -724,6 +742,9 @@ class Character extends Phaser.GameObjects.Container {
       duration,
       ease: "Linear",
       onComplete: () => {
+        this.walkTween?.remove();
+        this.walkTween = undefined;
+        this.visual.setY(0);
         this.startIdle();
         onComplete?.();
       },
@@ -732,7 +753,10 @@ class Character extends Phaser.GameObjects.Container {
 
   teleportTo(x: number, y: number) {
     this.scene.tweens.killTweensOf(this);
+    this.walkTween?.remove();
+    this.walkTween = undefined;
     this.scaleY = 1;
+    this.visual.setY(0);
     this.setPosition(x, y);
     this.startIdle();
   }
@@ -822,6 +846,7 @@ class TavernScene extends Phaser.Scene {
   private sfxButton!: TapText;
   private bgmButton!: TapText;
   private staffButton!: TapText;
+  private navPanel!: Phaser.GameObjects.Container;
   private bankButton!: TapText;
   private serveButton!: TapText;
   private cookButton!: Phaser.GameObjects.Text;
@@ -2072,23 +2097,23 @@ class TavernScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setDepth(30.5);
 
-    this.coinsText = this.addUiText(16, 10, "", "20px", "#7fe8dd");
+    this.coinsText = this.addUiText(24, 10, "", "20px", "#7fe8dd");
     this.inventoryText = this.addUiText(200, 10, "", "20px", "#9fe870");
     this.levelText = this.addUiText(400, 10, "", "18px", "#87ceeb");
-    this.queueText = this.addUiText(16, 38, "", "20px", "#e0b0ff");
+    this.queueText = this.addUiText(24, 38, "", "20px", "#e0b0ff");
     this.realmText = this.addUiText(400, 10, "", "18px", "#ffd98a");
     this.cultivationText = this.addUiText(230, 38, "", "18px", "#d8c8ff");
     this.goalText = this.addUiText(410, 38, "", "18px", "#9fdf6a");
     this.goalText.setWordWrapWidth(280);
-    this.sessionText = this.addUiText(16, 64, "", "17px", "#a8d8ff");
-    this.chronicleText = this.addUiText(16, 88, "", "17px", "#cccccc");
+    this.sessionText = this.addUiText(24, 64, "", "17px", "#a8d8ff");
+    this.chronicleText = this.addUiText(24, 88, "", "17px", "#cccccc");
     this.levelText.setVisible(false);
 
     const audio = loadAudioSettings();
     this.sfxMuted = audio.sfxMuted;
     this.bgmMuted = audio.bgmMuted;
     this.sfxButton = this.addUiButton(
-      560,
+      580,
       8,
       () => {
         this.sfxMuted = !this.sfxMuted;
@@ -2099,7 +2124,7 @@ class TavernScene extends Phaser.Scene {
       0,
     );
     this.bgmButton = this.addUiButton(
-      560,
+      580,
       36,
       () => {
         this.bgmMuted = !this.bgmMuted;
@@ -2136,6 +2161,21 @@ class TavernScene extends Phaser.Scene {
     this.startButton = this.addUiButton(222, 1186, () => this.onStartButton(), { x: 12, y: 28 }, 6, "20px");
 
     // 打烊期的经营按钮：两列四行，保证每格都是可点的大按钮
+    this.navPanel = this.add.container(0, 0).setScrollFactor(0).setDepth(30);
+    this.navPanel.add(
+      this.add
+        .rectangle(8, 720, 704, 430, 0x1a120c, 0.72)
+        .setOrigin(0, 0)
+        .setStrokeStyle(2, 0x8a6a3a, 0.45),
+    );
+    this.navPanel.add(
+      this.add.text(24, 726, "掌柜事务", {
+        fontSize: "15px",
+        color: "#e0c9a0",
+        fontFamily: XIAN_FONT,
+      }),
+    );
+    this.navPanel.add(this.add.rectangle(24, 750, 672, 1, 0x8a6a3a, 0.4).setOrigin(0, 0));
     const nav = { x: 12, y: 28 };
     this.staffButton = this.addUiButton(
       16,
@@ -3736,6 +3776,7 @@ class TavernScene extends Phaser.Scene {
 
     this.serveButton.setVisible(isOpen);
     this.cookButton.setVisible(isOpen);
+    this.navPanel.setVisible(!isOpen);
     this.staffButton.setVisible(!isOpen);
     this.bankButton.setVisible(!isOpen);
     this.upgradeButton.setVisible(!isOpen);
@@ -4489,6 +4530,10 @@ class TavernScene extends Phaser.Scene {
     this.log(
       driver === "player" ? `你下厨烹制${chosen.name}` : `灶上伙计烹制${chosen.name}（雅座 ${index + 1}）`,
     );
+    if (driver === "player" && this.day === 1 && this.tutorialHintStage === 2) {
+      this.tutorialHintStage = 3;
+      this.showHint("已起锅，等出餐");
+    }
   }
 
   /** 玩家点采购：打烊瞬间到货；营业中走 15 秒紧急采购（翻倍价）。灵石不足时赊账，费用照扣。 */
@@ -4952,7 +4997,10 @@ class TavernScene extends Phaser.Scene {
         booth.state === "awaitingCook"
           ? `${marker}${wishName ?? "随意"}↓`
           : booth.state === "cooking"
-            ? `${booth.currentDish?.name ?? "烹饪"}`
+            ? `${booth.currentDish?.name ?? "烹饪"} ${Math.max(
+                0,
+                Math.ceil((booth.cookDoneAt - this.time.now) / 1000),
+              )}s`
             : "入座";
       visual.label.setText(showLabel ? labelText : "");
     });
@@ -4980,6 +5028,7 @@ class TavernScene extends Phaser.Scene {
 
     this.serveButton.setVisible(open);
     this.cookButton.setVisible(open);
+    this.navPanel.setVisible(!open);
     this.staffButton.setVisible(!open);
     this.bankButton.setVisible(!open);
     this.upgradeButton.setVisible(!open);
