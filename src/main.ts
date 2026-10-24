@@ -17,6 +17,7 @@ import {
   getAscensionPriceMultiplier,
   getAscensionStartCoins,
   getAscensionStartInventory,
+  getAscensionStartLevel,
   getBoothCount,
   getCultivationGain,
   getDailyGoal,
@@ -544,11 +545,12 @@ class TavernScene extends Phaser.Scene {
 
   /** 新周目存档：飞升后保留仙缘与形象，其余归零。 */
   private freshSave(ascensions: number): SaveData {
+    const startLevel = getAscensionStartLevel(ascensions);
     return {
       v: 1,
       coins: getAscensionStartCoins(ascensions),
       inventory: getAscensionStartInventory(ascensions),
-      level: 1,
+      level: startLevel,
       stoveLevel: 0,
       signLevel: 0,
       staffLevel: { hawker: 0, server: 0, cook: 0, buyer: 0 },
@@ -559,7 +561,7 @@ class TavernScene extends Phaser.Scene {
       cultivation: 0,
       day: 1,
       ascensions,
-      selectedDishIds: DISHES.filter((d) => d.unlockLevel <= 1).map((d) => d.id),
+      selectedDishIds: DISHES.filter((d) => d.unlockLevel <= startLevel).map((d) => d.id),
       playerGender: this.playerGender,
       meta: this.meta,
     };
@@ -623,6 +625,23 @@ class TavernScene extends Phaser.Scene {
             bestServed: count(meta.bestServed),
             goalsMet: count(meta.goalsMet),
             maxRealm: count(meta.maxRealm),
+            topDays: (Array.isArray(meta.topDays) ? meta.topDays : [])
+              .filter(
+                (record) =>
+                  record &&
+                  Number.isFinite(record.day) &&
+                  Number.isFinite(record.level) &&
+                  Number.isFinite(record.served) &&
+                  Number.isFinite(record.revenue),
+              )
+              .map((record) => ({
+                day: Math.max(1, Math.floor(record.day)),
+                level: Math.max(1, Math.floor(record.level)),
+                served: Math.max(0, Math.floor(record.served)),
+                revenue: Math.max(0, Math.floor(record.revenue)),
+              }))
+              .sort((a, b) => b.revenue - a.revenue)
+              .slice(0, 5),
           }
         : { ...EMPTY_META };
       this.meta.maxRealm = Math.max(this.meta.maxRealm, getRealmIndex(this.cultivation));
@@ -1449,6 +1468,8 @@ class TavernScene extends Phaser.Scene {
       revenue: this.sessionRevenue,
       goalMet: this.lastGoalResult?.met ?? false,
       realmIndex: this.realmIndex(),
+      day: Math.max(1, this.day - 1),
+      level: this.level,
     });
     this.updateBankruptStreak();
     // 结算/破产期间锁定副屏，避免重复结算或误买
@@ -1693,7 +1714,9 @@ class TavernScene extends Phaser.Scene {
         40,
         146,
         this.ascensions > 0
-          ? `仙缘 ${this.ascensions} 重 · 菜品售价 +${Math.round((getAscensionPriceMultiplier(this.ascensions) - 1) * 100)}%`
+          ? `仙缘 ${this.ascensions} 重 · 菜品售价 +${Math.round(
+              (getAscensionPriceMultiplier(this.ascensions) - 1) * 100,
+            )}% · 下次飞升开局 Lv${getAscensionStartLevel(this.ascensions + 1)}`
           : "尚未飞升 · 每次飞升留一重仙缘，永久提高售价",
         { fontSize: "15px", color: "#c8a8ff" },
       ),
@@ -1774,7 +1797,7 @@ class TavernScene extends Phaser.Scene {
       `失去：灵石、灵材、酒楼 ${this.level} 级、灶台/门面、伙计、借据、修为、天数`,
       "",
       `飞升后：仙缘 ${next} 重，菜品售价 +${Math.round((getAscensionPriceMultiplier(next) - 1) * 100)}%`,
-      `开局灵石 ${STARTING_COINS + next * 20}、灵材 ${STARTING_INVENTORY + next * 2}`,
+      `开局：酒楼 Lv${getAscensionStartLevel(next)} · 灵石 ${getAscensionStartCoins(next)} · 灵材 ${getAscensionStartInventory(next)}`,
     ];
     lines.forEach((line, i) => {
       layer.add(
@@ -2188,6 +2211,19 @@ class TavernScene extends Phaser.Scene {
     stats.forEach((line, i) => {
       layer.add(this.add.text(40, 126 + i * 30, line, { fontSize: "18px", color: "#dddddd" }));
     });
+    layer.add(this.add.text(400, 126, "本机单日榜", { fontSize: "18px", color: "#ffd98a" }));
+    if (this.meta.topDays.length === 0) {
+      layer.add(this.add.text(400, 160, "尚无记录", { fontSize: "14px", color: "#777777" }));
+    } else {
+      this.meta.topDays.forEach((record, i) => {
+        layer.add(
+          this.add.text(400, 158 + i * 26, `${i + 1}. 第${record.day}日 · Lv${record.level} · ${record.revenue} 灵石`, {
+            fontSize: "14px",
+            color: i === 0 ? "#ffd98a" : "#bbbbbb",
+          }),
+        );
+      });
+    }
 
     const achievements = getAchievements(meta, this.ascensions);
     const unlocked = achievements.filter((item) => item.unlocked).length;

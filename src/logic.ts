@@ -362,6 +362,11 @@ export function getAscensionPriceMultiplier(ascensions: number): number {
   return 1 + ASCENSION_PRICE_BONUS * Math.max(0, Math.floor(ascensions));
 }
 
+/** 每 3 重仙缘，飞升后的新周目直接从更高酒楼等级开局，跳过早期重复劳动。 */
+export function getAscensionStartLevel(ascensions: number): number {
+  return 1 + Math.floor(Math.max(0, Math.floor(ascensions)) / 3);
+}
+
 export function getAscensionStartCoins(ascensions: number): number {
   return STARTING_COINS + Math.max(0, Math.floor(ascensions)) * ASCENSION_START_COIN_BONUS;
 }
@@ -371,6 +376,13 @@ export function getAscensionStartInventory(ascensions: number): number {
 }
 
 // ===== 跨周目账簿与成就 =====
+export interface MetaDayRecord {
+  day: number;
+  level: number;
+  served: number;
+  revenue: number;
+}
+
 export interface MetaStats {
   days: number;
   served: number;
@@ -379,6 +391,8 @@ export interface MetaStats {
   bestServed: number;
   goalsMet: number;
   maxRealm: number;
+  /** 本机单日收入前 5，按收入降序。 */
+  topDays: MetaDayRecord[];
 }
 
 export const EMPTY_META: MetaStats = {
@@ -389,12 +403,24 @@ export const EMPTY_META: MetaStats = {
   bestServed: 0,
   goalsMet: 0,
   maxRealm: 0,
+  topDays: [],
 };
 
 export function updateMeta(
   meta: MetaStats,
-  session: { served: number; revenue: number; goalMet: boolean; realmIndex: number },
+  session: { served: number; revenue: number; goalMet: boolean; realmIndex: number; day: number; level: number },
 ): MetaStats {
+  const topDays = [
+    ...meta.topDays,
+    {
+      day: Math.max(1, session.day),
+      level: Math.max(1, session.level),
+      served: Math.max(0, session.served),
+      revenue: Math.max(0, session.revenue),
+    },
+  ]
+    .sort((a, b) => b.revenue - a.revenue)
+    .slice(0, 5);
   return {
     days: meta.days + 1,
     served: meta.served + Math.max(0, session.served),
@@ -403,6 +429,7 @@ export function updateMeta(
     bestServed: Math.max(meta.bestServed, session.served),
     goalsMet: meta.goalsMet + (session.goalMet ? 1 : 0),
     maxRealm: Math.max(meta.maxRealm, session.realmIndex),
+    topDays,
   };
 }
 

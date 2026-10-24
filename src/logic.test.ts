@@ -16,6 +16,7 @@ import {
   getAscensionPriceMultiplier,
   getAscensionStartCoins,
   getAscensionStartInventory,
+  getAscensionStartLevel,
   getBoothCount,
   getCultivationGain,
   getDailyGoal,
@@ -377,8 +378,25 @@ describe("飞升开局与跨周目账簿", () => {
     expect(getAscensionStartInventory(-3)).toBe(5);
   });
 
+  it("每 3 重仙缘提高新周目开局酒楼等级", () => {
+    expect(getAscensionStartLevel(0)).toBe(1);
+    expect(getAscensionStartLevel(2)).toBe(1);
+    expect(getAscensionStartLevel(3)).toBe(2);
+    expect(getAscensionStartLevel(5)).toBe(2);
+    expect(getAscensionStartLevel(6)).toBe(3);
+    expect(getAscensionStartLevel(30)).toBe(11);
+    expect(getAscensionStartLevel(-2)).toBe(1);
+  });
+
   it("账簿累加、保留单日最高与历史最高境界", () => {
-    const first = updateMeta(EMPTY_META, { served: 9, revenue: 63, goalMet: true, realmIndex: 1 });
+    const first = updateMeta(EMPTY_META, {
+      served: 9,
+      revenue: 63,
+      goalMet: true,
+      realmIndex: 1,
+      day: 1,
+      level: 1,
+    });
     expect(first).toMatchObject({
       days: 1,
       served: 9,
@@ -388,7 +406,15 @@ describe("飞升开局与跨周目账簿", () => {
       goalsMet: 1,
       maxRealm: 1,
     });
-    const second = updateMeta(first, { served: 3, revenue: 20, goalMet: false, realmIndex: 0 });
+    expect(first.topDays).toEqual([{ day: 1, level: 1, served: 9, revenue: 63 }]);
+    const second = updateMeta(first, {
+      served: 3,
+      revenue: 20,
+      goalMet: false,
+      realmIndex: 0,
+      day: 2,
+      level: 2,
+    });
     expect(second.days).toBe(2);
     expect(second.served).toBe(12);
     expect(second.revenue).toBe(83);
@@ -396,6 +422,23 @@ describe("飞升开局与跨周目账簿", () => {
     expect(second.bestServed).toBe(9);
     expect(second.goalsMet).toBe(1);
     expect(second.maxRealm).toBe(1);
+  });
+
+  it("本机单日榜只留收入最高的 5 天并降序", () => {
+    let meta = { ...EMPTY_META };
+    for (const [i, revenue] of [10, 300, 50, 200, 80, 120].entries()) {
+      meta = updateMeta(meta, {
+        served: i,
+        revenue,
+        goalMet: false,
+        realmIndex: 0,
+        day: i + 1,
+        level: 1,
+      });
+    }
+    expect(meta.topDays.map((r) => r.revenue)).toEqual([300, 200, 120, 80, 50]);
+    expect(meta.topDays.length).toBe(5);
+    expect(meta.bestRevenue).toBe(300);
   });
 
   it("成就按账簿阈值解锁，完整账簿可全解锁", () => {
@@ -417,6 +460,7 @@ describe("飞升开局与跨周目账簿", () => {
         bestServed: 15,
         goalsMet: 20,
         maxRealm: 7,
+        topDays: [],
       },
       1,
     );
