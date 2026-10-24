@@ -365,6 +365,14 @@ class Character extends Phaser.GameObjects.Container {
               : 0x2a1c16;
     this.eyeL = scene.add.circle(-4, -19, 1.4, pupil).setDepth(2);
     this.eyeR = scene.add.circle(4, -19, 1.4, pupil).setDepth(2);
+    const eyeRadius =
+      look === "elder" ? 2.5 : look === "mortal" ? 3.2 : look === "sword" ? 2.7 : look === "demon" ? 2.9 : 3;
+    const pupilRadius =
+      look === "demon" || look === "demonlord" ? 1.7 : look === "elder" ? 1.1 : 1.4;
+    this.eyeWhiteL.setRadius(eyeRadius);
+    this.eyeWhiteR.setRadius(eyeRadius);
+    this.eyeL.setRadius(pupilRadius);
+    this.eyeR.setRadius(pupilRadius);
     this.glintL = scene.add.circle(-4.8, -20.2, 0.8, 0xffffff, 0.92).setDepth(3);
     this.glintR = scene.add.circle(3.2, -20.2, 0.8, 0xffffff, 0.92).setDepth(3);
     this.visual.add([this.eyeWhiteL, this.eyeWhiteR, this.eyeL, this.eyeR, this.glintL, this.glintR]);
@@ -431,7 +439,16 @@ class Character extends Phaser.GameObjects.Container {
     const body = this.bodyColor;
     const dark = this.shade(body, 0.72);
     const deep = this.shade(body, 0.5);
-    const skin = 0xffe0bd;
+    const skin =
+      this.look === "elder"
+        ? 0xf2e8d8
+        : this.look === "demon" || this.look === "demonlord"
+          ? 0xe8c8a8
+          : this.look === "mortal"
+            ? 0xf0d0b0
+            : 0xffe0bd;
+    const headR =
+      this.look === "mortal" ? 11.8 : this.look === "elder" ? 11.3 : this.look === "sword" ? 10.6 : 11;
     const hair = this.hairColor;
     const trim =
       this.look === "demon" || this.look === "demonlord"
@@ -529,6 +546,9 @@ class Character extends Phaser.GameObjects.Container {
     g.fillStyle(skin, 1);
     g.fillCircle(-14, 18, 3.2);
     g.fillCircle(14, 18, 3.2);
+    g.lineStyle(1, 0xd8a07a, 0.65);
+    g.lineBetween(-16, 18, -12, 18);
+    g.lineBetween(12, 18, 16, 18);
     // 腰带
     g.fillStyle(0x2a211a, 1);
     g.fillRect(-13, 8, 26, 5);
@@ -557,6 +577,9 @@ class Character extends Phaser.GameObjects.Container {
       g.fillStyle(skin, 1);
       g.fillCircle(6, 12, 2.6);
       g.fillCircle(14, 10, 2.6);
+      g.lineStyle(1, 0xd8a07a, 0.65);
+      g.lineBetween(4, 12, 8, 12);
+      g.lineBetween(12, 10, 16, 10);
       g.lineStyle(2, 0x6a4a2a, 1);
       g.lineBetween(11, 4, 18, -3);
     }
@@ -569,9 +592,9 @@ class Character extends Phaser.GameObjects.Container {
     // 脖子与头
     g.fillStyle(skin, 1);
     g.fillRect(-3, -12, 6, 5);
-    g.fillCircle(0, -20, 11);
+    g.fillCircle(0, -20, headR);
     g.lineStyle(1.2, 0x4a3226, 0.35);
-    g.strokeCircle(0, -20, 11);
+    g.strokeCircle(0, -20, headR);
     // 后发与发髻：只盖住头顶，别把脸埋掉
     g.fillStyle(hair, 1);
     g.fillEllipse(0, -29, 24, 12);
@@ -629,13 +652,33 @@ class Character extends Phaser.GameObjects.Container {
     g.lineBetween(8, -26, 10, -14);
     // 耳朵、鼻子与发顶高光
     g.fillStyle(skin, 1);
-    g.fillCircle(-11, -17, 2.4);
-    g.fillCircle(11, -17, 2.4);
+    g.fillCircle(-(headR - 0.5), -17, 2.4);
+    g.fillCircle(headR - 0.5, -17, 2.4);
     g.fillStyle(0xd8a07a, 0.55);
-    g.fillCircle(-11, -17, 1);
-    g.fillCircle(11, -17, 1);
+    g.fillCircle(-(headR - 0.5), -17, 1);
+    g.fillCircle(headR - 0.5, -17, 1);
     g.lineStyle(1, 0xd8a07a, 0.7);
     g.lineBetween(1, -17, 2, -15);
+    // 年龄/身份留下的小痕迹
+    if (this.look === "mortal") {
+      g.fillStyle(0xc88870, 0.55);
+      for (const [fx, fy] of [
+        [-6, -17],
+        [-2, -16],
+        [2, -17],
+        [6, -16],
+      ]) {
+        g.fillCircle(fx, fy, 0.7);
+      }
+    } else if (this.look === "elder") {
+      g.lineStyle(1, 0xb09070, 0.4);
+      g.lineBetween(-6, -27, -2, -27);
+      g.lineBetween(2, -27, 6, -27);
+      g.lineBetween(-5, -29, -2, -29);
+    } else if (this.look === "sword") {
+      g.lineStyle(1, 0xb06a5a, 0.6);
+      g.lineBetween(-7, -14, -4, -11);
+    }
     g.fillStyle(this.shade(hair, 1.6), 0.35);
     g.fillEllipse(-4, -31, 12, 4);
     g.lineStyle(1, this.shade(hair, 1.6), 0.4);
@@ -972,6 +1015,20 @@ class Character extends Phaser.GameObjects.Container {
 
   isSpeaking(): boolean {
     return this.bubble !== undefined;
+  }
+
+  /** 碰杯时向对方歪一下身子，别只是原地上下跳。 */
+  cheer(dir: 1 | -1) {
+    if (!this.scene || !this.visual?.active) return;
+    this.scene.tweens.add({
+      targets: this.visual,
+      angle: dir * 7,
+      duration: 190,
+      yoyo: true,
+      repeat: 1,
+      ease: "Sine.easeInOut",
+      onComplete: () => this.visual.setAngle(0),
+    });
   }
 
   /** 操作中的占位动画：竖向缩放脉冲 + 上下浮动（不碰 scaleX，避免破坏朝向翻转）。 */
@@ -2578,7 +2635,7 @@ class TavernScene extends Phaser.Scene {
     this.cookButton.setBackgroundColor("#5a3a1c");
     this.shoutButton.setBackgroundColor("#3f3a5a");
     // 出菜行：点哪道菜就做哪道，优先端给想吃它的那一桌
-    this.dishChipLabel = this.addUiText(16, 1004, "出菜 · 点菜名", "19px", "#e0c9a0");
+    this.dishChipLabel = this.addUiText(16, 1014, "出菜 · 点菜名", "19px", "#e0c9a0");
     this.dishChips = DISHES.map((_, i) =>
       this.addUiButton(
         56 + (i % 4) * 150,
@@ -2742,7 +2799,7 @@ class TavernScene extends Phaser.Scene {
     const runner = this.add.rectangle(0, 0, 60, 6, 0x8a2a22).setDepth(2.5).setStrokeStyle(1, 0xd9b45a, 0.7);
     const number = this.add
       .text(0, 0, "", {
-        fontSize: "14px",
+        fontSize: "15px",
         color: "#e0c9a0",
         stroke: "#1a120a",
         strokeThickness: 3,
@@ -2756,14 +2813,14 @@ class TavernScene extends Phaser.Scene {
     ];
     const label = this.add
       .text(0, 0, "", {
-        fontSize: "17px",
+        fontSize: "19px",
         color: "#ffe6c8",
         stroke: "#1a120a",
         strokeThickness: 3,
         padding: { x: 2, y: 1 },
         align: "center",
         lineSpacing: 1,
-        wordWrap: { width: 130 },
+        wordWrap: { width: 140 },
         fontFamily: XIAN_FONT,
       })
       .setOrigin(0.5, 1)
@@ -2811,7 +2868,7 @@ class TavernScene extends Phaser.Scene {
         .setVisible(this.gameState === "open");
       v.legs[0].setPosition(x - width / 2 + 10, FLOOR_Y - 14);
       v.legs[1].setPosition(x + width / 2 - 10, FLOOR_Y - 14);
-      v.label.setPosition(x, FLOOR_Y - 120 - stagger);
+      v.label.setPosition(x, FLOOR_Y - 116 - stagger);
       const zoneWidth = Math.max(36, Math.min(90, 320 / total));
       v.zone.setPosition(x, FLOOR_Y - 170).setSize(zoneWidth, 160);
       if (v.zone.input) v.zone.input.hitArea.setSize(zoneWidth, 160);
@@ -4791,7 +4848,7 @@ class TavernScene extends Phaser.Scene {
       const stick = this.add.rectangle(18, -24, 6, 90, 0x6a4a2a).setAngle(26);
       prop.add([bowl, rim, soup, stick]);
       for (const sx of [-18, 18]) {
-        const steam = this.add.ellipse(sx, -36, 30, 14, 0xe8e8e8, 0.2);
+        const steam = this.add.ellipse(sx, -36, 36, 16, 0xf0e8e0, 0.38);
         prop.add(steam);
         this.tweens.add({
           targets: steam,
@@ -5030,6 +5087,8 @@ class TavernScene extends Phaser.Scene {
     this.lastClinkAt = this.time.now;
     a.pulse();
     b.pulse();
+    a.cheer(a.x < b.x ? 1 : -1);
+    b.cheer(b.x < a.x ? 1 : -1);
     a.say(
       ["道友，共饮一杯？", "此味配灵茶，正好。", "同席是缘，干杯。"][
         Math.floor(Math.random() * 3)
@@ -6034,15 +6093,8 @@ class TavernScene extends Phaser.Scene {
     const showChips = open && !this.settling;
     const specialId = this.currentDailySpecial();
     const specialDish = specialId ? DISHES.find((d) => d.id === specialId) : undefined;
-    const specialBase = specialDish ? this.baseDishPrice(specialDish) : 0;
-    const specialPrice = specialDish ? this.dishPrice(specialDish) : 0;
-    const specialPct = specialBase > 0 ? Math.round((specialPrice / specialBase - 1) * 100) : 0;
     this.dishChipLabel.setVisible(showChips);
-    this.dishChipLabel.setText(
-      `出菜 · 点菜名${
-        specialDish ? ` · 今日招牌：${specialDish.name} ${specialPrice}（+${specialPct}%）` : ""
-      }`,
-    );
+    this.dishChipLabel.setText("出菜 · 点菜名");
     this.dishChips.forEach((chip, i) => {
       const dish = menu[i];
       chip.setVisible(showChips && dish !== undefined);
