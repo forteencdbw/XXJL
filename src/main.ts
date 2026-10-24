@@ -1261,6 +1261,7 @@ class TavernScene extends Phaser.Scene {
   private sessionEndsAt = 0;
   private sessionStartedAt = 0;
   private sessionServed = 0;
+  private firstGuestShown = false;
   private sessionRevenue = 0;
   private sessionLost = 0;
   private sessionWishes = 0;
@@ -4915,6 +4916,7 @@ class TavernScene extends Phaser.Scene {
 
       this.dishCursor = 0;
       this.sessionServed = 0;
+      this.firstGuestShown = false;
       this.sessionRevenue = 0;
       this.sessionLost = 0;
       this.sessionWishes = 0;
@@ -7107,9 +7109,15 @@ class TavernScene extends Phaser.Scene {
       this.regularsToday.add(regular.name);
       if (forceRegular) this.regularDueToday = false;
     }
-    const kind = regular
-      ? (PATRON_KINDS.find((k) => k.id === regular.kindId) ?? pickPatronKind(Math.random()))
-      : pickPatronKind(Math.random());
+    const isFirstGuest = !this.firstGuestShown;
+    this.firstGuestShown = true;
+    // 新档第一位客人固定是御剑而来的白无锋：让玩家先看到本作最有辨识度的出场
+    const tutorialSword = isFirstGuest && this.day === 1 && !regular;
+    const kind = tutorialSword
+      ? (PATRON_KINDS.find((k) => k.id === "sword") ?? pickPatronKind(Math.random()))
+      : regular
+        ? (PATRON_KINDS.find((k) => k.id === regular.kindId) ?? pickPatronKind(Math.random()))
+        : pickPatronKind(Math.random());
     const rare = kind.priceFactor >= 1.8;
     const slotX = QUEUE_X + this.queue.length * this.queueGap();
     const spawnX = Math.max(980, slotX + 60);
@@ -7117,7 +7125,7 @@ class TavernScene extends Phaser.Scene {
     const char = new Character(this, spawnX, ACTOR_Y, kind.bodyColor, kind.hairColor, longHair, kind.id as CharacterLook);
     char.setVisible(this.gameState === "open");
     char.setMood(rare ? "cold" : "waiting");
-    const name = regular?.name ?? pickPatronName(kind, Math.random());
+    const name = regular?.name ?? (tutorialSword ? "白无锋" : pickPatronName(kind, Math.random()));
     char.displayName = regular ? `${name}（常客）` : name;
     if (rare) char.setAura(kind.id === "elder" ? 0xffe08a : 0xff6a6a, 0.9, 0.35);
     // 点名范围是已解锁的全部菜：菜单没上的菜也会被点名，端不上就只付半价
