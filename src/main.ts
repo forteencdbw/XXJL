@@ -288,6 +288,8 @@ class Character extends Phaser.GameObjects.Container {
   private art: Phaser.GameObjects.Graphics;
   private eyeL: Phaser.GameObjects.Arc;
   private eyeR: Phaser.GameObjects.Arc;
+  private eyeWhiteL: Phaser.GameObjects.Arc;
+  private eyeWhiteR: Phaser.GameObjects.Arc;
   private aura?: Phaser.GameObjects.Arc;
   private patienceBg?: Phaser.GameObjects.Rectangle;
   private patienceFill?: Phaser.GameObjects.Rectangle;
@@ -320,15 +322,17 @@ class Character extends Phaser.GameObjects.Container {
     this.visual.setScale(Character.ART_SCALE);
     this.art = scene.add.graphics();
     this.visual.add(this.art);
-    this.eyeL = scene.add.circle(-4, -19, 2.2, 0x2a1c16).setDepth(1);
-    this.eyeR = scene.add.circle(4, -19, 2.2, 0x2a1c16).setDepth(1);
-    this.visual.add([this.eyeL, this.eyeR]);
+    this.eyeWhiteL = scene.add.circle(-4, -19, 3, 0xfff6e8).setDepth(1);
+    this.eyeWhiteR = scene.add.circle(4, -19, 3, 0xfff6e8).setDepth(1);
+    this.eyeL = scene.add.circle(-4, -19, 1.4, 0x2a1c16).setDepth(2);
+    this.eyeR = scene.add.circle(4, -19, 1.4, 0x2a1c16).setDepth(2);
+    this.visual.add([this.eyeWhiteL, this.eyeWhiteR, this.eyeL, this.eyeR]);
     this.add(this.visual);
     this.draw();
     this.setDepth(20);
     scene.add.existing(this);
     scene.tweens.add({
-      targets: [this.eyeL, this.eyeR],
+      targets: [this.eyeWhiteL, this.eyeWhiteR, this.eyeL, this.eyeR],
       scaleY: 0.12,
       duration: 70,
       yoyo: true,
@@ -346,7 +350,10 @@ class Character extends Phaser.GameObjects.Container {
       downY = p.y;
     });
     this.on("pointerup", (p: Phaser.Input.Pointer) => {
-      if (Math.hypot(p.x - downX, p.y - downY) < 14) this.say(this.talkLine());
+      if (Math.hypot(p.x - downX, p.y - downY) < 14) {
+        this.say(this.talkLine());
+        this.scene.events.emit("focus-character", this);
+      }
     });
   }
 
@@ -471,14 +478,28 @@ class Character extends Phaser.GameObjects.Container {
     g.fillCircle(0, -20, 11);
     // 后发与发髻：只盖住头顶，别把脸埋掉
     g.fillStyle(hair, 1);
-    g.fillEllipse(0, -28, 24, 14);
+    g.fillEllipse(0, -29, 24, 12);
     g.fillEllipse(-10, -20, 6, 18);
     g.fillEllipse(10, -20, 6, 18);
     g.fillCircle(0, -35, 5);
+    if (this.look === "sword") {
+      g.fillRect(-2, -44, 4, 12);
+      g.fillStyle(0xd9b45a, 1);
+      g.fillRect(-4, -33, 8, 3);
+    } else if (this.look === "alchemist") {
+      g.fillCircle(-9, -31, 4);
+      g.fillCircle(9, -31, 4);
+    } else if (this.look === "rogue") {
+      g.fillStyle(0xd9b45a, 0.9);
+      g.fillRect(-11, -25, 22, 3);
+    } else if (this.look === "player") {
+      g.fillStyle(0x7fe8dd, 1);
+      g.fillCircle(0, -23, 1.8);
+    }
     // 眉
     g.lineStyle(1.4, this.shade(hair, 1.2), 0.9);
-    g.lineBetween(-7, -23, -2, -23);
-    g.lineBetween(2, -23, 7, -23);
+    g.lineBetween(-7, -22.5, -2, -22.5);
+    g.lineBetween(2, -22.5, 7, -22.5);
     if (this.look === "elder") {
       g.fillStyle(0xf2f4f8, 0.95);
       g.fillTriangle(-7, -13, 7, -13, 0, 6);
@@ -500,10 +521,27 @@ class Character extends Phaser.GameObjects.Container {
     g.lineBetween(-8, -26, -10, -14);
     g.lineBetween(8, -26, 10, -14);
     // 嘴
-    g.lineStyle(1.4, 0x9a5a4a, 0.9);
-    g.lineBetween(-2.5, -13, 2.5, -13);
+    g.lineStyle(1.3, 0x9a5a4a, 0.9);
+    g.beginPath();
+    g.arc(0, -13, 3, 0, Math.PI, false);
+    g.strokePath();
 
     // 身份道具：画在前面
+    if (this.look === "elder") {
+      g.lineStyle(3, 0x6a4a2a, 1);
+      g.lineBetween(17, 30, 20, -46);
+      g.lineStyle(2, 0x7fe8dd, 0.9);
+      g.strokeCircle(20, -49, 5);
+    }
+    if (this.look === "alchemist") {
+      g.fillStyle(0xf1e4cc, 1);
+      g.beginPath();
+      g.moveTo(13, 16);
+      g.lineTo(27, 3);
+      g.lineTo(22, 19);
+      g.closePath();
+      g.fillPath();
+    }
     if (this.look === "player") {
       g.lineStyle(1.5, 0xd9b45a, 0.9);
       g.lineBetween(-9, -6, -13, 28);
@@ -868,6 +906,10 @@ class TavernScene extends Phaser.Scene {
   private settling = false;
   /** 视图过渡中，防止重复触发。 */
   private transitioning = false;
+  private focusTimer?: Phaser.Time.TimerEvent;
+  private focusVignette?: Phaser.GameObjects.Container;
+  private focusReturn = { x: CAMERA_OPEN_X, y: SCREEN_H / 2 };
+  private focusing = false;
   private celebrating = false;
   private celebrationTimer?: Phaser.Time.TimerEvent;
   private sparkles: Phaser.GameObjects.Arc[] = [];
@@ -904,6 +946,7 @@ class TavernScene extends Phaser.Scene {
     this.time.addEvent({ delay: 520, loop: true, callback: () => this.emitQi() });
     this.time.addEvent({ delay: 700, loop: true, callback: () => this.emitWeather() });
     this.time.addEvent({ delay: 2600, loop: true, callback: () => this.idleTwitch() });
+    this.events.on("focus-character", (char: Character) => this.focusOnCharacter(char));
     // shortcut: 用 localStorage 存档；接入微信小游戏时换成 wx.setStorageSync / wx.getStorageSync
     addEventListener("beforeunload", () => this.save());
     document.addEventListener("visibilitychange", () => {
@@ -2771,6 +2814,8 @@ class TavernScene extends Phaser.Scene {
       this.settling = false;
       this.cameras.main.centerOn(CAMERA_OPEN_X, SCREEN_H / 2);
       this.cameras.main.setZoom(1);
+      this.focusTimer?.remove();
+      this.focusing = false;
       this.positionUi(true);
       this.sessionStartedAt = this.time.now;
 
@@ -2836,6 +2881,10 @@ class TavernScene extends Phaser.Scene {
   }
 
   private endSession() {
+    this.focusTimer?.remove();
+    this.focusVignette?.destroy();
+    this.focusVignette = undefined;
+    this.focusing = false;
     this.settling = true;
     this.sessionEndsAt = 0;
     if (this.playerPurchasing) {
@@ -3496,6 +3545,8 @@ class TavernScene extends Phaser.Scene {
       `余下：${this.coins} 灵石（连亏 ${this.negativeStreak}/${BANKRUPT_STREAK} 日）`,
       `流失食客：${this.sessionLost} 位`,
     ];
+    const nextCost = getUpgradeCost(this.level);
+    summary.push(`下一阶：${nextCost} 灵石 → Lv${this.level + 1}，店内会添新陈设`);
     // 卡片高度按明细行数算，保证内容不溢出
     const cardHeight =
       76 +
@@ -4106,6 +4157,52 @@ class TavernScene extends Phaser.Scene {
     for (const q of this.queue) chars.push(q.char);
     for (const c of Object.values(this.staffChars)) if (c?.visible) chars.push(c);
     chars[Math.floor(Math.random() * chars.length)]?.twitch();
+  }
+
+  /** 点人物时的短暂特写：镜头推近、停两秒、再拉回原视角。 */
+  private focusOnCharacter(char: Character) {
+    if (this.gameState !== "open" || this.settling) return;
+    const cam = this.cameras.main;
+    if (!this.focusing) {
+      this.focusReturn = { x: cam.midPoint.x, y: cam.midPoint.y };
+      this.focusing = true;
+    }
+    this.focusTimer?.remove();
+    if (!this.focusVignette) {
+      const v = this.add.container(0, 0).setScrollFactor(0).setDepth(28).setAlpha(0);
+      v.add(this.add.rectangle(0, 0, SCREEN_W, 150, 0x05070b, 0.55).setOrigin(0, 0));
+      v.add(this.add.rectangle(0, 1000, SCREEN_W, 280, 0x05070b, 0.55).setOrigin(0, 0));
+      v.add(this.add.rectangle(0, 0, 80, SCREEN_H, 0x05070b, 0.4).setOrigin(0, 0));
+      v.add(this.add.rectangle(640, 0, 80, SCREEN_H, 0x05070b, 0.4).setOrigin(0, 0));
+      v.add(
+        this.add
+          .rectangle(90, 180, 540, 760, 0x000000, 0)
+          .setStrokeStyle(1, 0xd9b45a, 0.25)
+          .setOrigin(0, 0),
+      );
+      this.focusVignette = v;
+    }
+    this.tweens.add({ targets: this.focusVignette, alpha: 1, duration: 250 });
+    cam.pan(char.x, Math.min(char.y - 14, SCREEN_H - SCREEN_H / 3.2 - 20), 320, "Sine.easeInOut");
+    cam.zoomTo(1.6, 320, "Sine.easeInOut");
+    this.focusTimer = this.time.delayedCall(2300, () => {
+      this.focusing = false;
+      if (this.focusVignette) {
+        const v = this.focusVignette;
+        this.tweens.add({
+          targets: v,
+          alpha: 0,
+          duration: 250,
+          onComplete: () => {
+            v.destroy();
+            if (this.focusVignette === v) this.focusVignette = undefined;
+          },
+        });
+      }
+      if (this.gameState !== "open") return;
+      cam.pan(this.focusReturn.x, this.focusReturn.y, 360, "Sine.easeInOut");
+      cam.zoomTo(1, 360, "Sine.easeInOut");
+    });
   }
 
   /** 玩家亲自下厨/招待时，身周升起灵气微光。 */
