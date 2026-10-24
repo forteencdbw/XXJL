@@ -1299,6 +1299,7 @@ class TavernScene extends Phaser.Scene {
     const hadSave = this.loadSave();
     this.ensureGlowTexture();
     this.ensurePaperTextures();
+    this.ensureDishTexture();
     this.booths = Array.from({ length: getBoothCount(this.level) }, () => this.makeBooth());
     if (this.selectedDishIds.size === 0) {
       this.selectedDishIds = new Set(DISHES.filter((d) => d.unlockLevel <= this.level).map((d) => d.id));
@@ -1386,6 +1387,145 @@ class TavernScene extends Phaser.Scene {
         vig.refresh();
       }
     }
+  }
+
+  /** 一张手绘感的灵膳大碗：菜单空桌时用它，比几何椭圆更像“菜”。 */
+  private ensureDishTexture() {
+    if (this.textures.exists("dish-feast")) return;
+    const tex = this.textures.createCanvas("dish-feast", 512, 512);
+    if (!tex) return;
+    const c = tex.getContext();
+    c.clearRect(0, 0, 512, 512);
+    // 桌面投影
+    const shadow = c.createRadialGradient(256, 430, 20, 256, 430, 200);
+    shadow.addColorStop(0, "rgba(0,0,0,0.42)");
+    shadow.addColorStop(1, "rgba(0,0,0,0)");
+    c.fillStyle = shadow;
+    c.beginPath();
+    c.ellipse(256, 430, 205, 38, 0, 0, Math.PI * 2);
+    c.fill();
+    // 陶碗外壁
+    const bowl = c.createLinearGradient(0, 285, 0, 445);
+    bowl.addColorStop(0, "#d8ded2");
+    bowl.addColorStop(0.45, "#9aa89a");
+    bowl.addColorStop(1, "#4d5a50");
+    c.fillStyle = bowl;
+    c.beginPath();
+    c.moveTo(78, 300);
+    c.bezierCurveTo(102, 438, 410, 438, 434, 300);
+    c.closePath();
+    c.fill();
+    c.strokeStyle = "rgba(40,48,42,0.65)";
+    c.lineWidth = 3;
+    c.stroke();
+    // 碗沿
+    const rim = c.createLinearGradient(0, 255, 0, 350);
+    rim.addColorStop(0, "#f3ead4");
+    rim.addColorStop(0.5, "#d9c9a6");
+    rim.addColorStop(1, "#a58a5f");
+    c.fillStyle = rim;
+    c.beginPath();
+    c.ellipse(256, 300, 178, 44, 0, 0, Math.PI * 2);
+    c.fill();
+    c.strokeStyle = "rgba(255,230,170,0.55)";
+    c.lineWidth = 2;
+    c.stroke();
+    // 汤
+    const soup = c.createRadialGradient(220, 286, 12, 256, 310, 170);
+    soup.addColorStop(0, "#e8b85f");
+    soup.addColorStop(0.55, "#b8782f");
+    soup.addColorStop(1, "#6d431c");
+    c.fillStyle = soup;
+    c.beginPath();
+    c.ellipse(256, 305, 150, 33, 0, 0, Math.PI * 2);
+    c.fill();
+    c.strokeStyle = "rgba(80,40,10,0.35)";
+    c.lineWidth = 2;
+    c.stroke();
+    // 面/汤面弧线
+    c.lineCap = "round";
+    c.strokeStyle = "rgba(255,229,166,0.9)";
+    c.lineWidth = 6;
+    for (const [sx, sy, dx, dy] of [
+      [150, 302, 96, -8],
+      [168, 314, 82, 4],
+      [190, 296, 70, 6],
+    ] as const) {
+      c.beginPath();
+      c.moveTo(sx, sy);
+      c.bezierCurveTo(sx + dx * 0.4, sy + dy - 10, sx + dx * 0.75, sy + dy + 8, sx + dx, sy + dy);
+      c.stroke();
+    }
+    // 青菜与配菜
+    const leaf = (x: number, y: number, rot: number, color: string) => {
+      c.save();
+      c.translate(x, y);
+      c.rotate(rot);
+      const grd = c.createLinearGradient(0, -10, 0, 10);
+      grd.addColorStop(0, color);
+      grd.addColorStop(1, "rgba(40,80,40,0.85)");
+      c.fillStyle = grd;
+      c.beginPath();
+      c.ellipse(0, 0, 26, 9, 0, 0, Math.PI * 2);
+      c.fill();
+      c.strokeStyle = "rgba(220,240,190,0.4)";
+      c.lineWidth = 1.5;
+      c.beginPath();
+      c.moveTo(-18, 0);
+      c.lineTo(18, 0);
+      c.stroke();
+      c.restore();
+    };
+    leaf(200, 290, -0.3, "#8fbf62");
+    leaf(318, 300, 0.4, "#6fa64e");
+    leaf(286, 282, 0.1, "#a8d878");
+    // 菌片与胡萝卜
+    c.fillStyle = "#e8d6b0";
+    c.beginPath();
+    c.ellipse(338, 290, 13, 7, -0.3, 0, Math.PI * 2);
+    c.fill();
+    c.fillStyle = "#d97a3a";
+    c.beginPath();
+    c.arc(230, 318, 7, 0, Math.PI * 2);
+    c.fill();
+    // 油光
+    c.fillStyle = "rgba(255,244,210,0.35)";
+    c.beginPath();
+    c.ellipse(205, 294, 28, 5, -0.1, 0, Math.PI * 2);
+    c.fill();
+    c.beginPath();
+    c.ellipse(330, 316, 18, 4, 0.2, 0, Math.PI * 2);
+    c.fill();
+    // 筷子
+    c.save();
+    c.rotate(0.58);
+    c.fillStyle = "#6d3f20";
+    c.fillRect(360, 170, 7, 210);
+    c.fillStyle = "#8a5a32";
+    c.fillRect(378, 170, 7, 210);
+    c.fillStyle = "#d9b45a";
+    c.fillRect(360, 170, 7, 18);
+    c.fillRect(378, 170, 7, 18);
+    c.restore();
+    // 热气：柔边曲线
+    c.lineCap = "round";
+    for (const [sx, sy, h] of [
+      [206, 260, 120],
+      [256, 246, 150],
+      [308, 262, 110],
+    ] as const) {
+      const steam = c.createLinearGradient(0, sy, 0, sy - h);
+      steam.addColorStop(0, "rgba(255,240,215,0.0)");
+      steam.addColorStop(0.3, "rgba(255,240,215,0.32)");
+      steam.addColorStop(1, "rgba(255,240,215,0)");
+      c.strokeStyle = steam;
+      c.lineWidth = 10;
+      c.beginPath();
+      c.moveTo(sx, sy);
+      c.bezierCurveTo(sx - 22, sy - h * 0.35, sx + 24, sy - h * 0.6, sx - 6, sy - h);
+      c.stroke();
+    }
+    tex.refresh();
   }
 
   private buildSceneGrade() {
@@ -3859,7 +3999,6 @@ class TavernScene extends Phaser.Scene {
     if (available.length <= 3) {
       const showcase = special ?? available[0];
       const showcaseName = showcase?.name ?? "一炉烟火";
-      const soup = special ? 0xd9b45a : 0x9fbf6a;
       layer.add(
         this.add
           .image(360, 700, "soft-glow")
@@ -3868,35 +4007,13 @@ class TavernScene extends Phaser.Scene {
           .setScale(2.4)
           .setBlendMode(Phaser.BlendModes.ADD),
       );
-      const dishArt = this.add.graphics();
-      dishArt.fillStyle(0x3a2818, 0.55);
-      dishArt.fillEllipse(360, 812, 480, 64);
-      dishArt.fillStyle(0x000000, 0.25);
-      dishArt.fillEllipse(360, 792, 300, 34);
-      dishArt.fillStyle(0xe8dcc0, 0.97);
-      dishArt.fillEllipse(360, 744, 258, 72);
-      dishArt.fillStyle(0xc8b89a, 1);
-      dishArt.fillEllipse(360, 752, 218, 54);
-      dishArt.fillStyle(soup, 1);
-      dishArt.fillEllipse(360, 738, 192, 42);
-      dishArt.fillStyle(0xffffff, 0.16);
-      dishArt.fillEllipse(320, 730, 90, 16);
-      for (const [gx, gy, r] of [
-        [320, 738, 5],
-        [362, 744, 4],
-        [402, 734, 6],
-        [382, 726, 3],
-      ] as const) {
-        dishArt.fillStyle(0x6a8a4a, 1);
-        dishArt.fillCircle(gx, gy, r);
-      }
-      dishArt.lineStyle(5, 0x8a5a32, 0.95);
-      dishArt.lineBetween(500, 672, 556, 760);
-      dishArt.lineBetween(516, 666, 572, 754);
-      dishArt.fillStyle(0xffe6c8, 0.2);
-      dishArt.fillEllipse(330, 690, 54, 12);
-      dishArt.fillEllipse(382, 676, 38, 9);
-      layer.add(dishArt);
+      const mat = this.add.graphics();
+      mat.fillStyle(0x3a2818, 0.55);
+      mat.fillEllipse(360, 812, 480, 64);
+      mat.fillStyle(0x000000, 0.25);
+      mat.fillEllipse(360, 792, 310, 34);
+      layer.add(mat);
+      layer.add(this.add.image(360, 700, "dish-feast").setDisplaySize(320, 320));
       layer.add(
         this.add
           .text(360, 866, `今日开张 · ${showcaseName}`, {
