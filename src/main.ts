@@ -1177,6 +1177,7 @@ class TavernScene extends Phaser.Scene {
   private focusPanel?: Phaser.GameObjects.Graphics;
   private focusPortrait?: Character;
   private focusProp?: Phaser.GameObjects.Container;
+  private focusTable?: Phaser.GameObjects.Graphics;
   private focusName?: Phaser.GameObjects.Text;
   private eventToast?: Phaser.GameObjects.Text;
   private hintToast?: Phaser.GameObjects.Text;
@@ -2518,8 +2519,8 @@ class TavernScene extends Phaser.Scene {
     this.levelText = this.addUiText(400, 10, "", "18px", "#87ceeb");
     this.queueText = this.addUiText(24, 38, "", "20px", "#e0b0ff");
     this.realmText = this.addUiText(400, 10, "", "18px", "#ffd98a");
-    this.cultivationText = this.addUiText(230, 38, "", "18px", "#d8c8ff");
-    this.goalText = this.addUiText(410, 38, "", "21px", "#9fdf6a");
+    this.cultivationText = this.addUiText(300, 38, "", "18px", "#d8c8ff");
+    this.goalText = this.addUiText(450, 38, "", "21px", "#9fdf6a");
     this.goalText.setWordWrapWidth(280);
     this.sessionText = this.addUiText(24, 64, "", "19px", "#a8d8ff");
     this.chronicleText = this.addUiText(24, 92, "", "19px", "#cccccc");
@@ -2803,7 +2804,7 @@ class TavernScene extends Phaser.Scene {
         .setSize(Math.max(30, width - 14), 5)
         .setVisible(this.gameState === "open" && this.level >= 2);
       // 桌子多时交错两行放标签，避免相邻两桌的文字叠在一起
-      const stagger = total > 4 ? (i % 2) * 46 : 0;
+      const stagger = total >= 4 ? (i % 2) * 46 : 0;
       v.number
         .setText(TABLE_MARKS[i] ?? `${i + 1}`)
         .setPosition(x, FLOOR_Y - 150 - stagger)
@@ -4769,8 +4770,21 @@ class TavernScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setScrollFactor(0)
       .setDepth(102);
+    if (spec.seated || spec.dining) {
+      // 卡内也给出桌沿/桌面，坐下的人不是悬空半身像
+      const table = this.add.graphics().setScrollFactor(0).setDepth(101.55);
+      table.fillStyle(0x4a3020, 1);
+      table.fillRoundedRect(180, 1000, 360, 100, 6);
+      table.fillStyle(0x6a4a2a, 1);
+      table.fillRect(180, 1000, 360, 14);
+      table.fillStyle(0x8a2a22, 0.9);
+      table.fillRect(210, 1002, 300, 5);
+      table.lineStyle(1, 0xd9b45a, 0.5);
+      table.strokeRoundedRect(180, 1000, 360, 100, 6);
+      this.focusTable = table;
+    }
     if (spec.dining) {
-      const prop = this.add.container(360, 958).setScrollFactor(0).setDepth(101.6);
+      const prop = this.add.container(360, 970).setScrollFactor(0).setDepth(101.6);
       const bowl = this.add.ellipse(0, 0, 130, 44, 0xf1e4cc);
       const rim = this.add.ellipse(0, -2, 108, 30, 0xe8d8bc);
       const soup = this.add.ellipse(0, -2, 80, 20, 0xd98a4a);
@@ -4814,6 +4828,8 @@ class TavernScene extends Phaser.Scene {
     this.focusPortrait = undefined;
     this.focusProp?.destroy();
     this.focusProp = undefined;
+    this.focusTable?.destroy();
+    this.focusTable = undefined;
     this.focusCaption?.destroy();
     this.focusCaption = undefined;
     this.focusName?.destroy();
