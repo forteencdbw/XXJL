@@ -150,6 +150,9 @@ interface BoothVisual {
   barBg: Phaser.GameObjects.Rectangle;
   barFill: Phaser.GameObjects.Rectangle;
   zone: Phaser.GameObjects.Zone;
+  candleGlow: Phaser.GameObjects.Image;
+  candleBody: Phaser.GameObjects.Rectangle;
+  candleFlame: Phaser.GameObjects.Ellipse;
 }
 interface QueuedPatron {
   expiresAt: number;
@@ -3239,6 +3242,26 @@ class TavernScene extends Phaser.Scene {
       .setDepth(3);
     const barBg = this.add.rectangle(0, 0, 80, 8, 0x1a1a1a).setOrigin(0, 0.5).setDepth(3);
     const barFill = this.add.rectangle(0, 0, 0, 8, COLOR_PLAYER).setOrigin(0, 0.5).setDepth(4);
+    // 每桌一支小烛：给人物和桌面一点暖光，而不是只有顶灯
+    const candleGlow = this.add
+      .image(0, 0, "soft-glow")
+      .setTint(0xffa050)
+      .setAlpha(0.12)
+      .setScale(0.24)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setDepth(1.9);
+    const candleBody = this.add.rectangle(0, 0, 6, 11, 0xf0e2c8).setDepth(2.7);
+    const candleFlame = this.add.ellipse(0, 0, 5, 9, 0xffd98a).setDepth(2.8);
+    this.tweens.add({
+      targets: candleFlame,
+      alpha: { from: 0.65, to: 1 },
+      scaleY: { from: 0.85, to: 1.1 },
+      duration: Phaser.Math.Between(700, 1200),
+      yoyo: true,
+      repeat: -1,
+      delay: Phaser.Math.Between(0, 500),
+      ease: "Sine.easeInOut",
+    });
     // 整张桌子都是「看这位客人」的点击区，别让玩家去点米粒大的人
     const zone = this.add.zone(0, 0, 80, 150).setOrigin(0.5, 0).setDepth(5);
     let zx = 0;
@@ -3255,8 +3278,22 @@ class TavernScene extends Phaser.Scene {
         if (patron) this.focusOnCharacter(patron);
       });
     const visible = this.gameState === "open";
-    [bg, runner, number, label, ...legs, barBg, barFill].forEach((o) => o.setVisible(visible));
-    this.boothVisuals.push({ bg, runner, number, label, legs, barBg, barFill, zone });
+    [bg, runner, number, label, ...legs, barBg, barFill, candleGlow, candleBody, candleFlame].forEach((o) =>
+      o.setVisible(visible),
+    );
+    this.boothVisuals.push({
+      bg,
+      runner,
+      number,
+      label,
+      legs,
+      barBg,
+      barFill,
+      zone,
+      candleGlow,
+      candleBody,
+      candleFlame,
+    });
     this.relayoutTables();
   }
 
@@ -3272,6 +3309,11 @@ class TavernScene extends Phaser.Scene {
         .setPosition(x, FLOOR_Y - 34)
         .setSize(Math.max(30, width - 14), 5)
         .setVisible(this.gameState === "open" && this.level >= 2);
+      const candleVisible = this.gameState === "open";
+      const cx = x + Math.min(28, width * 0.32);
+      v.candleGlow.setPosition(cx, FLOOR_Y - 44).setVisible(candleVisible);
+      v.candleBody.setPosition(cx, FLOOR_Y - 36).setVisible(candleVisible);
+      v.candleFlame.setPosition(cx, FLOOR_Y - 44).setVisible(candleVisible);
       // 桌子多时交错两行放标签，避免相邻两桌的文字叠在一起
       const stagger = total >= 4 ? (i % 2) * 46 : 0;
       v.number
@@ -5073,6 +5115,9 @@ class TavernScene extends Phaser.Scene {
       v.legs.forEach((l) => l.setVisible(isOpen));
       v.barBg.setVisible(isOpen);
       v.barFill.setVisible(isOpen);
+      v.candleGlow.setVisible(isOpen);
+      v.candleBody.setVisible(isOpen);
+      v.candleFlame.setVisible(isOpen);
     });
 
     this.serveButton.setVisible(isOpen);
