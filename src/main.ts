@@ -300,6 +300,9 @@ class Character extends Phaser.GameObjects.Container {
   }
 
   walkTo(x: number, y: number, duration: number, onComplete?: () => void) {
+    // 走到一半被叫去别处时，先停掉旧的位移/脉冲，避免两个 tween 抢同一属性
+    this.scene.tweens.killTweensOf(this);
+    this.scaleY = 1;
     if (x < this.x - 2) this.setScale(-1, 1);
     else if (x > this.x + 2) this.setScale(1, 1);
     this.scene.tweens.add({
@@ -314,6 +317,7 @@ class Character extends Phaser.GameObjects.Container {
 
   teleportTo(x: number, y: number) {
     this.scene.tweens.killTweensOf(this);
+    this.scaleY = 1;
     this.setPosition(x, y);
   }
 }
@@ -683,11 +687,11 @@ class TavernScene extends Phaser.Scene {
     gfx.fillStyle(0x6a5a44, 1);
     gfx.fillRect(DOOR_X + 80, FLOOR_Y, 360 - DOOR_X - 80, 1280 - FLOOR_Y);
 
-    // 门外空地
+    // 门外空地：一路延伸到队尾，镜头可以拉过去看
     gfx.fillStyle(0x7a6a4a, 1);
-    gfx.fillRect(360, FLOOR_Y, 540, 1280 - FLOOR_Y);
+    gfx.fillRect(360, FLOOR_Y, 1260, 1280 - FLOOR_Y);
     gfx.lineStyle(3, 0x5a4028, 1);
-    gfx.lineBetween(360, FLOOR_Y, 900, FLOOR_Y);
+    gfx.lineBetween(360, FLOOR_Y, 1620, FLOOR_Y);
     // 空地装饰：树和石头
     gfx.fillStyle(0x4a3420, 1);
     gfx.fillRect(560, FLOOR_Y - 80, 14, 80);
@@ -698,9 +702,26 @@ class TavernScene extends Phaser.Scene {
     gfx.fillStyle(0x8a8a8a, 1);
     gfx.fillCircle(740, FLOOR_Y - 12, 20);
     gfx.fillCircle(800, FLOOR_Y - 8, 13);
+    // 远处的树与石，让长队不落在空白里
+    gfx.fillStyle(0x4a3420, 1);
+    gfx.fillRect(1010, FLOOR_Y - 66, 12, 66);
+    gfx.fillStyle(0x356335, 1);
+    gfx.fillCircle(1016, FLOOR_Y - 86, 38);
+    gfx.fillStyle(0x2f5a2f, 1);
+    gfx.fillCircle(1016, FLOOR_Y - 102, 25);
+    gfx.fillStyle(0x8a8a8a, 1);
+    gfx.fillCircle(1120, FLOOR_Y - 12, 17);
+    gfx.fillCircle(1180, FLOOR_Y - 7, 11);
+    gfx.fillStyle(0x4a3420, 1);
+    gfx.fillRect(1424, FLOOR_Y - 56, 10, 56);
+    gfx.fillStyle(0x356335, 1);
+    gfx.fillCircle(1429, FLOOR_Y - 72, 32);
+    gfx.fillStyle(0x8a8a8a, 1);
+    gfx.fillCircle(1520, FLOOR_Y - 9, 14);
+    gfx.fillCircle(1570, FLOOR_Y - 5, 9);
     // 排队区标记
     gfx.lineStyle(2, 0x8a7a5a, 1);
-    gfx.lineBetween(400, FLOOR_Y - 2, 620, FLOOR_Y - 2);
+    gfx.lineBetween(400, FLOOR_Y - 2, 1200, FLOOR_Y - 2);
   }
 
   /** 夜空星子：只在打烊夜景与深夜里出现，缓慢明灭。 */
@@ -975,7 +996,9 @@ class TavernScene extends Phaser.Scene {
       v.bg.setPosition(x, FLOOR_Y - 48).setSize(width, 16);
       v.legs[0].setPosition(x - width / 2 + 10, FLOOR_Y - 30);
       v.legs[1].setPosition(x + width / 2 - 10, FLOOR_Y - 30);
-      v.label.setPosition(x, FLOOR_Y - 86);
+      // 桌子多时交错两行放标签，避免相邻两桌的文字叠在一起
+      const stagger = total > 6 ? (i % 2) * 24 : 0;
+      v.label.setPosition(x, FLOOR_Y - 86 - stagger);
       const barW = Math.max(36, width - 8);
       v.barBg.setPosition(x - barW / 2, FLOOR_Y - 70).setSize(barW, 6);
       v.barFill.setPosition(x - barW / 2, FLOOR_Y - 70);
@@ -1046,7 +1069,7 @@ class TavernScene extends Phaser.Scene {
     this.queue = this.queue.filter((patron) => {
       if (time >= patron.expiresAt) {
         this.sessionLost += 1;
-        patron.char.walkTo(980, ACTOR_Y, 400, () => patron.char.destroy());
+        patron.char.walkTo(1620, ACTOR_Y, 500, () => patron.char.destroy());
         this.log(`${patron.kind.name}候得不耐，拂袖离去`);
         return false;
       }
@@ -2173,7 +2196,8 @@ class TavernScene extends Phaser.Scene {
       if (!active || !p.isDown) return;
       const dx = p.x - startX;
       if (Math.abs(dx) < 8) return;
-      cam.scrollX = Phaser.Math.Clamp(startScroll - dx, -360, 180);
+      // 右侧要能一直拉到队尾：12 个排队位最远到 x≈1190
+      cam.scrollX = Phaser.Math.Clamp(startScroll - dx, -360, 900);
     });
     this.input.on("pointerup", () => {
       active = false;
@@ -2336,23 +2360,30 @@ class TavernScene extends Phaser.Scene {
   }
 
   // ===== 产线 =====
+  /** 队尾最多排到空地尽头；等级很高时自动压缩间距。 */
+  private queueGap(): number {
+    return Math.min(QUEUE_GAP, 770 / Math.max(1, getBoothCount(this.level) - 1));
+  }
+
   /** 系统生成一位到店顾客：队列有空位就走进来排队，排满则直接离开。 */
   private spawnPatron(time: number) {
     const kind = pickPatronKind(Math.random());
     const rare = kind.priceFactor >= 1.8;
-    const char = new Character(this, 980, ACTOR_Y, kind.bodyColor, kind.hairColor);
+    const slotX = QUEUE_X + this.queue.length * this.queueGap();
+    const spawnX = Math.max(980, slotX + 60);
+    const char = new Character(this, spawnX, ACTOR_Y, kind.bodyColor, kind.hairColor);
     char.setVisible(this.gameState === "open");
     if (rare) char.setAura(kind.id === "elder" ? 0xffe08a : 0xff6a6a, 0.9, 0.35);
     const wish = pickPatronWish(kind, this.getMenuDishes().map((d) => d.id), Math.random());
 
     if (this.queue.length >= getBoothCount(this.level)) {
-      char.walkTo(1120, ACTOR_Y, 400, () => char.destroy());
+      char.walkTo(1620, ACTOR_Y, 500, () => char.destroy());
       this.sessionLost += 1;
       this.log(`${kind.name}见门外排满，转身离去`);
       return;
     }
 
-    char.walkTo(QUEUE_X + this.queue.length * QUEUE_GAP, ACTOR_Y, 700);
+    char.walkTo(slotX, ACTOR_Y, 700);
     this.queue.push({ expiresAt: time + QUEUE_PATIENCE_MS * kind.patienceFactor, char, kind, wish });
     this.staffChars.hawker?.pulse();
     playSfx(rare ? "event" : "arrival");
@@ -2368,7 +2399,7 @@ class TavernScene extends Phaser.Scene {
   /** 临近打烊时清空排队：所有候客直接离开。 */
   private dismissQueue() {
     this.queue.forEach((p) => {
-      p.char.walkTo(1120, ACTOR_Y, 600, () => p.char.destroy());
+      p.char.walkTo(1620, ACTOR_Y, 600, () => p.char.destroy());
     });
     this.queue = [];
   }
