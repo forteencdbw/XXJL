@@ -6934,6 +6934,7 @@ class TavernScene extends Phaser.Scene {
     };
     if (id === "sword") {
       // 御剑：从门外滑进来，剑在脚下，落地才收剑
+      playSfx("whoosh");
       char.setX(Math.min(char.x, slotX + 200));
       char.setY(ACTOR_Y - 54);
       const board = this.add.container(char.x, char.y + 30).setDepth(19.8);
@@ -6981,6 +6982,7 @@ class TavernScene extends Phaser.Scene {
     }
     if (id === "elder" || id === "alchemist") {
       // 乘云：长老/丹修离地半尺漂进来
+      playSfx("chime");
       const green = id === "alchemist";
       char.setX(Math.min(char.x, slotX + 200));
       char.setY(ACTOR_Y - 30);
@@ -7018,6 +7020,7 @@ class TavernScene extends Phaser.Scene {
     }
     if (id === "demon") {
       // 妖修：化作赤烟落地
+      playSfx("rumble");
       char.setPosition(slotX, ACTOR_Y - 62).setAlpha(0);
       const flash = this.add
         .rectangle(slotX, ACTOR_Y - 34, 92, 120, 0x8a2a22, 0.28)
@@ -7047,6 +7050,7 @@ class TavernScene extends Phaser.Scene {
     }
     if (id === "demonlord") {
       // 魔道：裂开一道暗红缝隙再走出来
+      playSfx("rumble");
       char.setPosition(slotX, ACTOR_Y).setAlpha(0);
       const rift = this.add.container(slotX, ACTOR_Y - 32).setDepth(19.7);
       rift.add(this.add.rectangle(-8, 0, 4, 92, 0x2a0a10, 0.95).setScale(1, 0));
@@ -7081,6 +7085,7 @@ class TavernScene extends Phaser.Scene {
       return;
     }
     // 凡人/散修：正常走进来；散修脚下有急行的尘，凡人慢慢挑担
+    playSfx("arrival");
     const walkMs = id === "rogue" ? 430 : 760;
     char.walkTo(slotX, ACTOR_Y, walkMs, () => {
       char.arrived = true;

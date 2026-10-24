@@ -1,7 +1,19 @@
 // 程序合成的占位音效（Web Audio）。后续可整体替换为真实音频资源。
 // shortcut: 只支持 Web Audio；接入微信小游戏时需换成 wx.createInnerAudioContext 或适配层。
 
-type SfxName = "click" | "arrival" | "seat" | "cook" | "coin" | "upgrade" | "event" | "open" | "close";
+type SfxName =
+  | "click"
+  | "arrival"
+  | "seat"
+  | "cook"
+  | "coin"
+  | "upgrade"
+  | "event"
+  | "open"
+  | "close"
+  | "whoosh"
+  | "chime"
+  | "rumble";
 
 const SFX_DEFS: Record<SfxName, { notes: number[]; dur: number; type: OscillatorType; gain: number }> = {
   click: { notes: [720], dur: 0.05, type: "square", gain: 0.03 },
@@ -13,6 +25,9 @@ const SFX_DEFS: Record<SfxName, { notes: number[]; dur: number; type: Oscillator
   event: { notes: [330, 415, 494], dur: 0.16, type: "sine", gain: 0.06 },
   open: { notes: [392, 523, 659], dur: 0.16, type: "sine", gain: 0.08 },
   close: { notes: [523, 392, 294], dur: 0.16, type: "sine", gain: 0.08 },
+  whoosh: { notes: [1046, 784, 523], dur: 0.09, type: "sawtooth", gain: 0.035 },
+  chime: { notes: [1046, 1318, 1568], dur: 0.12, type: "sine", gain: 0.055 },
+  rumble: { notes: [130, 98, 78], dur: 0.2, type: "triangle", gain: 0.07 },
 };
 
 // 五声音阶的氛围乐句：长短音 + 休止 + 低音持续音，避免机械的单音循环。
