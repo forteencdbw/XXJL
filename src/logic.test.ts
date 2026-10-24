@@ -23,6 +23,8 @@ import {
   getDailyGoalOptions,
   getDailyRent,
   getDailySpecial,
+  getStreakBonus,
+  GOAL_STREAK_TARGET,
   getDishFans,
   getGoalCoinReward,
   getGoalPayout,
@@ -273,6 +275,16 @@ describe("食客类型与口味", () => {
     expect(getDailyGoalOptions(1, 4)[0].target).toBeGreaterThan(options[0].target);
     expect(getDailyRent(1)).toBe(12);
     expect(getDailyRent(4)).toBeGreaterThan(getDailyRent(1));
+  });
+
+  it("三日之约奖励随等级提高，满三天有额外灵石与修为", () => {
+    expect(GOAL_STREAK_TARGET).toBe(3);
+    const level1 = getStreakBonus(1);
+    const level4 = getStreakBonus(4);
+    expect(level1.coins).toBeGreaterThan(0);
+    expect(level1.cultivation).toBeGreaterThan(0);
+    expect(level4.coins).toBeGreaterThan(level1.coins);
+    expect(level4.cultivation).toBeGreaterThanOrEqual(level1.cultivation);
   });
 
   it("今日招牌按天轮换，只有一道菜时不设招牌", () => {

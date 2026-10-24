@@ -364,6 +364,16 @@ export function getDailyRent(level: number): number {
   return 8 + Math.max(1, level) * 4;
 }
 
+/** 连续三天达成（或拿到半赏）目标的三日之约奖励。 */
+export const GOAL_STREAK_TARGET = 3;
+
+export function getStreakBonus(level: number): { coins: number; cultivation: number } {
+  return {
+    coins: 20 + Math.max(1, level) * 5,
+    cultivation: 2 + Math.floor(Math.max(1, level) / 4),
+  };
+}
+
 /** 差一点也算数：达成给全赏，达到目标 60% 给半赏，避免 6/7、61/64 这类一整天空手。 */
 export function getGoalPayout(goal: DailyGoal, stats: SessionStats): GoalPayout {
   const progress = getGoalProgress(goal, stats);

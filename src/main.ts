@@ -24,6 +24,8 @@ import {
   getDailyGoalOptions,
   getDailyRent,
   getDailySpecial,
+  getStreakBonus,
+  GOAL_STREAK_TARGET,
   getDishFans,
   getGoalPayout,
   getGoalProgress,
@@ -209,6 +211,7 @@ interface SaveData {
   regulars?: RegularGuest[];
   /** 当日目标快照：读档后不能因等级变化换目标，否则同一目标会显示两个数。 */
   dailyGoal?: DailyGoal | null;
+  goalStreak?: number;
 }
 
 /** 按钮内叠两条进度条：上=伙计（蓝），下=玩家（橙）。 */
@@ -1166,7 +1169,12 @@ class TavernScene extends Phaser.Scene {
     progress: number;
     rewardCoins: number;
     rewardCultivation: number;
+    streakCount: number;
+    streakComplete: boolean;
+    streakCoins: number;
+    streakCultivation: number;
   } | null = null;
+  private goalStreak = 0;
 
   private playerSeat: SeatProgress | null = null;
   private playerCookingBooth: number | null = null;
@@ -1275,6 +1283,7 @@ class TavernScene extends Phaser.Scene {
   create() {
     const hadSave = this.loadSave();
     this.ensureGlowTexture();
+    this.ensurePaperTextures();
     this.booths = Array.from({ length: getBoothCount(this.level) }, () => this.makeBooth());
     if (this.selectedDishIds.size === 0) {
       this.selectedDishIds = new Set(DISHES.filter((d) => d.unlockLevel <= this.level).map((d) => d.id));
@@ -1331,6 +1340,51 @@ class TavernScene extends Phaser.Scene {
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, 256, 256);
     tex.refresh();
+  }
+
+  /** 纸纹与暗角：给纯矢量画面加一层很薄的质感，避免大色块像 UI 原型。 */
+  private ensurePaperTextures() {
+    if (!this.textures.exists("paper-grain")) {
+      const grain = this.textures.createCanvas("paper-grain", 256, 256);
+      if (grain) {
+        const ctx = grain.getContext();
+        for (let i = 0; i < 1100; i++) {
+          const light = Math.random() > 0.45;
+          ctx.fillStyle = light
+            ? `rgba(255,244,224,${0.02 + Math.random() * 0.04})`
+            : `rgba(0,0,0,${0.02 + Math.random() * 0.04})`;
+          ctx.fillRect(Math.random() * 256, Math.random() * 256, 1, 1);
+        }
+        grain.refresh();
+      }
+    }
+    if (!this.textures.exists("vignette")) {
+      const vig = this.textures.createCanvas("vignette", 360, 640);
+      if (vig) {
+        const ctx = vig.getContext();
+        const grad = ctx.createRadialGradient(180, 300, 80, 180, 320, 390);
+        grad.addColorStop(0, "rgba(0,0,0,0)");
+        grad.addColorStop(0.62, "rgba(0,0,0,0.06)");
+        grad.addColorStop(1, "rgba(0,0,0,0.55)");
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, 360, 640);
+        vig.refresh();
+      }
+    }
+  }
+
+  private buildSceneGrade() {
+    this.add
+      .image(360, 640, "vignette")
+      .setDisplaySize(SCREEN_W, SCREEN_H)
+      .setScrollFactor(0)
+      .setDepth(24)
+      .setAlpha(0.62);
+    this.add
+      .tileSprite(360, 640, SCREEN_W, SCREEN_H, "paper-grain")
+      .setScrollFactor(0)
+      .setDepth(24.5)
+      .setAlpha(0.55);
   }
 
   /** 首次进入的标题页：月、山、灯、题字，先把「灵膳楼」的气质立住。 */
@@ -1651,6 +1705,17 @@ class TavernScene extends Phaser.Scene {
       });
     }
 
+    layer.add(
+      this.add
+        .image(360, 640, "vignette")
+        .setDisplaySize(SCREEN_W, SCREEN_H)
+        .setAlpha(0.9),
+    );
+    layer.add(
+      this.add
+        .tileSprite(360, 640, SCREEN_W, SCREEN_H, "paper-grain")
+        .setAlpha(0.7),
+    );
     layer.setAlpha(0);
     this.tweens.add({ targets: layer, alpha: 1, duration: 700, ease: "Sine.easeOut" });
     this.overlay = layer;
@@ -1761,6 +1826,7 @@ class TavernScene extends Phaser.Scene {
       meta: this.meta,
       dailyGoal: this.dailyGoal,
       regulars: this.regulars,
+      goalStreak: this.goalStreak,
     };
   }
 
@@ -1800,6 +1866,7 @@ class TavernScene extends Phaser.Scene {
       selectedDishIds: DISHES.filter((d) => d.unlockLevel <= startLevel).map((d) => d.id),
       playerGender: this.playerGender,
       meta: this.meta,
+      goalStreak: 0,
     };
   }
 
@@ -1826,6 +1893,7 @@ class TavernScene extends Phaser.Scene {
       };
       this.cultivation = count(data.cultivation);
       this.negativeStreak = count(data.negativeStreak);
+      this.goalStreak = Math.max(0, Math.floor(num(data.goalStreak, 0)));
       this.day = Math.max(1, Math.floor(num(data.day, 1)));
       this.ascensions = Math.max(0, Math.floor(num(data.ascensions, 0)));
       this.playerGender = data.playerGender === "female" ? "female" : "male";
@@ -2726,6 +2794,7 @@ class TavernScene extends Phaser.Scene {
     this.buildWindows();
     this.buildWindowFrames();
     this.buildWindowLight();
+    this.buildSceneGrade();
 
     // 顶部 HUD 悬浮条
     this.hudBar = this.add
@@ -3476,20 +3545,29 @@ class TavernScene extends Phaser.Scene {
         );
       }
     });
+    const streakBonus = getStreakBonus(this.level);
+    layer.add(
+      this.add.text(
+        40,
+        268,
+        `三日之约：已连达 ${this.goalStreak}/${GOAL_STREAK_TARGET} 天 · 满 ${GOAL_STREAK_TARGET} 天赏 ${streakBonus.coins} 灵石 + ${streakBonus.cultivation} 修为`,
+        { fontSize: "16px", color: this.goalStreak > 0 ? "#c8b8a0" : "#8a7a62" },
+      ),
+    );
     const special = DISHES.find((d) => d.id === this.currentDailySpecial());
     if (special) {
       const base = this.baseDishPrice(special);
       const price = this.dishPrice(special);
       const pct = base > 0 ? Math.round((price / base - 1) * 100) : 0;
       layer.add(
-        this.add.text(40, 278, `今日招牌：${special.name} · ${base}→${price} 灵石（+${pct}%，◆ 标记）`, {
+        this.add.text(40, 290, `今日招牌：${special.name} · ${base}→${price} 灵石（+${pct}%，◆ 标记）`, {
           fontSize: "17px",
           color: "#ffd98a",
         }),
       );
     } else {
       layer.add(
-        this.add.text(40, 278, "今日招牌：再解锁一道菜后开启", {
+        this.add.text(40, 290, "今日招牌：再解锁一道菜后开启", {
           fontSize: "17px",
           color: "#8a7a62",
         }),
@@ -3499,7 +3577,7 @@ class TavernScene extends Phaser.Scene {
     const available = DISHES.filter((d) => d.unlockLevel <= this.level);
     const specialId = this.currentDailySpecial();
     available.forEach((dish, i) => {
-      const y = 306 + i * 96;
+      const y = 316 + i * 96;
       const selected = this.selectedDishIds.has(dish.id);
       const row = this.add
         .rectangle(40, y, 640, 82, selected ? 0x4a3a1a : 0x2a1e16)
@@ -4382,7 +4460,7 @@ class TavernScene extends Phaser.Scene {
       76 +
       (this.lastWages.length > 0 ? 30 + this.lastWages.length * 28 + 10 : 0) +
       (this.lastLoanDues.length > 0 ? 30 + this.lastLoanDues.length * 28 + 10 : 0) +
-      (this.lastGoalResult ? 58 : 0) +
+      (this.lastGoalResult ? 86 : 0) +
       summary.length * 34 +
       18 +
       46 +
@@ -4420,10 +4498,21 @@ class TavernScene extends Phaser.Scene {
     }
 
     if (this.lastGoalResult) {
-      const { goal, met, partial, progress, rewardCoins, rewardCultivation } = this.lastGoalResult;
+      const {
+        goal,
+        met,
+        partial,
+        progress,
+        rewardCoins,
+        rewardCultivation,
+        streakCount,
+        streakComplete,
+        streakCoins,
+        streakCultivation,
+      } = this.lastGoalResult;
       panel.add(
         this.add
-          .rectangle(left - 8, y - 8, CARD_W - 20, 64, 0x2a2118, 0.95)
+          .rectangle(left - 8, y - 8, CARD_W - 20, 90, 0x2a2118, 0.95)
           .setOrigin(0, 0)
           .setStrokeStyle(1, 0xd9b45a, 0.55),
       );
@@ -4441,7 +4530,18 @@ class TavernScene extends Phaser.Scene {
           { fontSize: "21px", color: met ? "#9fdf6a" : partial ? "#e0c060" : "#999999" },
         ),
       );
-      y += 32;
+      y += 30;
+      panel.add(
+        this.add.text(
+          left + 16,
+          y,
+          streakComplete
+            ? `三日之约达成！额外 +${streakCoins} 灵石、+${streakCultivation} 修为`
+            : `三日之约 ${streakCount}/${GOAL_STREAK_TARGET} · 满 ${GOAL_STREAK_TARGET} 天赏 ${streakCoins} 灵石 + ${streakCultivation} 修为`,
+          { fontSize: "17px", color: streakComplete ? "#9fdf6a" : "#c8b8a0" },
+        ),
+      );
+      y += 28;
     }
 
     summary.forEach((line) => {
@@ -6063,6 +6163,12 @@ class TavernScene extends Phaser.Scene {
     if (!goal) return;
     const stats = { served: this.sessionServed, revenue: this.sessionRevenue, wishes: this.sessionWishes };
     const payout = getGoalPayout(goal, stats);
+    const streakBonus = getStreakBonus(this.level);
+    const qualified = payout.met || payout.partial;
+    this.goalStreak = qualified ? this.goalStreak + 1 : 0;
+    const streakComplete = this.goalStreak >= GOAL_STREAK_TARGET;
+    const streakCount = streakComplete ? GOAL_STREAK_TARGET : this.goalStreak;
+    if (streakComplete) this.goalStreak = 0;
     this.lastGoalResult = {
       goal,
       met: payout.met,
@@ -6070,19 +6176,30 @@ class TavernScene extends Phaser.Scene {
       progress: payout.progress,
       rewardCoins: payout.coins,
       rewardCultivation: payout.cultivation,
+      streakCount,
+      streakComplete,
+      streakCoins: streakBonus.coins,
+      streakCultivation: streakBonus.cultivation,
     };
-    if (!payout.met && !payout.partial) {
+    if (!qualified) {
       this.log(`第 ${this.day - 1} 日目标未达成：${goal.label}`);
       return;
     }
     this.coins += payout.coins;
-    this.displayedCoins = this.coins;
     this.log(
       payout.met
         ? `第 ${this.day - 1} 日目标达成：${goal.label}，赏 ${payout.coins} 灵石、${payout.cultivation} 修为`
         : `第 ${this.day - 1} 日目标差一点：${goal.label}（${payout.progress}/${goal.target}），半赏 ${payout.coins} 灵石、${payout.cultivation} 修为`,
     );
     this.gainCultivation(payout.cultivation);
+    if (streakComplete) {
+      this.coins += streakBonus.coins;
+      this.gainCultivation(streakBonus.cultivation);
+      this.log(
+        `三日之约达成：连达 ${GOAL_STREAK_TARGET} 天，额外赏 ${streakBonus.coins} 灵石、${streakBonus.cultivation} 修为`,
+      );
+    }
+    this.displayedCoins = this.coins;
   }
 
   /** 连续 5 个回合结束为负余额即破产。 */
