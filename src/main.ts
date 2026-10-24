@@ -528,10 +528,10 @@ class TavernScene extends Phaser.Scene {
     const pick = (x: number, label: string, gender: "male" | "female", color: string) => {
       const btn = this.add
         .text(x, 360, label, {
-          fontSize: "28px",
+          fontSize: "32px",
           color: "#ffffff",
           backgroundColor: color,
-          padding: { x: 40, y: 24 },
+          padding: { x: 40, y: 28 },
         })
         .setInteractive({ useHandCursor: true })
         .on("pointerdown", () => {
@@ -541,6 +541,7 @@ class TavernScene extends Phaser.Scene {
           this.showHelp();
         });
       layer.add(btn);
+      this.expandHitArea(btn, 18);
     };
     pick(120, "男", "male", "#3f5a7a");
     pick(400, "女", "female", "#7a3f5a");
@@ -1019,17 +1020,18 @@ class TavernScene extends Phaser.Scene {
     this.serveButton = this.addUiButton(346, 1186, () => this.startSeat("player"), { x: 14, y: 16 }, 6, "20px");
     this.cookButton = this.addUiButton(460, 1186, () => this.manualCook(), { x: 14, y: 16 }, 6, "20px");
     // 出菜行：点哪道菜就做哪道，优先端给想吃它的那一桌
-    this.dishChipLabel = this.addUiText(16, 1102, "出菜", "13px", "#bbbbbb");
+    this.dishChipLabel = this.addUiText(16, 1036, "出菜 · 点菜名", "15px", "#bbbbbb");
     this.dishChips = DISHES.map((_, i) =>
       this.addUiButton(
         56 + (i % 4) * 150,
-        1096 + Math.floor(i / 4) * 42,
+        1070 + Math.floor(i / 4) * 58,
         () => {
           const dish = this.getMenuDishes()[i];
           if (dish) this.manualCookDish(dish);
         },
-        { x: 12, y: 11 },
-        2,
+        { x: 10, y: 14 },
+        3,
+        "16px",
       ),
     );
     this.dishChips.forEach((chip) => chip.setVisible(false));
@@ -1075,11 +1077,31 @@ class TavernScene extends Phaser.Scene {
 
   /** 给手写的文本按钮加一圈可点余量，避免只点中文字本身。 */
   private expandHitArea(t: Phaser.GameObjects.Text, expand = 10) {
+    // 已经 setInteractive 过的文本再传新的形状不会替换旧命中区，直接改 input.hitArea。
+    if (t.input) {
+      t.input.hitArea.setTo(-expand, -expand, t.width + expand * 2, t.height + expand * 2);
+      t.input.cursor = "pointer";
+      return;
+    }
     t.setInteractive(
       new Phaser.Geom.Rectangle(-expand, -expand, t.width + expand * 2, t.height + expand * 2),
       Phaser.Geom.Rectangle.Contains,
     );
-    if (t.input) t.input.cursor = "pointer";
+  }
+
+  /** 副屏底部的大号关闭条：不再要求点中小字「关闭」。 */
+  private addOverlayClose(layer: Phaser.GameObjects.Container, y: number, label = "关闭") {
+    layer.add(
+      this.add
+        .rectangle(40, y, 640, 64, 0x3a3a3a)
+        .setOrigin(0, 0)
+        .setStrokeStyle(2, 0x666666)
+        .setInteractive({ useHandCursor: true })
+        .on("pointerup", () => this.destroyOverlay()),
+    );
+    layer.add(
+      this.add.text(360, y + 32, label, { fontSize: "22px", color: "#ffffff" }).setOrigin(0.5),
+    );
   }
 
   private addUiButton(
@@ -1453,7 +1475,7 @@ class TavernScene extends Phaser.Scene {
       this.add.text(
         40,
         148,
-        `今日目标：${goal.label} · 库存 ${this.inventory} · 奖励 ${goal.rewardCoins} 灵石 + 收入 15% / ${goal.rewardCultivation} 修为`,
+        `今日目标：${goal.label} · 库存 ${this.inventory} · 奖励：基础 ${goal.rewardCoins} 灵石 + 当日收入 15% · ${goal.rewardCultivation} 修为`,
         { fontSize: "15px", color: "#e0c060", wordWrap: { width: 640 } },
       ),
     );
@@ -1839,17 +1861,7 @@ class TavernScene extends Phaser.Scene {
       );
     });
 
-    layer.add(
-      this.add
-        .text(40, 660, "关闭", {
-          fontSize: "20px",
-          color: "#ffffff",
-          backgroundColor: "#3a3a3a",
-          padding: { x: 16, y: 10 },
-        })
-        .setInteractive({ useHandCursor: true })
-        .on("pointerup", () => this.destroyOverlay()),
-    );
+    this.addOverlayClose(layer, 660);
     this.overlay = layer;
   }
 
@@ -1952,17 +1964,7 @@ class TavernScene extends Phaser.Scene {
       }
     });
 
-    const close = this.add
-      .text(40, 660, "关闭", {
-        fontSize: "20px",
-        color: "#ffffff",
-        backgroundColor: "#3a3a3a",
-        padding: { x: 16, y: 10 },
-      })
-      .setInteractive({ useHandCursor: true })
-      .on("pointerup", () => this.destroyOverlay());
-    layer.add(close);
-    this.expandHitArea(close, 14);
+    this.addOverlayClose(layer, 660);
     this.overlay = layer;
   }
 
@@ -2041,17 +2043,7 @@ class TavernScene extends Phaser.Scene {
           .on("pointerup", () => this.buildAscendConfirmOverlay()),
       );
     }
-    layer.add(
-      this.add
-        .text(maxed ? 300 : 40, 780, "关闭", {
-          fontSize: "20px",
-          color: "#ffffff",
-          backgroundColor: "#3a3a3a",
-          padding: { x: 16, y: 10 },
-        })
-        .setInteractive({ useHandCursor: true })
-        .on("pointerup", () => this.destroyOverlay()),
-    );
+    this.addOverlayClose(layer, 870);
     this.overlay = layer;
   }
 
@@ -2176,16 +2168,7 @@ class TavernScene extends Phaser.Scene {
       }
     });
 
-    const close = this.add
-      .text(40, 620, "关闭", {
-        fontSize: "20px",
-        color: "#ffffff",
-        backgroundColor: "#3a3a3a",
-        padding: { x: 16, y: 10 },
-      })
-      .setInteractive({ useHandCursor: true })
-      .on("pointerup", () => this.destroyOverlay());
-    layer.add(close);
+    this.addOverlayClose(layer, 620);
     this.overlay = layer;
   }
 
@@ -2456,17 +2439,7 @@ class TavernScene extends Phaser.Scene {
         }),
       );
     });
-    layer.add(
-      this.add
-        .text(40, 650, "知道了，去营生", {
-          fontSize: "20px",
-          color: "#ffffff",
-          backgroundColor: "#3f5a7a",
-          padding: { x: 16, y: 10 },
-        })
-        .setInteractive({ useHandCursor: true })
-        .on("pointerup", () => this.destroyOverlay()),
-    );
+    this.addOverlayClose(layer, 650, "知道了，去营生");
     this.overlay = layer;
   }
 
@@ -2526,17 +2499,7 @@ class TavernScene extends Phaser.Scene {
       );
     });
 
-    layer.add(
-      this.add
-        .text(40, 740, "关闭", {
-          fontSize: "20px",
-          color: "#ffffff",
-          backgroundColor: "#3a3a3a",
-          padding: { x: 16, y: 10 },
-        })
-        .setInteractive({ useHandCursor: true })
-        .on("pointerup", () => this.destroyOverlay()),
-    );
+    this.addOverlayClose(layer, 740);
     this.overlay = layer;
   }
 
@@ -3585,7 +3548,7 @@ class TavernScene extends Phaser.Scene {
     } else {
       const goal = this.currentDayGoal();
       this.sessionText.setText(
-        `第 ${this.day} 日 · 目标：${goal.label} · +${goal.rewardCoins}灵石+收入15% · +${goal.rewardCultivation}修为`,
+        `第 ${this.day} 日 · 目标：${goal.label} · 赏 基础${goal.rewardCoins}灵石+当日收入15% · ${goal.rewardCultivation}修为`,
       );
       this.goalText.setText("");
     }
