@@ -3490,7 +3490,24 @@ class TavernScene extends Phaser.Scene {
     this.destroyOverlay();
     const cam = this.cameras.main;
     const layer = this.add.container(cam.scrollX, cam.scrollY).setDepth(100);
-    layer.add(this.add.rectangle(0, 0, SCREEN_W, SCREEN_H, 0x000000, 0.995).setOrigin(0, 0).setInteractive());
+    layer.add(this.add.rectangle(0, 0, SCREEN_W, SCREEN_H, 0x060a12, 0.985).setOrigin(0, 0).setInteractive());
+    // 菜单右下的淡墨山与月：填住空黑，又不会抢菜名
+    const decor = this.add.graphics();
+    decor.fillStyle(0xffe6b0, 0.05);
+    decor.fillCircle(584, 368, 78);
+    decor.fillStyle(0x8aa0b8, 0.06);
+    decor.fillTriangle(300, 1040, 470, 760, 640, 1040);
+    decor.fillTriangle(500, 1060, 640, 850, 780, 1060);
+    decor.fillStyle(0x8a2a22, 0.1);
+    decor.fillRect(600, 640, 44, 44);
+    layer.add(decor);
+    layer.add(
+      this.add
+        .text(622, 662, "灵膳", { fontSize: "17px", color: "#ffe6c8", fontFamily: XIAN_FONT, align: "center" })
+        .setOrigin(0.5)
+        .setAlpha(0.14)
+        .setAngle(4),
+    );
     layer.add(this.add.text(40, 58, "选择今日菜单", { fontSize: "36px", color: "#ffe6a8", fontFamily: XIAN_FONT }));
     const unlocked = this.unlockedDishIds();
     const booking = this.regulars.find((r) => unlocked.includes(r.wish));
