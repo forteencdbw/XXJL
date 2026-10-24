@@ -1567,6 +1567,15 @@ class TavernScene extends Phaser.Scene {
     gfx.fillStyle(0xff7a3a, 0.95);
     gfx.fillCircle(-290, 852, 9);
     gfx.fillCircle(-255, 852, 9);
+    if (this.stoveLevel >= 1) {
+      gfx.fillStyle(0xffc060, 0.9);
+      gfx.fillCircle(-280, 846, 6);
+      gfx.fillCircle(-265, 850, 5);
+    }
+    if (this.stoveLevel >= 2) {
+      gfx.fillStyle(0xffe0a0, 0.9);
+      gfx.fillCircle(-300, 848, 4);
+    }
     gfx.fillStyle(0x3a2a1a, 1);
     gfx.fillRect(-350, 700, 4, 26);
     gfx.lineStyle(3, 0x8a8276, 1);
@@ -1685,6 +1694,47 @@ class TavernScene extends Phaser.Scene {
     // 排队区标记
     gfx.lineStyle(2, 0x8a7a5a, 1);
     gfx.lineBetween(380, FLOOR_Y - 2, 1200, FLOOR_Y - 2);
+
+    // 等级陈设：升级后回到店里能看见变化
+    if (this.level >= 2) {
+      gfx.fillStyle(0x8a2a22, 0.95);
+      gfx.fillRect(160, 300, 50, 112);
+      gfx.fillStyle(0xd9b45a, 0.9);
+      gfx.fillRect(160, 300, 50, 6);
+      gfx.fillRect(160, 406, 50, 6);
+      gfx.lineStyle(3, 0xe8b06a, 0.75);
+      gfx.lineBetween(185, 320, 185, 386);
+      gfx.lineBetween(175, 334, 195, 334);
+      gfx.lineBetween(175, 356, 195, 356);
+    }
+    if (this.level >= 3) {
+      gfx.lineStyle(2, 0xd9b45a, 0.45);
+      gfx.lineBetween(-200, 760, 200, 760);
+      gfx.lineBetween(-200, 762, 200, 762);
+    }
+    if (this.level >= 4) {
+      gfx.fillStyle(0x6a4a2a, 1);
+      gfx.fillRect(-188, 806, 26, 24);
+      gfx.fillStyle(0x3a6a3a, 1);
+      gfx.fillCircle(-175, 790, 16);
+      gfx.fillCircle(-162, 778, 12);
+    }
+    if (this.level >= 6) {
+      for (const lx of [-110, 110]) {
+        gfx.fillStyle(0x6a4a2a, 1);
+        gfx.fillRect(lx - 1, 320, 2, 18);
+        gfx.fillStyle(0xff5c3c, 1);
+        gfx.fillEllipse(lx, 348, 14, 20);
+        gfx.fillStyle(0xffd98a, 0.9);
+        gfx.fillRect(lx - 1, 358, 2, 8);
+      }
+    }
+    if (this.level >= 8) {
+      gfx.fillStyle(0x6a2a22, 0.5);
+      gfx.fillRoundedRect(-250, 1000, 470, 34, 8);
+      gfx.lineStyle(2, 0xd9b45a, 0.45);
+      gfx.strokeRoundedRect(-250, 1000, 470, 34, 8);
+    }
   }
 
   /** 夜空星子：只在打烊夜景与深夜里出现，缓慢明灭。 */
@@ -1925,6 +1975,26 @@ class TavernScene extends Phaser.Scene {
     gfx.fillStyle(0x2f4a2f, 0.7);
     gfx.fillEllipse(-130, baseY + 6, 36, 8);
     gfx.fillEllipse(140, baseY + 10, 28, 6);
+
+    // 门面招幡：升级后多一面旗
+    if (this.signLevel >= 1) {
+      gfx.fillStyle(0x8b2f22, 0.95);
+      gfx.fillRect(160, 610, 36, 260);
+      gfx.fillStyle(0xd9b45a, 0.9);
+      gfx.fillRect(160, 610, 36, 8);
+      gfx.fillRect(160, 860, 36, 8);
+      gfx.lineStyle(3, 0xe8b06a, 0.75);
+      gfx.lineBetween(178, 640, 178, 830);
+      gfx.lineBetween(168, 664, 188, 664);
+      gfx.lineBetween(168, 694, 188, 694);
+    }
+    if (this.signLevel >= 2) {
+      gfx.fillStyle(0x7a2a1e, 0.95);
+      gfx.fillRect(-198, 650, 30, 210);
+      gfx.fillStyle(0xd9b45a, 0.85);
+      gfx.fillRect(-198, 650, 30, 7);
+      gfx.fillRect(-198, 852, 30, 7);
+    }
   }
 
   // ===== 屏幕固定层（天空/地面/日月/UI）=====
@@ -4458,6 +4528,7 @@ class TavernScene extends Phaser.Scene {
     this.level += 1;
     this.booths.push(this.makeBooth());
     this.addBoothVisual(this.booths.length - 1);
+    this.drawInterior(this.interiorGfx);
     this.save();
     playSfx("upgrade");
     const unlocked = DISHES.find((d) => d.unlockLevel === this.level);
@@ -4475,6 +4546,7 @@ class TavernScene extends Phaser.Scene {
     this.coins -= cost;
     this.displayedCoins = this.coins;
     this.stoveLevel += 1;
+    this.drawInterior(this.interiorGfx);
     this.save();
     playSfx("upgrade");
     this.log(`灶台精修至 Lv${this.stoveLevel}，烹饪耗时再降一成`);
@@ -4489,6 +4561,7 @@ class TavernScene extends Phaser.Scene {
     this.coins -= cost;
     this.displayedCoins = this.coins;
     this.signLevel += 1;
+    this.drawTavern(this.tavernGfx, this.lastLit);
     this.save();
     playSfx("upgrade");
     this.log(`门面挂上新幡，到店间隔再缩短一些`);
