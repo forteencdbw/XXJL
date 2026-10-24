@@ -10,8 +10,9 @@
     <title>灵膳楼</title>
     <style>
       html, body { margin: 0; padding: 0; background: #000; overflow: hidden; }
-      #app { display: flex; justify-content: center; align-items: center; height: 100vh; }
-      canvas { max-width: 100vw; max-height: 100vh; }
+      /* 让 Phaser 的 CENTER_BOTH 自己居中；外层再用 flex 会和 canvas margin 叠加，画面偏下 */
+      #app { width: 100vw; height: 100vh; }
+      canvas { display: block; max-width: 100vw; max-height: 100vh; }
     </style>
   </head>
   <body>
