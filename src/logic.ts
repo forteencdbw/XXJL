@@ -148,6 +148,54 @@ export function getWishPrice(base: number, matched: boolean): number {
   return matched ? Math.round(base * (1 + WISH_PRICE_BONUS)) : base;
 }
 
+// ===== 每日目标 =====
+export type DailyGoalKind = "serve" | "revenue" | "wish";
+
+export interface DailyGoal {
+  kind: DailyGoalKind;
+  label: string;
+  target: number;
+  rewardCoins: number;
+  rewardCultivation: number;
+}
+
+export interface SessionStats {
+  served: number;
+  revenue: number;
+  wishes: number;
+}
+
+/** 每日目标按天轮换，难度随酒楼等级成长；奖励跟着等级走。 */
+export function getDailyGoal(day: number, level: number): DailyGoal {
+  const rewardCoins = 8 + level * 4;
+  const rewardCultivation = 2 + Math.floor(level / 3);
+  const base = { rewardCoins, rewardCultivation };
+  switch (((Math.max(1, day) - 1) % 3)) {
+    case 0: {
+      const target = 5 + level;
+      return { ...base, kind: "serve", target, label: `接待 ${target} 位食客` };
+    }
+    case 1: {
+      const target = 40 + level * 12;
+      return { ...base, kind: "revenue", target, label: `本日收入 ${target} 灵石` };
+    }
+    default: {
+      const target = 2 + Math.floor(level / 2);
+      return { ...base, kind: "wish", target, label: `满足 ${target} 位食客的口味` };
+    }
+  }
+}
+
+export function getGoalProgress(goal: DailyGoal, stats: SessionStats): number {
+  const value =
+    goal.kind === "serve" ? stats.served : goal.kind === "revenue" ? stats.revenue : stats.wishes;
+  return Math.min(goal.target, Math.max(0, value));
+}
+
+export function isGoalMet(goal: DailyGoal, stats: SessionStats): boolean {
+  return getGoalProgress(goal, stats) >= goal.target;
+}
+
 // ===== 修为与境界 =====
 /** 境界越高，酒楼的仙缘越盛：售价、操作速度、客流依次获得加成。 */
 export interface RealmDef {

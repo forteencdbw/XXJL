@@ -11,7 +11,10 @@ import {
   getArrivalInterval,
   getBoothCount,
   getCultivationGain,
+  getDailyGoal,
+  getGoalProgress,
   getLoanDue,
+  isGoalMet,
   getNextRealm,
   getPlayerDuration,
   getPurchaseDiscount,
@@ -191,6 +194,39 @@ describe("食客类型与口味", () => {
     expect(getWishPrice(6, true)).toBe(9);
     expect(getWishPrice(6, false)).toBe(6);
     expect(getWishPrice(6, true)).toBeGreaterThan(getWishPrice(6, false));
+  });
+});
+
+describe("每日目标", () => {
+  it("三天一轮换，目标与奖励随等级成长", () => {
+    const goals = [1, 2, 3].map((day) => getDailyGoal(day, 1));
+    expect(new Set(goals.map((g) => g.kind)).size).toBe(3);
+    expect(getDailyGoal(4, 1).kind).toBe(goals[0].kind);
+    for (const goal of goals) {
+      expect(goal.target).toBeGreaterThan(0);
+      expect(goal.rewardCoins).toBeGreaterThan(0);
+      expect(goal.rewardCultivation).toBeGreaterThan(0);
+    }
+    expect(getDailyGoal(1, 5).target).toBeGreaterThan(getDailyGoal(1, 1).target);
+    expect(getDailyGoal(1, 5).rewardCoins).toBeGreaterThan(getDailyGoal(1, 1).rewardCoins);
+  });
+
+  it("进度按目标类型取对应统计，封顶不溢出", () => {
+    const serve = getDailyGoal(1, 1);
+    expect(getGoalProgress(serve, { served: 2, revenue: 999, wishes: 0 })).toBe(2);
+    expect(getGoalProgress(serve, { served: 999, revenue: 0, wishes: 0 })).toBe(serve.target);
+    const revenue = getDailyGoal(2, 1);
+    expect(getGoalProgress(revenue, { served: 99, revenue: revenue.target - 1, wishes: 0 })).toBe(
+      revenue.target - 1,
+    );
+    const wish = getDailyGoal(3, 1);
+    expect(getGoalProgress(wish, { served: 0, revenue: 0, wishes: wish.target })).toBe(wish.target);
+  });
+
+  it("达到目标才算完成", () => {
+    const goal = getDailyGoal(1, 1);
+    expect(isGoalMet(goal, { served: goal.target - 1, revenue: 0, wishes: 0 })).toBe(false);
+    expect(isGoalMet(goal, { served: goal.target, revenue: 0, wishes: 0 })).toBe(true);
   });
 });
 

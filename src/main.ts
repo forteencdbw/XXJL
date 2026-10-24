@@ -12,6 +12,8 @@ import {
   getArrivalInterval,
   getBoothCount,
   getCultivationGain,
+  getDailyGoal,
+  getGoalProgress,
   getLoanDue,
   getNextRealm,
   getPlayerDuration,
@@ -27,11 +29,12 @@ import {
   getStaffWage,
   getUpgradeCost,
   getWishPrice,
+  isGoalMet,
   pickPatronWish,
   skyColorAt,
 } from "./logic";
 import { EXP_PER_LEVEL } from "./logic";
-import type { Dish, LoanDef, PatronKind, StaffRole } from "./logic";
+import type { DailyGoal, Dish, LoanDef, PatronKind, StaffRole } from "./logic";
 
 // ===== 本文件独有的常量 =====
 const QUEUE_PATIENCE_MS = 8000;
@@ -143,6 +146,7 @@ interface SaveData {
   activeLoans: { name: string; remaining: number; periodsLeft: number }[];
   negativeStreak: number;
   cultivation: number;
+  day: number;
   selectedDishIds: string[];
   playerGender: "male" | "female";
 }
@@ -310,6 +314,10 @@ class TavernScene extends Phaser.Scene {
   private sessionServed = 0;
   private sessionRevenue = 0;
   private sessionLost = 0;
+  private sessionWishes = 0;
+  private day = 1;
+  private sessionGoal: DailyGoal | null = null;
+  private lastGoalResult: { goal: DailyGoal; met: boolean; progress: number } | null = null;
 
   private playerSeat: SeatProgress | null = null;
   private playerCookingBooth: number | null = null;
@@ -333,6 +341,7 @@ class TavernScene extends Phaser.Scene {
   private levelText!: Phaser.GameObjects.Text;
   private realmText!: Phaser.GameObjects.Text;
   private cultivationText!: Phaser.GameObjects.Text;
+  private goalText!: Phaser.GameObjects.Text;
   private queueText!: Phaser.GameObjects.Text;
   private sessionText!: Phaser.GameObjects.Text;
   private chronicleText!: Phaser.GameObjects.Text;
@@ -455,6 +464,7 @@ class TavernScene extends Phaser.Scene {
       activeLoans: this.activeLoans,
       negativeStreak: this.negativeStreak,
       cultivation: this.cultivation,
+      day: this.day,
       selectedDishIds: [...this.selectedDishIds],
       playerGender: this.playerGender,
     };
@@ -480,6 +490,7 @@ class TavernScene extends Phaser.Scene {
       this.level = Math.max(1, Math.floor(num(data.level, 1)));
       this.cultivation = count(data.cultivation);
       this.negativeStreak = count(data.negativeStreak);
+      this.day = Math.max(1, Math.floor(num(data.day, 1)));
       this.playerGender = data.playerGender === "female" ? "female" : "male";
       for (const role of ["hawker", "server", "cook", "buyer"] as const) {
         this.staffLevel[role] = Math.min(MAX_STAFF_LEVEL, count(data.staffLevel?.[role]));
@@ -679,6 +690,7 @@ class TavernScene extends Phaser.Scene {
     this.queueText = this.addUiText(250, 36, "", "17px", "#e0b0ff");
     this.realmText = this.addUiText(400, 10, "", "15px", "#ffd98a");
     this.cultivationText = this.addUiText(400, 36, "", "14px", "#d8c8ff");
+    this.goalText = this.addUiText(400, 62, "", "14px", "#9fdf6a");
     this.sessionText = this.addUiText(16, 62, "", "14px", "#a8d8ff");
     this.chronicleText = this.addUiText(16, 82, "", "13px", "#cccccc");
     this.tableTitle = this.addUiText(16, 176, "雅座", "13px", "#bbbbbb");
@@ -900,6 +912,7 @@ class TavernScene extends Phaser.Scene {
         this.showCoinPopup(this.tablePosition(index).x, FLOOR_Y - 120, price);
         this.sessionServed += 1;
         this.sessionRevenue += price;
+        if (matched) this.sessionWishes += 1;
         this.log(
           matched
             ? `${guest}吃到了想吃的${dishName}，满意离店，收入 +${price} 灵石`
@@ -1117,6 +1130,8 @@ class TavernScene extends Phaser.Scene {
       this.sessionServed = 0;
       this.sessionRevenue = 0;
       this.sessionLost = 0;
+      this.sessionWishes = 0;
+      this.sessionGoal = getDailyGoal(this.day, this.level);
       this.sessionEndsAt = this.time.now + SESSION_DURATION_MS;
       this.nextArrivalAt =
         this.time.now +
@@ -1164,6 +1179,7 @@ class TavernScene extends Phaser.Scene {
     this.gainStaffExperience();
     this.lastWages = this.settleWages();
     this.lastLoanDues = this.settleLoans();
+    this.settleDailyGoal();
     this.updateBankruptStreak();
     // 结算/破产期间锁定副屏，避免重复结算或误买
     this.purchaseButton.setEnabled(false);
@@ -1531,6 +1547,7 @@ class TavernScene extends Phaser.Scene {
       76 +
       (this.lastWages.length > 0 ? 30 + this.lastWages.length * 28 + 10 : 0) +
       (this.lastLoanDues.length > 0 ? 30 + this.lastLoanDues.length * 28 + 10 : 0) +
+      (this.lastGoalResult ? 58 : 0) +
       summary.length * 34 +
       18 +
       46 +
@@ -1565,6 +1582,23 @@ class TavernScene extends Phaser.Scene {
         y += 28;
       }
       y += 10;
+    }
+
+    if (this.lastGoalResult) {
+      const { goal, met, progress } = this.lastGoalResult;
+      panel.add(this.add.text(left, y, `今日目标 · ${goal.label}`, { fontSize: "17px", color: "#aaaaaa" }));
+      y += 26;
+      panel.add(
+        this.add.text(
+          left + 16,
+          y,
+          met
+            ? `达成！+${goal.rewardCoins} 灵石、+${goal.rewardCultivation} 修为`
+            : `未达成（${progress}/${goal.target}）`,
+          { fontSize: "18px", color: met ? "#9fdf6a" : "#999999" },
+        ),
+      );
+      y += 32;
     }
 
     summary.forEach((line) => {
@@ -2045,6 +2079,24 @@ class TavernScene extends Phaser.Scene {
     return details;
   }
 
+  /** 打烊时结算今日目标，发了奖励再翻到第二天。 */
+  private settleDailyGoal() {
+    const goal = this.sessionGoal;
+    this.day += 1;
+    if (!goal) return;
+    const stats = { served: this.sessionServed, revenue: this.sessionRevenue, wishes: this.sessionWishes };
+    const met = isGoalMet(goal, stats);
+    this.lastGoalResult = { goal, met, progress: getGoalProgress(goal, stats) };
+    if (!met) {
+      this.log(`今日目标未达成：${goal.label}`);
+      return;
+    }
+    this.coins += goal.rewardCoins;
+    this.displayedCoins = this.coins;
+    this.log(`今日目标达成：${goal.label}，赏 ${goal.rewardCoins} 灵石、${goal.rewardCultivation} 修为`);
+    this.gainCultivation(goal.rewardCultivation);
+  }
+
   /** 连续 5 个回合结束为负余额即破产。 */
   private updateBankruptStreak() {
     if (this.coins < 0) {
@@ -2163,13 +2215,29 @@ class TavernScene extends Phaser.Scene {
     this.cultivationText.setText(
       next ? `修为 ${this.cultivation}/${next.cultivation}` : `修为 ${this.cultivation} 圆满`,
     );
-    this.sessionText.setText(
-      this.settling
-        ? "已打烊"
-        : open
-          ? `营业中 · 剩余 ${Math.max(0, Math.ceil((this.sessionEndsAt - this.time.now) / 1000))}s · 本局 ${this.sessionServed} 位 / ${this.sessionRevenue} 灵石`
-          : "",
-    );
+    if (this.settling) {
+      this.sessionText.setText("已打烊");
+      this.goalText.setText("");
+    } else if (open && this.sessionGoal) {
+      this.sessionText.setText(
+        `营业中 · 剩余 ${Math.max(0, Math.ceil((this.sessionEndsAt - this.time.now) / 1000))}s · 本局 ${this.sessionServed} 位 / ${this.sessionRevenue} 灵石`,
+      );
+      const progress = getGoalProgress(this.sessionGoal, {
+        served: this.sessionServed,
+        revenue: this.sessionRevenue,
+        wishes: this.sessionWishes,
+      });
+      const spent = this.sessionGoal.kind === "revenue" ? " 灵石" : " 位";
+      const reached = progress >= this.sessionGoal.target;
+      this.goalText.setText(reached ? "今日目标 ✓" : `目标 ${progress}/${this.sessionGoal.target}${spent}`);
+      this.goalText.setColor(reached ? "#9fdf6a" : "#e0c060");
+    } else {
+      const goal = getDailyGoal(this.day, this.level);
+      this.sessionText.setText(
+        `第 ${this.day} 日 · 今日目标：${goal.label}（+${goal.rewardCoins} 灵石 / +${goal.rewardCultivation} 修为）`,
+      );
+      this.goalText.setText("");
+    }
     this.chronicleText.setText(this.chronicleLines.join("\n"));
 
     const menu = this.getMenuDishes();
