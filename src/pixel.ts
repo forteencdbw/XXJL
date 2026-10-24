@@ -58,12 +58,44 @@ export function drawPixelCharacter(ctx: CanvasRenderingContext2D, s: PixelStyle)
   if (s.look === "elder") {
     f(43, 14, 2, 46, "#6a4528");
     f(42, 12, 4, 3, "#d9b45a");
+    f(41, 10, 6, 2, "#e8dcc0");
   }
   // 葫芦
   if (s.look === "alchemist" || s.look === "demon") {
     f(40, 42, 6, 7, "#c8a04a");
     f(41, 39, 4, 4, "#8a6a2a");
     f(41, 49, 4, 5, "#c8a04a");
+  }
+  if (s.look === "alchemist") {
+    f(35, 31, 2, 2, "#d9f0a8");
+    f(33, 27, 1, 1, "#f0ffd8");
+  }
+  // 散修短刃
+  if (s.look === "rogue") {
+    for (let i = 0; i < 12; i++) f(41 - Math.floor(i * 0.2), 36 + i, 1, 1, i % 3 ? "#b8c4d0" : "#e8eef4");
+    f(38, 34, 4, 2, "#7a4a2a");
+  }
+  // 魔道骨扇/权杖
+  if (s.look === "demonlord") {
+    f(42, 28, 2, 34, "#3a1a20");
+    f(40, 24, 6, 3, "#8a2a22");
+    f(38, 20, 10, 5, "#2a1218");
+    for (let i = 0; i < 4; i++) f(39 + i * 2, 20, 1, 4, "#c84a3a");
+    f(42, 31, 3, 3, "#ff6a5a");
+  }
+  // 凡人挑担
+  if (s.look === "mortal") {
+    f(4, 32, 40, 2, "#8a6a4a");
+    f(4, 34, 2, 7, "#6a4a2a");
+    f(42, 34, 2, 7, "#6a4a2a");
+    f(2, 41, 7, 5, "#a8783a");
+    f(39, 41, 7, 5, "#a8783a");
+  }
+  // 妖修尾巴
+  if (s.look === "demon" || s.look === "demonlord") {
+    f(9, 48, 3, 3, "#8a4a32");
+    f(6, 50, 4, 2, "#8a4a32");
+    f(4, 48, 3, 2, "#6a2a1a");
   }
   // 长发
   if (s.longHair) {

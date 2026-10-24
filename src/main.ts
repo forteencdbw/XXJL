@@ -440,6 +440,43 @@ class Character extends Phaser.GameObjects.Container {
       });
     };
     this.scene.time.delayedCall(Phaser.Math.Between(1200, 3000), blink);
+    // 修士的细碎灵光：给剑修/丹修/长老/妖修一点“飘”的气
+    const ethereal: Record<string, number> = {
+      sword: 0xb8d8f0,
+      elder: 0xffe6a8,
+      alchemist: 0xa8e8c0,
+      demon: 0xff8a6a,
+      demonlord: 0xff5a5a,
+    };
+    if (ethereal[look]) {
+      this.scene.time.addEvent({
+        delay: 1500,
+        loop: true,
+        callback: () => {
+          if (!this.active || !this.pixelEnabled) return;
+          for (let i = 0; i < 2; i++) {
+            const dot = this.scene.add
+              .rectangle(
+                this.x + Phaser.Math.Between(-26, 26),
+                this.y - Phaser.Math.Between(10, 58),
+                2,
+                2,
+                ethereal[look],
+                0.7,
+              )
+              .setDepth(this.depth + 0.6);
+            this.scene.tweens.add({
+              targets: dot,
+              y: dot.y - Phaser.Math.Between(14, 30),
+              x: dot.x + Phaser.Math.Between(-8, 8),
+              alpha: 0,
+              duration: Phaser.Math.Between(900, 1500),
+              onComplete: () => dot.destroy(),
+            });
+          }
+        },
+      });
+    }
     // 点人物会回一句身份台词；用拖动阈值区分镜头拖拽
     this.setInteractive(new Phaser.Geom.Rectangle(-40, -70, 80, 118), Phaser.Geom.Rectangle.Contains);
     let downX = 0;
@@ -6829,6 +6866,153 @@ class TavernScene extends Phaser.Scene {
     this.spawnPatron(this.time.now);
   }
 
+  /** 每位修士有自己的进店方式：御剑、乘云、化烟、裂空；凡人/散修走进来。 */
+  private patronEntrance(char: Character, kind: PatronKind, slotX: number) {
+    char.setScale(char.x < slotX ? 1 : -1, 1);
+    const id = kind.id;
+    const spark = (x: number, y: number, color: number, count = 2) => {
+      for (let i = 0; i < count; i++) {
+        const dot = this.add
+          .rectangle(x + Phaser.Math.Between(-8, 8), y + Phaser.Math.Between(-8, 8), 2, 2, color, 0.8)
+          .setDepth(21);
+        this.tweens.add({
+          targets: dot,
+          x: dot.x + Phaser.Math.Between(-22, 22),
+          y: dot.y - Phaser.Math.Between(10, 34),
+          alpha: 0,
+          duration: Phaser.Math.Between(500, 900),
+          onComplete: () => dot.destroy(),
+        });
+      }
+    };
+    if (id === "sword") {
+      // 御剑：从门外滑进来，剑在脚下，落地才收剑
+      char.setX(Math.min(char.x, slotX + 200));
+      char.setY(ACTOR_Y - 54);
+      const board = this.add.container(char.x, char.y + 30).setDepth(19.8);
+      const g = this.add.graphics();
+      g.fillStyle(0x9aa8b8, 1);
+      g.fillRect(-34, -2, 68, 4);
+      g.fillStyle(0xe8eef4, 1);
+      g.fillRect(-34, -2, 40, 2);
+      g.fillStyle(0xd9b45a, 1);
+      g.fillRect(34, -5, 9, 10);
+      g.fillStyle(0x6a4a2a, 1);
+      g.fillRect(40, -2, 12, 4);
+      board.add(g);
+      for (let i = 0; i < 10; i++) {
+        this.time.delayedCall(70 * i, () => {
+          if (char.active) spark(char.x - 22, char.y + 32, 0xb8d8f0, 1);
+        });
+      }
+      this.tweens.add({
+        targets: [char, board],
+        x: slotX,
+        duration: 1050,
+        ease: "Sine.easeOut",
+        onComplete: () => {
+          this.tweens.add({
+            targets: board,
+            alpha: 0,
+            duration: 220,
+            onComplete: () => board.destroy(),
+          });
+          this.tweens.add({ targets: char, y: ACTOR_Y, duration: 260, ease: "Bounce.easeOut" });
+          spark(char.x, char.y + 30, 0xffe6a8, 6);
+        },
+      });
+      return;
+    }
+    if (id === "elder" || id === "alchemist") {
+      // 乘云：长老/丹修离地半尺漂进来
+      const green = id === "alchemist";
+      char.setX(Math.min(char.x, slotX + 200));
+      char.setY(ACTOR_Y - 30);
+      const cloud = this.add.container(char.x, char.y + 26).setDepth(19.8);
+      cloud.add(this.add.rectangle(0, 4, 42, 7, green ? 0x6a9a7a : 0xa8c8d8, 0.9));
+      cloud.add(this.add.rectangle(-15, 8, 22, 7, green ? 0x8ac89a : 0xc8e0ee, 0.85));
+      cloud.add(this.add.rectangle(15, 8, 22, 7, green ? 0x8ac89a : 0xc8e0ee, 0.85));
+      cloud.add(this.add.rectangle(0, 11, 54, 5, 0x6a7a8a, 0.35));
+      for (let i = 0; i < 10; i++) {
+        this.time.delayedCall(90 * i, () => {
+          if (char.active) spark(char.x, char.y + 34, green ? 0xa8e8c0 : 0xffe6a8, 1);
+        });
+      }
+      this.tweens.add({
+        targets: [char, cloud],
+        x: slotX,
+        duration: 1150,
+        ease: "Sine.easeOut",
+        onComplete: () => {
+          this.tweens.add({ targets: cloud, alpha: 0, duration: 260, onComplete: () => cloud.destroy() });
+          this.tweens.add({ targets: char, y: ACTOR_Y, duration: 300, ease: "Sine.easeOut" });
+          spark(char.x, char.y + 30, green ? 0xa8e8c0 : 0xffe6a8, 5);
+        },
+      });
+      return;
+    }
+    if (id === "demon") {
+      // 妖修：化作赤烟落地
+      char.setPosition(slotX, ACTOR_Y - 62).setAlpha(0);
+      const flash = this.add
+        .rectangle(slotX, ACTOR_Y - 34, 92, 120, 0x8a2a22, 0.28)
+        .setDepth(19.7)
+        .setScale(0.2);
+      this.tweens.add({
+        targets: flash,
+        scaleX: 1.2,
+        scaleY: 1,
+        alpha: 0,
+        duration: 500,
+        onComplete: () => flash.destroy(),
+      });
+      this.time.delayedCall(60, () => spark(slotX, ACTOR_Y - 30, 0xff8a6a, 12));
+      this.tweens.add({
+        targets: char,
+        y: ACTOR_Y,
+        alpha: 1,
+        duration: 520,
+        ease: "Bounce.easeOut",
+      });
+      return;
+    }
+    if (id === "demonlord") {
+      // 魔道：裂开一道暗红缝隙再走出来
+      char.setPosition(slotX, ACTOR_Y).setAlpha(0);
+      const rift = this.add.container(slotX, ACTOR_Y - 32).setDepth(19.7);
+      rift.add(this.add.rectangle(-8, 0, 4, 92, 0x2a0a10, 0.95).setScale(1, 0));
+      rift.add(this.add.rectangle(7, 0, 4, 92, 0x8a2a22, 0.9).setScale(1, 0));
+      rift.add(this.add.rectangle(0, 0, 2, 100, 0xff5a5a, 0.7).setScale(1, 0));
+      this.tweens.add({
+        targets: rift.list,
+        scaleY: 1,
+        duration: 260,
+        ease: "Sine.easeOut",
+        onComplete: () => {
+          this.tweens.add({ targets: char, alpha: 1, duration: 220 });
+          this.time.delayedCall(180, () => {
+            this.tweens.add({
+              targets: rift,
+              alpha: 0,
+              duration: 260,
+              onComplete: () => rift.destroy(),
+            });
+          });
+          spark(slotX, ACTOR_Y - 40, 0xff5a5a, 10);
+        },
+      });
+      return;
+    }
+    // 凡人/散修：正常走进来；散修脚下有急行的尘，凡人慢慢挑担
+    const walkMs = id === "rogue" ? 430 : 760;
+    char.walkTo(slotX, ACTOR_Y, walkMs);
+    for (let i = 0; i < 4; i++) {
+      this.time.delayedCall(120 * i, () => {
+        if (char.active) spark(char.x + 12, ACTOR_Y - 2, id === "rogue" ? 0xb8b0a0 : 0x8a7a62, 1);
+      });
+    }
+  }
+
   /** 系统生成一位到店顾客：队列有空位就走进来排队，排满则直接离开。 */
   private spawnPatron(time: number) {
     const unlocked = this.unlockedDishIds();
@@ -6870,7 +7054,7 @@ class TavernScene extends Phaser.Scene {
       return;
     }
 
-    char.walkTo(slotX, ACTOR_Y, 700);
+    this.patronEntrance(char, kind, slotX);
     const patience = QUEUE_PATIENCE_MS * kind.patienceFactor * (this.day === 1 ? 2.2 : 1);
     this.queue.push({ expiresAt: time + patience, patienceMs: patience, char, kind, wish, name, regular: !!regular });
     if (this.day === 1 && this.tutorialHintStage === 0) {
