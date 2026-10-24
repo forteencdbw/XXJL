@@ -1,5 +1,6 @@
 import Phaser from "phaser";
 import { loadAudioSettings, playSfx, setBgmMuted, setSfxMuted, startBgm } from "./audio";
+import { getPixelTexture, type PixelStyle } from "./pixel";
 import {
   BANKRUPT_STREAK,
   DISHES,
@@ -109,10 +110,10 @@ const SKY_TRANSITION_MS = 2000;
 
 const FLOOR_Y = 1010;
 const ACTOR_Y = FLOOR_Y - 34;
-const TABLE_X_MIN = -180;
-const TABLE_X_MAX = 170;
+const TABLE_X_MIN = -250;
+const TABLE_X_MAX = 250;
 const QUEUE_X = 300;
-const QUEUE_GAP = 34;
+const QUEUE_GAP = 84;
 const TABLE_MARKS = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧"];
 const PLAYER_HOME = { x: 240, y: ACTOR_Y };
 const HAWKER_HOME = { x: 280, y: ACTOR_Y };
@@ -340,6 +341,9 @@ class Character extends Phaser.GameObjects.Container {
   private seated = false;
   private mood: "idle" | "waiting" | "dining" | "cold" = "idle";
   private static readonly ART_SCALE = 1.22;
+  private pixelImage?: Phaser.GameObjects.Image;
+  private pixelEnabled = true;
+  private pixelBlink = false;
   private bodyColor: number;
   private hairColor: number;
   private longHair: boolean;
@@ -401,6 +405,15 @@ class Character extends Phaser.GameObjects.Container {
     this.glintL = scene.add.circle(-4.8, -20.2, 0.8, 0xffffff, 0.92).setDepth(3);
     this.glintR = scene.add.circle(3.2, -20.2, 0.8, 0xffffff, 0.92).setDepth(3);
     this.visual.add([this.eyeWhiteL, this.eyeWhiteR, this.eyeL, this.eyeR, this.glintL, this.glintR]);
+    this.pixelImage = scene.add
+      .image(0, 44, getPixelTexture(scene, this.pixelStyle()))
+      .setOrigin(0.5, 1)
+      .setScale(1.35);
+    this.visual.add(this.pixelImage);
+    this.art.setVisible(false);
+    [this.eyeWhiteL, this.eyeWhiteR, this.eyeL, this.eyeR, this.glintL, this.glintR].forEach((e) =>
+      e.setVisible(false),
+    );
     this.add(this.visual);
     this.draw();
     this.setDepth(20);
@@ -415,8 +428,20 @@ class Character extends Phaser.GameObjects.Container {
       delay: Phaser.Math.Between(600, 4000),
     });
     this.startIdle();
+    const blink = () => {
+      if (!this.active || !this.pixelEnabled) return;
+      this.pixelBlink = true;
+      this.drawPixel();
+      this.scene.time.delayedCall(110, () => {
+        if (!this.active) return;
+        this.pixelBlink = false;
+        this.drawPixel();
+        this.scene.time.delayedCall(Phaser.Math.Between(2400, 5200), blink);
+      });
+    };
+    this.scene.time.delayedCall(Phaser.Math.Between(1200, 3000), blink);
     // 点人物会回一句身份台词；用拖动阈值区分镜头拖拽
-    this.setInteractive(new Phaser.Geom.Rectangle(-24, -56, 48, 102), Phaser.Geom.Rectangle.Contains);
+    this.setInteractive(new Phaser.Geom.Rectangle(-40, -70, 80, 118), Phaser.Geom.Rectangle.Contains);
     let downX = 0;
     let downY = 0;
     this.on("pointerdown", (p: Phaser.Input.Pointer) => {
@@ -459,7 +484,38 @@ class Character extends Phaser.GameObjects.Container {
     );
   }
 
+  private pixelStyle(): PixelStyle {
+    return {
+      body: this.bodyColor,
+      hair: this.hairColor,
+      longHair: this.longHair,
+      look: this.look,
+      seated: this.seated,
+      dining: this.dining,
+      blink: this.pixelBlink,
+    };
+  }
+
+  private drawPixel() {
+    if (!this.pixelImage) return;
+    this.pixelImage.setTexture(getPixelTexture(this.scene, this.pixelStyle()));
+  }
+
+  usePixelArt(enabled: boolean) {
+    this.pixelEnabled = enabled;
+    this.pixelImage?.setVisible(enabled);
+    this.art.setVisible(!enabled);
+    [this.eyeWhiteL, this.eyeWhiteR, this.eyeL, this.eyeR, this.glintL, this.glintR].forEach((e) =>
+      e.setVisible(!enabled),
+    );
+    this.draw();
+  }
+
   private draw() {
+    if (this.pixelEnabled && this.pixelImage) {
+      this.drawPixel();
+      return;
+    }
     const g = this.art;
     const body = this.bodyColor;
     const dark = this.shade(body, 0.72);
@@ -2416,8 +2472,10 @@ class TavernScene extends Phaser.Scene {
       );
     }
     const male = new Character(this, 180, 500, 0x4a7ab8, 0x2b2b2b, false, "player");
+    male.usePixelArt(false);
     male.setScale(2.2).disableInteractive();
     const female = new Character(this, 540, 500, 0xc86a9e, 0x4a2b1a, true, "player");
+    female.usePixelArt(false);
     female.setScale(-2.2, 2.2).disableInteractive();
     layer.add([male, female]);
     layer.add(
@@ -3914,7 +3972,7 @@ class TavernScene extends Phaser.Scene {
         padding: { x: 2, y: 1 },
         align: "center",
         lineSpacing: 1,
-        wordWrap: { width: 140 },
+        wordWrap: { width: 110 },
         fontFamily: XIAN_FONT,
       })
       .setOrigin(0.5, 1)
@@ -3988,7 +4046,7 @@ class TavernScene extends Phaser.Scene {
   /** 桌子在同一地面上横向均分，数量越多越窄。 */
   private relayoutTables() {
     const total = Math.max(this.booths.length, 1);
-    const width = Math.min(84, 320 / total);
+    const width = Math.min(84, 500 / total);
     this.boothVisuals.forEach((v, i) => {
       const x = total === 1 ? (TABLE_X_MIN + TABLE_X_MAX) / 2 : TABLE_X_MIN + (i * (TABLE_X_MAX - TABLE_X_MIN)) / (total - 1);
       v.bg.setPosition(x, FLOOR_Y - 30).setSize(width, 16);
@@ -4011,7 +4069,7 @@ class TavernScene extends Phaser.Scene {
       v.legs[0].setPosition(x - width / 2 + 10, FLOOR_Y - 14);
       v.legs[1].setPosition(x + width / 2 - 10, FLOOR_Y - 14);
       v.label.setPosition(x, FLOOR_Y - 116 - stagger);
-      const zoneWidth = Math.max(36, Math.min(90, 320 / total));
+      const zoneWidth = Math.max(36, Math.min(90, 500 / total));
       v.zone.setPosition(x, FLOOR_Y - 170).setSize(zoneWidth, 160);
       if (v.zone.input) v.zone.input.hitArea.setSize(zoneWidth, 160);
       const barW = Math.max(36, width - 8);
@@ -6195,6 +6253,7 @@ class TavernScene extends Phaser.Scene {
       spec.longHair,
       spec.look,
     );
+    portrait.usePixelArt(false);
     portrait.setScrollFactor(0).setScale(4.2).setDepth(101.5);
     portrait.disableInteractive();
     portrait.setMood(spec.mood);
