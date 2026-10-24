@@ -469,7 +469,7 @@ class TavernScene extends Phaser.Scene {
   private showGenderPicker() {
     const cam = this.cameras.main;
     const layer = this.add.container(cam.scrollX, cam.scrollY).setDepth(120);
-    layer.add(this.add.rectangle(0, 0, SCREEN_W, SCREEN_H, 0x000000, 0.92).setOrigin(0, 0));
+    layer.add(this.add.rectangle(0, 0, SCREEN_W, SCREEN_H, 0x000000, 0.92).setOrigin(0, 0).setInteractive());
     layer.add(this.add.text(60, 220, "选择你的形象", { fontSize: "30px", color: "#ffffff" }));
     const pick = (x: number, label: string, gender: "male" | "female", color: string) => {
       const btn = this.add
@@ -1229,7 +1229,7 @@ class TavernScene extends Phaser.Scene {
 
   // ===== 回合 =====
   private onStartButton() {
-    if (this.settling) return;
+    if (this.settling || this.transitioning) return;
     if (this.gameState === "closed") this.openMenu();
     else if (this.gameState === "open") this.endSession();
   }
@@ -1243,7 +1243,7 @@ class TavernScene extends Phaser.Scene {
     this.destroyOverlay();
     const cam = this.cameras.main;
     const layer = this.add.container(cam.scrollX, cam.scrollY).setDepth(100);
-    layer.add(this.add.rectangle(0, 0, SCREEN_W, SCREEN_H, 0x000000, 0.92).setOrigin(0, 0));
+    layer.add(this.add.rectangle(0, 0, SCREEN_W, SCREEN_H, 0x000000, 0.92).setOrigin(0, 0).setInteractive());
     layer.add(this.add.text(40, 70, "选择今日菜单", { fontSize: "30px", color: "#ffffff" }));
     layer.add(
       this.add.text(40, 115, "至少选一道菜才能开张；营业中可按顺序轮转，也可在出菜行指定", {
@@ -1491,7 +1491,7 @@ class TavernScene extends Phaser.Scene {
     this.destroyOverlay();
     const cam = this.cameras.main;
     const layer = this.add.container(cam.scrollX, cam.scrollY).setDepth(100);
-    layer.add(this.add.rectangle(0, 0, SCREEN_W, SCREEN_H, 0x000000, 0.94).setOrigin(0, 0));
+    layer.add(this.add.rectangle(0, 0, SCREEN_W, SCREEN_H, 0x000000, 0.94).setOrigin(0, 0).setInteractive());
     layer.add(this.add.text(40, 70, "营造", { fontSize: "30px", color: "#ffffff" }));
     layer.add(this.add.text(40, 116, "灵石有限，先补当前的短板", { fontSize: "15px", color: "#999999" }));
 
@@ -1576,7 +1576,7 @@ class TavernScene extends Phaser.Scene {
     this.destroyOverlay();
     const cam = this.cameras.main;
     const layer = this.add.container(cam.scrollX, cam.scrollY).setDepth(100);
-    layer.add(this.add.rectangle(0, 0, SCREEN_W, SCREEN_H, 0x000000, 0.92).setOrigin(0, 0));
+    layer.add(this.add.rectangle(0, 0, SCREEN_W, SCREEN_H, 0x000000, 0.92).setOrigin(0, 0).setInteractive());
     layer.add(this.add.text(40, 70, "伙计", { fontSize: "30px", color: "#ffffff" }));
     layer.add(
       this.add.text(40, 116, this.staffBottleneckHint(), { fontSize: "15px", color: "#e0c060" }),
@@ -1640,7 +1640,7 @@ class TavernScene extends Phaser.Scene {
     this.destroyOverlay();
     const cam = this.cameras.main;
     const layer = this.add.container(cam.scrollX, cam.scrollY).setDepth(100);
-    layer.add(this.add.rectangle(0, 0, SCREEN_W, SCREEN_H, 0x000000, 0.92).setOrigin(0, 0));
+    layer.add(this.add.rectangle(0, 0, SCREEN_W, SCREEN_H, 0x000000, 0.92).setOrigin(0, 0).setInteractive());
     layer.add(this.add.text(40, 70, "修行境界", { fontSize: "30px", color: "#ffffff" }));
     const next = getNextRealm(this.cultivation);
     layer.add(
@@ -1727,7 +1727,7 @@ class TavernScene extends Phaser.Scene {
     this.destroyOverlay();
     const cam = this.cameras.main;
     const layer = this.add.container(cam.scrollX, cam.scrollY).setDepth(100);
-    layer.add(this.add.rectangle(0, 0, SCREEN_W, SCREEN_H, 0x000000, 0.95).setOrigin(0, 0));
+    layer.add(this.add.rectangle(0, 0, SCREEN_W, SCREEN_H, 0x000000, 0.95).setOrigin(0, 0).setInteractive());
     layer.add(this.add.text(40, 90, "渡劫飞升", { fontSize: "32px", color: "#ffd98a" }));
     const next = this.ascensions + 1;
     const lines = [
@@ -1788,7 +1788,7 @@ class TavernScene extends Phaser.Scene {
     this.destroyOverlay();
     const cam = this.cameras.main;
     const layer = this.add.container(cam.scrollX, cam.scrollY).setDepth(100);
-    layer.add(this.add.rectangle(0, 0, SCREEN_W, SCREEN_H, 0x000000, 0.92).setOrigin(0, 0));
+    layer.add(this.add.rectangle(0, 0, SCREEN_W, SCREEN_H, 0x000000, 0.92).setOrigin(0, 0).setInteractive());
     layer.add(this.add.text(40, 70, "灵石商行", { fontSize: "30px", color: "#ffffff" }));
     layer.add(
       this.add.text(40, 116, `在贷 ${this.activeLoans.length} 笔 · 连亏 ${this.negativeStreak}/${BANKRUPT_STREAK} 日`, {
@@ -2078,7 +2078,7 @@ class TavernScene extends Phaser.Scene {
     this.destroyOverlay();
     const cam = this.cameras.main;
     const layer = this.add.container(cam.scrollX, cam.scrollY).setDepth(110);
-    layer.add(this.add.rectangle(0, 0, SCREEN_W, SCREEN_H, 0x000000, 0.94).setOrigin(0, 0));
+    layer.add(this.add.rectangle(0, 0, SCREEN_W, SCREEN_H, 0x000000, 0.94).setOrigin(0, 0).setInteractive());
     layer.add(this.add.text(40, 80, "灵膳楼 · 掌柜须知", { fontSize: "30px", color: "#ffd98a" }));
     layer.add(
       this.add.text(40, 142, "你是被逐出师门的散修，带着一口旧锅，在青云镇外支起「灵膳楼」。", {
