@@ -869,21 +869,26 @@ class TavernScene extends Phaser.Scene {
     this.refreshAudioButtons();
 
     // 营业中操作按钮：与采购/打烊同处底部操作区
-    this.serveButton = this.addUiButton(330, 1194, () => this.startSeat("player"));
-    this.cookButton = this.addUiButton(440, 1194, () => this.manualCook());
+    this.serveButton = this.addUiButton(330, 1186, () => this.startSeat("player"), { x: 12, y: 11 });
+    this.cookButton = this.addUiButton(440, 1186, () => this.manualCook(), { x: 12, y: 11 });
     // 出菜行：点哪道菜就做哪道，优先端给想吃它的那一桌
-    this.dishChipLabel = this.addUiText(16, 1106, "出菜", "13px", "#bbbbbb");
+    this.dishChipLabel = this.addUiText(16, 1102, "出菜", "13px", "#bbbbbb");
     this.dishChips = DISHES.map((_, i) =>
-      this.addUiButton(56 + (i % 4) * 150, 1100 + Math.floor(i / 4) * 42, () => {
-        const dish = this.getMenuDishes()[i];
-        if (dish) this.manualCookDish(dish);
-      }),
+      this.addUiButton(
+        56 + (i % 4) * 150,
+        1096 + Math.floor(i / 4) * 42,
+        () => {
+          const dish = this.getMenuDishes()[i];
+          if (dish) this.manualCookDish(dish);
+        },
+        { x: 12, y: 11 },
+      ),
     );
     this.dishChips.forEach((chip) => chip.setVisible(false));
 
     // 通用按钮：底部固定
-    this.purchaseButton = new ProgressButton(this, 16, 1194, 200, 34, () => this.startPurchase(), this.registerUi);
-    this.startButton = this.addUiButton(230, 1194, () => this.onStartButton());
+    this.purchaseButton = new ProgressButton(this, 16, 1186, 200, 42, () => this.startPurchase(), this.registerUi);
+    this.startButton = this.addUiButton(230, 1186, () => this.onStartButton());
 
     // 打烊期的经营按钮（屏幕左侧竖排）
     this.staffButton = this.addUiButton(16, 700, () => this.buildStaffOverlay());
@@ -907,7 +912,12 @@ class TavernScene extends Phaser.Scene {
     return t;
   }
 
-  private addUiButton(x: number, y: number, onClick: () => void): TapText {
+  private addUiButton(
+    x: number,
+    y: number,
+    onClick: () => void,
+    padding: { x: number; y: number } = { x: 10, y: 8 },
+  ): TapText {
     let sx = 0;
     let sy = 0;
     const t = this.add
@@ -915,7 +925,7 @@ class TavernScene extends Phaser.Scene {
         fontSize: "15px",
         color: "#ffffff",
         backgroundColor: "#3a3a3a",
-        padding: { x: 10, y: 8 },
+        padding,
       })
       .setDepth(31)
       .setScrollFactor(0)
