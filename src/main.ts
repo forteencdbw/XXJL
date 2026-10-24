@@ -1222,6 +1222,7 @@ class TavernScene extends Phaser.Scene {
   private bgmButton!: TapText;
   private staffButton!: TapText;
   private navPanel!: Phaser.GameObjects.Container;
+  private navCardObjects: (Phaser.GameObjects.Text | Phaser.GameObjects.Rectangle)[] = [];
   private bankButton!: TapText;
   private serveButton!: TapText;
   private cookButton!: Phaser.GameObjects.Text;
@@ -1410,6 +1411,57 @@ class TavernScene extends Phaser.Scene {
         x: x + 90,
         duration: 26000,
         yoyo: true,
+        repeat: -1,
+        ease: "Sine.easeInOut",
+      });
+    }
+
+    // 两只越过月亮的鹤影：给静态夜空一点方向和生气
+    for (const [cx, cy, dir] of [
+      [300, 312, 1],
+      [430, 270, 1],
+    ] as const) {
+      const crane = this.add.graphics();
+      crane.lineStyle(3, 0x0a1018, 0.62);
+      crane.beginPath();
+      crane.moveTo(-13, 2);
+      crane.lineTo(0, -5);
+      crane.lineTo(13, 2);
+      crane.strokePath();
+      crane.lineStyle(2, 0x0a1018, 0.42);
+      crane.lineBetween(-13, 2, -21, 8);
+      crane.lineBetween(13, 2, 21, 8);
+      crane.setPosition(cx, cy);
+      layer.add(crane);
+      this.tweens.add({
+        targets: crane,
+        x: cx + 90 * dir,
+        y: cy - 12,
+        duration: 24000,
+        yoyo: true,
+        repeat: -1,
+        ease: "Sine.easeInOut",
+      });
+    }
+    // 落英：只有几片，慢慢斜落
+    for (let i = 0; i < 9; i++) {
+      const petal = this.add.ellipse(
+        Phaser.Math.Between(40, SCREEN_W - 40),
+        Phaser.Math.Between(560, 1120),
+        Phaser.Math.Between(4, 7),
+        Phaser.Math.Between(2, 4),
+        0xffc8d8,
+        Phaser.Math.FloatBetween(0.2, 0.42),
+      );
+      layer.add(petal);
+      this.tweens.add({
+        targets: petal,
+        x: petal.x + Phaser.Math.Between(30, 90),
+        y: petal.y + Phaser.Math.Between(90, 180),
+        angle: Phaser.Math.Between(120, 260),
+        alpha: 0,
+        duration: Phaser.Math.Between(6800, 11000),
+        delay: Phaser.Math.Between(0, 4000),
         repeat: -1,
         ease: "Sine.easeInOut",
       });
@@ -2435,6 +2487,34 @@ class TavernScene extends Phaser.Scene {
     }
   }
 
+  /** 窗光落在地上：两束很淡的暖光，给室内一点纵深和呼吸。 */
+  private buildWindowLight() {
+    const beams = this.add.graphics().setDepth(2.6).setBlendMode(Phaser.BlendModes.ADD);
+    beams.fillStyle(0xffd9a0, 0.1);
+    beams.beginPath();
+    beams.moveTo(-155, 385);
+    beams.lineTo(-65, 385);
+    beams.lineTo(40, FLOOR_Y);
+    beams.lineTo(-150, FLOOR_Y);
+    beams.closePath();
+    beams.fillPath();
+    beams.beginPath();
+    beams.moveTo(65, 385);
+    beams.lineTo(155, 385);
+    beams.lineTo(260, FLOOR_Y);
+    beams.lineTo(70, FLOOR_Y);
+    beams.closePath();
+    beams.fillPath();
+    this.tweens.add({
+      targets: beams,
+      alpha: { from: 0.75, to: 1 },
+      duration: 4200,
+      yoyo: true,
+      repeat: -1,
+      ease: "Sine.easeInOut",
+    });
+  }
+
   /** 程序合成酒楼：屋檐、墙体、门窗、灯笼、招牌。夜晚时窗内透出灯火。 */
   private drawTavern(gfx: Phaser.GameObjects.Graphics, lit: boolean) {
     gfx.clear();
@@ -2645,6 +2725,7 @@ class TavernScene extends Phaser.Scene {
     this.buildStars();
     this.buildWindows();
     this.buildWindowFrames();
+    this.buildWindowLight();
 
     // 顶部 HUD 悬浮条
     this.hudBar = this.add
@@ -2753,34 +2834,31 @@ class TavernScene extends Phaser.Scene {
     );
     this.navPanel.add(
       this.add
-        .text(360, 726, "掌柜事务", {
-          fontSize: "18px",
+        .text(360, 724, "掌柜事务", {
+          fontSize: "22px",
           color: "#e0c9a0",
           fontFamily: XIAN_FONT,
         })
         .setOrigin(0.5, 0)
-        .setLetterSpacing(4),
+        .setLetterSpacing(6),
     );
     this.navPanel.add(this.add.rectangle(24, 750, 672, 1, 0x8a6a3a, 0.4).setOrigin(0, 0));
-    const nav = { x: 12, y: 28 };
-    this.staffButton = this.addUiButton(
-      180,
-      797,
-      () => {
-        this.staffNotice = "";
-        this.buildStaffOverlay();
-      },
-      nav,
-      6,
-      "20px",
-    ).setOrigin(0.5);
-    this.upgradeButton = this.addUiButton(180, 901, () => this.buildBuildOverlay(), nav, 6, "20px").setOrigin(0.5);
-    this.genderButton = this.addUiButton(180, 1005, () => this.toggleGender(), nav, 6, "20px").setOrigin(0.5);
-    this.bankButton = this.addUiButton(180, 1109, () => this.buildBankOverlay(), nav, 6, "20px").setOrigin(0.5);
-    this.cultivationButton = this.addUiButton(540, 797, () => this.buildCultivationOverlay(), nav, 6, "20px").setOrigin(0.5);
-    this.helpButton = this.addUiButton(540, 901, () => this.showHelp(), nav, 6, "20px").setOrigin(0.5);
-    this.recordButton = this.addUiButton(540, 1005, () => this.buildRecordOverlay(), nav, 6, "20px").setOrigin(0.5);
-    this.saveButton = this.addUiButton(540, 1109, () => this.openSaveDialog("export"), nav, 6, "20px").setOrigin(0.5);
+    this.staffButton = this.addNavCard(180, 797, "伙计", "雇佣 · 日薪 · 熟练", () => {
+      this.staffNotice = "";
+      this.buildStaffOverlay();
+    });
+    this.upgradeButton = this.addNavCard(180, 901, "营造 Lv1", "雅座 · 灶台 · 门面", () =>
+      this.buildBuildOverlay(),
+    );
+    this.genderButton = this.addNavCard(180, 1005, "形象 · 男", "点击切换", () => this.toggleGender());
+    this.bankButton = this.addNavCard(180, 1109, "灵石商行", "借贷 · 还账", () => this.buildBankOverlay());
+    this.cultivationButton = this.addNavCard(540, 797, "修行 · 境界", "修为 · 突破 · 飞升", () =>
+      this.buildCultivationOverlay(),
+      true,
+    );
+    this.helpButton = this.addNavCard(540, 901, "玩法", "规则与操作", () => this.showHelp(), true);
+    this.recordButton = this.addNavCard(540, 1005, "账簿", "累计 · 成就", () => this.buildRecordOverlay(), true);
+    this.saveButton = this.addNavCard(540, 1109, "存档", "导出 · 导入", () => this.openSaveDialog("export"), true);
 
     this.buildBoothVisuals();
     this.positionUi(false);
@@ -2821,7 +2899,7 @@ class TavernScene extends Phaser.Scene {
         .on("pointerup", () => this.destroyOverlay()),
     );
     layer.add(
-      this.add.text(360, y + 40, label, { fontSize: "22px", color: "#f5e6c8" }).setOrigin(0.5),
+      this.add.text(360, y + 40, label, { fontSize: "24px", color: "#f5e6c8" }).setOrigin(0.5),
     );
   }
 
@@ -2876,6 +2954,78 @@ class TavernScene extends Phaser.Scene {
     t.onTap = onClick;
     syncHit();
     return t;
+  }
+
+  /** 打烊页的两列事务卡：整卡可点，字号比旧文字按钮大，避免手机上挤成一列小字。 */
+  private addNavCard(
+    x: number,
+    y: number,
+    label: string,
+    subtitle: string,
+    onClick: () => void,
+    cool = false,
+  ): TapText {
+    const tap = () => {
+      playSfx("click");
+      onClick();
+    };
+    // 卡片不进 navPanel：容器 + scrollFactor(0) 会让命中区按世界坐标偏移。
+    const card = this.add
+      .rectangle(x, y, 332, 82, cool ? 0x1e222b : 0x241a12, 0.96)
+      .setStrokeStyle(2, cool ? 0x5a6a7a : 0x8a6a3a, 0.7)
+      .setScrollFactor(0)
+      .setDepth(31)
+      .setInteractive({ useHandCursor: true })
+      .on("pointerup", tap);
+    const title = this.add
+      .text(x, y - 12, label, {
+        fontSize: "25px",
+        color: cool ? "#dfe8f4" : "#f5e6c8",
+        fontFamily: XIAN_FONT,
+      })
+      .setOrigin(0.5)
+      .setLetterSpacing(2)
+      .setScrollFactor(0)
+      .setDepth(32)
+      .setInteractive({ useHandCursor: true })
+      .on("pointerup", tap) as TapText;
+    title.onTap = onClick;
+    const sub = this.add
+      .text(x, y + 19, subtitle, {
+        fontSize: "15px",
+        color: cool ? "#8a9aac" : "#a89472",
+        fontFamily: XIAN_FONT,
+      })
+      .setOrigin(0.5)
+      .setLetterSpacing(1)
+      .setScrollFactor(0)
+      .setDepth(32);
+    this.navCardObjects.push(card, title, sub);
+    return title;
+  }
+
+  private setNavCardsVisible(visible: boolean) {
+    for (const obj of this.navCardObjects) {
+      obj.setVisible(visible);
+      if (obj.input) obj.input.enabled = visible;
+    }
+  }
+
+  private setClosedNavVisible(visible: boolean) {
+    this.navPanel.setVisible(visible);
+    this.setNavCardsVisible(visible);
+    for (const button of [
+      this.staffButton,
+      this.bankButton,
+      this.upgradeButton,
+      this.genderButton,
+      this.cultivationButton,
+      this.helpButton,
+      this.recordButton,
+      this.saveButton,
+    ]) {
+      button?.setVisible(visible);
+    }
   }
 
   private buildBoothVisuals() {
@@ -3269,10 +3419,10 @@ class TavernScene extends Phaser.Scene {
     const cam = this.cameras.main;
     const layer = this.add.container(cam.scrollX, cam.scrollY).setDepth(100);
     layer.add(this.add.rectangle(0, 0, SCREEN_W, SCREEN_H, 0x000000, 0.995).setOrigin(0, 0).setInteractive());
-    layer.add(this.add.text(40, 70, "选择今日菜单", { fontSize: "30px", color: "#ffe6a8", fontFamily: XIAN_FONT }));
+    layer.add(this.add.text(40, 58, "选择今日菜单", { fontSize: "36px", color: "#ffe6a8", fontFamily: XIAN_FONT }));
     layer.add(
-      this.add.text(40, 115, "至少选一道菜才能开张；营业中可按顺序轮转，也可在出菜行指定", {
-        fontSize: "16px",
+      this.add.text(40, 108, "至少选一道菜才能开张；营业中可按顺序轮转，也可在出菜行指定", {
+        fontSize: "18px",
         color: "#999999",
       }),
     );
@@ -3281,19 +3431,19 @@ class TavernScene extends Phaser.Scene {
       goalOptions.find((o) => o.kind === this.dailyGoal?.kind) ?? goalOptions[(this.day - 1) % 3];
     const goal = this.dailyGoal;
     layer.add(
-      this.add.text(
-        40,
-        148,
-        `今日目标：${goal.label} · 库存 ${this.inventory} · 日租 ${getDailyRent(this.level)} 灵石 · 赏 ${goal.rewardCoins}灵石+收入15% · ${goal.rewardCultivation}修为`,
-        { fontSize: "15px", color: "#e0c060", wordWrap: { width: 640 } },
-      ),
+      this.add.text(40, 142, `今日目标三选一 · 库存 ${this.inventory} · 日租 ${getDailyRent(this.level)} 灵石`, {
+        fontSize: "17px",
+        color: "#e0c060",
+      }),
     );
-    // 三选一的目标卡：让玩家按今天想怎么打来选
+    // 三选一的目标卡：大数字 + 奖励，先让人一眼看懂今天在赌什么
     goalOptions.forEach((option, i) => {
       const x = 40 + i * 216;
       const selected = option.kind === goal.kind;
+      const caption = option.kind === "serve" ? "接待" : option.kind === "revenue" ? "本日收入" : "满足口味";
+      const value = option.kind === "revenue" ? `${option.target} 灵石` : `${option.target} 位`;
       const card = this.add
-        .rectangle(x, 176, 200, 62, selected ? 0x4a3a1a : 0x2a1e16)
+        .rectangle(x, 174, 200, 92, selected ? 0x4a3a1a : 0x2a1e16)
         .setOrigin(0, 0)
         .setStrokeStyle(2, selected ? 0xd9b45a : 0x555555)
         .setInteractive({ useHandCursor: true })
@@ -3303,17 +3453,28 @@ class TavernScene extends Phaser.Scene {
         });
       layer.add(card);
       layer.add(
-        this.add.text(x + 10, 183, option.label, {
-          fontSize: "16px",
+        this.add.text(x + 12, 184, caption, {
+          fontSize: "18px",
+          color: selected ? "#e0c060" : "#999999",
+        }),
+      );
+      layer.add(
+        this.add.text(x + 12, 206, value, {
+          fontSize: "30px",
           color: selected ? "#ffe6a8" : "#dddddd",
         }),
       );
       layer.add(
-        this.add.text(x + 10, 208, `赏 ${option.rewardCoins} 灵石 · ${option.rewardCultivation} 修为`, {
-          fontSize: "13px",
+        this.add.text(x + 12, 244, `赏 ${option.rewardCoins} 灵石 · ${option.rewardCultivation} 修为`, {
+          fontSize: "16px",
           color: selected ? "#e0c060" : "#999999",
         }),
       );
+      if (selected) {
+        layer.add(
+          this.add.text(x + 174, 180, "✓", { fontSize: "22px", color: "#ffe6a8" }).setOrigin(0.5, 0),
+        );
+      }
     });
     const special = DISHES.find((d) => d.id === this.currentDailySpecial());
     if (special) {
@@ -3321,15 +3482,15 @@ class TavernScene extends Phaser.Scene {
       const price = this.dishPrice(special);
       const pct = base > 0 ? Math.round((price / base - 1) * 100) : 0;
       layer.add(
-        this.add.text(40, 252, `今日招牌：${special.name} · ${base}→${price} 灵石（+${pct}%，◆ 标记）`, {
-          fontSize: "15px",
+        this.add.text(40, 278, `今日招牌：${special.name} · ${base}→${price} 灵石（+${pct}%，◆ 标记）`, {
+          fontSize: "17px",
           color: "#ffd98a",
         }),
       );
     } else {
       layer.add(
-        this.add.text(40, 252, "今日招牌：再解锁一道菜后开启", {
-          fontSize: "15px",
+        this.add.text(40, 278, "今日招牌：再解锁一道菜后开启", {
+          fontSize: "17px",
           color: "#8a7a62",
         }),
       );
@@ -3338,10 +3499,10 @@ class TavernScene extends Phaser.Scene {
     const available = DISHES.filter((d) => d.unlockLevel <= this.level);
     const specialId = this.currentDailySpecial();
     available.forEach((dish, i) => {
-      const y = 280 + i * 92;
+      const y = 306 + i * 96;
       const selected = this.selectedDishIds.has(dish.id);
       const row = this.add
-        .rectangle(40, y, 640, 76, selected ? 0x4a3a1a : 0x2a1e16)
+        .rectangle(40, y, 640, 82, selected ? 0x4a3a1a : 0x2a1e16)
         .setOrigin(0, 0)
         .setStrokeStyle(2, selected ? 0x9fdf6a : 0x555555);
       row.setInteractive({ useHandCursor: true }).on("pointerdown", () => {
@@ -3353,28 +3514,28 @@ class TavernScene extends Phaser.Scene {
       layer.add(
         this.add.text(
           60,
-          y + 14,
+          y + 10,
           `${selected ? "☑" : "☐"} ${dish.id === specialId ? "◆" : ""}${dish.name}`,
-          { fontSize: "22px", color: "#ffffff" },
+          { fontSize: "26px", color: "#ffffff" },
         ),
       );
       const fans = getDishFans(dish.id);
       layer.add(
         this.add.text(
           60,
-          y + 46,
+          y + 50,
           `售价 ${this.dishPrice(dish)} 灵石 · 烹饪 ${(dish.cookMs / 1000).toFixed(1)}s${
             fans.length ? ` · ${fans.join("/")}爱吃` : ""
           }`,
-          { fontSize: "15px", color: "#cccccc" },
+          { fontSize: "17px", color: "#cccccc" },
         ),
       );
     });
 
     if (this.inventory <= 0) {
       layer.add(
-        this.add.text(40, 1000, "库存为 0：先点下面「备货」再开张，否则客人来了没菜可做", {
-          fontSize: "16px",
+        this.add.text(40, 982, "库存为 0：先点下面「备货」再开张，否则客人来了没菜可做", {
+          fontSize: "17px",
           color: "#ff9a8a",
           wordWrap: { width: 640 },
         }),
@@ -3384,7 +3545,7 @@ class TavernScene extends Phaser.Scene {
     const buyPrice = getPurchasePrice(this.staffLevel.buyer, false);
     const buy = this.add
       .text(40, 1056, `备货 +${PURCHASE_AMOUNT}（${buyPrice} 灵石）`, {
-        fontSize: "18px",
+        fontSize: "20px",
         color: "#ffffff",
         backgroundColor: "#3a4a5a",
         padding: { x: 14, y: 8 },
@@ -3402,7 +3563,7 @@ class TavernScene extends Phaser.Scene {
     const canStart = count > 0 && this.inventory > 0;
     const startLabel = count === 0 ? "至少选一道菜" : this.inventory <= 0 ? "库存为 0，先备货" : `开张大吉（已选 ${count} 道）`;
     const start = this.add.text(40, 1120, startLabel, {
-      fontSize: "22px",
+      fontSize: "24px",
       color: canStart ? "#ffffff" : "#777777",
       backgroundColor: canStart ? "#3f7a3f" : "#333333",
       padding: { x: 16, y: 12 },
@@ -3417,8 +3578,8 @@ class TavernScene extends Phaser.Scene {
     layer.add(start);
 
     const cancel = this.add
-      .text(420, 1120, "先不打烊，返回", {
-        fontSize: "18px",
+      .text(430, 1120, "先不打烊，返回", {
+        fontSize: "20px",
         color: "#cccccc",
         backgroundColor: "#333333",
         padding: { x: 16, y: 10 },
@@ -3684,8 +3845,8 @@ class TavernScene extends Phaser.Scene {
     const cam = this.cameras.main;
     const layer = this.add.container(cam.scrollX, cam.scrollY).setDepth(100);
     layer.add(this.add.rectangle(0, 0, SCREEN_W, SCREEN_H, 0x000000, 0.97).setOrigin(0, 0).setInteractive());
-    layer.add(this.add.text(40, 70, "营造", { fontSize: "30px", color: "#ffe6a8", fontFamily: XIAN_FONT }));
-    layer.add(this.add.text(40, 116, "灵石有限，先补当前的短板", { fontSize: "15px", color: "#999999" }));
+    layer.add(this.add.text(40, 58, "营造", { fontSize: "36px", color: "#ffe6a8", fontFamily: XIAN_FONT }));
+    layer.add(this.add.text(40, 108, "灵石有限，先补当前的短板", { fontSize: "18px", color: "#999999" }));
 
     const nextDish = DISHES.find((dish) => dish.unlockLevel > this.level);
     const dishHint = nextDish ? `${nextDish.unlockLevel} 级解锁「${nextDish.name}」` : "已解锁全部菜品";
@@ -3723,20 +3884,20 @@ class TavernScene extends Phaser.Scene {
       const y = 170 + i * 155;
       const affordable = row.cost <= this.coins;
       layer.add(this.add.rectangle(40, y, 640, 136, 0x2b2b2b).setOrigin(0, 0).setStrokeStyle(2, 0x555555));
-      layer.add(this.add.text(56, y + 12, row.title, { fontSize: "22px", color: "#ffffff" }));
+      layer.add(this.add.text(56, y + 12, row.title, { fontSize: "24px", color: "#ffffff" }));
       layer.add(
-        this.add.text(56, y + 50, row.desc, { fontSize: "14px", color: "#bbbbbb", wordWrap: { width: 460 } }),
+        this.add.text(56, y + 50, row.desc, { fontSize: "17px", color: "#bbbbbb", wordWrap: { width: 460 } }),
       );
       layer.add(
         this.add.text(56, y + 88, `费用 ${row.cost} 灵石`, {
-          fontSize: "17px",
+          fontSize: "19px",
           color: affordable ? "#9fe870" : "#ff9a8a",
         }),
       );
       layer.add(
         this.add
           .text(560, y + 50, row.action, {
-            fontSize: "20px",
+            fontSize: "22px",
             color: affordable ? "#ffffff" : "#777777",
             backgroundColor: affordable ? "#3f6a3f" : "#3a3a3a",
             padding: { x: 20, y: 14 },
@@ -3759,18 +3920,18 @@ class TavernScene extends Phaser.Scene {
     const cam = this.cameras.main;
     const layer = this.add.container(cam.scrollX, cam.scrollY).setDepth(100);
     layer.add(this.add.rectangle(0, 0, SCREEN_W, SCREEN_H, 0x000000, 0.97).setOrigin(0, 0).setInteractive());
-    layer.add(this.add.text(40, 70, "伙计", { fontSize: "30px", color: "#ffe6a8", fontFamily: XIAN_FONT }));
+    layer.add(this.add.text(40, 58, "伙计", { fontSize: "36px", color: "#ffe6a8", fontFamily: XIAN_FONT }));
     layer.add(
-      this.add.text(40, 116, `${this.staffBottleneckHint()}（灶上按菜单轮转，不读口味）`, {
-        fontSize: "15px",
+      this.add.text(40, 108, `${this.staffBottleneckHint()}（灶上按菜单轮转，不读口味）`, {
+        fontSize: "18px",
         color: "#e0c060",
         wordWrap: { width: 640 },
       }),
     );
     if (this.staffNotice) {
       layer.add(
-        this.add.text(40, 138, this.staffNotice, {
-          fontSize: "14px",
+        this.add.text(40, 136, this.staffNotice, {
+          fontSize: "16px",
           color: this.staffNoticeGood ? "#9fe870" : "#ff9a8a",
         }),
       );
@@ -3788,13 +3949,13 @@ class TavernScene extends Phaser.Scene {
       const role = d.role;
       const level = this.staffLevel[role];
       if (level > 0) {
-        layer.add(this.add.text(50, y, `${d.name} Lv${level}`, { fontSize: "22px", color: "#ffffff" }));
+        layer.add(this.add.text(50, y, `${d.name} Lv${level}`, { fontSize: "24px", color: "#ffffff" }));
         layer.add(
           this.add.text(
             50,
             y + 36,
             `熟练 ${this.staffExp[role] % EXP_PER_LEVEL}/${EXP_PER_LEVEL} · 日薪 ${getStaffWage(role, level)} 灵石`,
-            { fontSize: "16px", color: "#bbbbbb" },
+            { fontSize: "18px", color: "#bbbbbb" },
           ),
         );
         if (role !== "hawker") {
@@ -3802,7 +3963,7 @@ class TavernScene extends Phaser.Scene {
           layer.add(
             this.add
               .text(480, y + 2, `自动：${enabled ? "开" : "关"}`, {
-                fontSize: "16px",
+                fontSize: "20px",
                 color: enabled ? "#ffffff" : "#888888",
                 backgroundColor: enabled ? "#3f6a3f" : "#3a3a3a",
                 padding: { x: 12, y: 8 },
@@ -3828,16 +3989,16 @@ class TavernScene extends Phaser.Scene {
             this.buildStaffOverlay();
           });
         layer.add(hireRow);
-        layer.add(this.add.text(50, y, `${d.name}（未雇佣）`, { fontSize: "22px", color: "#888888" }));
+        layer.add(this.add.text(50, y, `${d.name}（未雇佣）`, { fontSize: "24px", color: "#888888" }));
         layer.add(
           this.add.text(50, y + 36, `${d.desc} · 日薪 ${getStaffWage(role, 1)} 灵石`, {
-            fontSize: "16px",
+            fontSize: "18px",
             color: "#bbbbbb",
           }),
         );
         const btn = this.add
           .text(400, y + 4, `雇 ${d.cost} 灵石`, {
-            fontSize: "18px",
+            fontSize: "20px",
             color: "#ffffff",
             backgroundColor: "#3a5a3a",
             padding: { x: 14, y: 8 },
@@ -4207,6 +4368,13 @@ class TavernScene extends Phaser.Scene {
     if (this.queueLost > 0) {
       summary.push(`排队溢出流失：${this.queueLost} 位（门口排满，先招待）`);
     }
+    const nextSpecial = DISHES.find(
+      (d) => d.id === getDailySpecial(this.day, this.level, this.unlockedDishIds()),
+    );
+    const nextWeather = ["晴", "灵雾", "落英"][(this.day - 1) % 3];
+    summary.push(
+      `明日：${nextWeather} · ${nextSpecial ? `招牌 ${nextSpecial.name}` : "暂无招牌"} · 目标可自选`,
+    );
     const nextCost = getUpgradeCost(this.level);
     summary.push(`下一阶：${nextCost} 灵石 → Lv${this.level + 1}，店内会添新陈设`);
     // 卡片高度按明细行数算，保证内容不溢出
@@ -4221,7 +4389,7 @@ class TavernScene extends Phaser.Scene {
       20;
     const { panel, left } = this.buildPopupCard(cardHeight, 100);
 
-    panel.add(this.add.text(left, 20, "今日营业结束", { fontSize: "30px", color: "#ffe6a8", fontFamily: XIAN_FONT }));
+    panel.add(this.add.text(left, 20, "今日营业结束", { fontSize: "34px", color: "#ffe6a8", fontFamily: XIAN_FONT }));
     let y = 76;
 
     if (this.lastWages.length > 0) {
@@ -4259,7 +4427,7 @@ class TavernScene extends Phaser.Scene {
           .setOrigin(0, 0)
           .setStrokeStyle(1, 0xd9b45a, 0.55),
       );
-      panel.add(this.add.text(left, y, `今日目标 · ${goal.label}`, { fontSize: "17px", color: "#e0c9a0" }));
+      panel.add(this.add.text(left, y, `今日目标 · ${goal.label}`, { fontSize: "19px", color: "#e0c9a0" }));
       y += 26;
       panel.add(
         this.add.text(
@@ -4270,20 +4438,20 @@ class TavernScene extends Phaser.Scene {
             : partial
               ? `差一点（${progress}/${goal.target}）· 半赏 +${rewardCoins} 灵石、+${rewardCultivation} 修为`
               : `未达成（${progress}/${goal.target}）`,
-          { fontSize: "19px", color: met ? "#9fdf6a" : partial ? "#e0c060" : "#999999" },
+          { fontSize: "21px", color: met ? "#9fdf6a" : partial ? "#e0c060" : "#999999" },
         ),
       );
       y += 32;
     }
 
     summary.forEach((line) => {
-      panel.add(this.add.text(left, y, line, { fontSize: "20px", color: "#e8e8e8" }));
+      panel.add(this.add.text(left, y, line, { fontSize: "21px", color: "#e8e8e8" }));
       y += 34;
     });
 
     const close = this.add
       .text(left, y + 18, "打烊", {
-        fontSize: "20px",
+        fontSize: "24px",
         color: "#ffffff",
         backgroundColor: "#3f5a7a",
         padding: { x: 16, y: 10 },
@@ -4523,10 +4691,10 @@ class TavernScene extends Phaser.Scene {
   private positionUi(isOpen: boolean) {
     // 打烊时「开始营业」是主行动；营业中换成「提前打烊」配色。高度保持大按钮。
     this.startButton.setStyle({
-      fontSize: isOpen ? "17px" : "20px",
+      fontSize: isOpen ? "18px" : "24px",
       color: "#f5e6c8",
       backgroundColor: isOpen ? "#3f2a22" : "#3f6a3f",
-      padding: isOpen ? { x: 20, y: 28 } : { x: 40, y: 28 },
+      padding: isOpen ? { x: 20, y: 28 } : { x: 30, y: 26 },
     });
     this.boothVisuals.forEach((v) => {
       v.bg.setVisible(isOpen);
@@ -4541,15 +4709,7 @@ class TavernScene extends Phaser.Scene {
     this.serveButton.setVisible(isOpen);
     this.cookButton.setVisible(isOpen);
     this.shoutButton.setVisible(isOpen);
-    this.navPanel.setVisible(!isOpen);
-    this.staffButton.setVisible(!isOpen);
-    this.bankButton.setVisible(!isOpen);
-    this.upgradeButton.setVisible(!isOpen);
-    this.genderButton.setVisible(!isOpen);
-    this.cultivationButton.setVisible(!isOpen);
-    this.helpButton.setVisible(!isOpen);
-    this.recordButton.setVisible(!isOpen);
-    this.saveButton.setVisible(!isOpen);
+    this.setClosedNavVisible(!isOpen && !this.overlay);
 
     this.playerChar.setVisible(isOpen);
     Object.values(this.staffChars).forEach((c) => c?.setVisible(isOpen));
@@ -4597,7 +4757,7 @@ class TavernScene extends Phaser.Scene {
     this.playerChar.setBodyColor(gender === "male" ? 0x4a7ab8 : 0xc86a9e);
     this.playerChar.setHairColor(gender === "male" ? 0x2b2b2b : 0x4a2b1a);
     this.playerChar.setLongHair(gender === "female");
-    this.genderButton?.setText(gender === "male" ? "玩家形象：男（点击切换）" : "玩家形象：女（点击切换）");
+    this.genderButton?.setText(gender === "male" ? "形象 · 男" : "形象 · 女");
   }
 
   private isPlayerBusy(): boolean {
@@ -5897,7 +6057,9 @@ class TavernScene extends Phaser.Scene {
   private settleDailyGoal() {
     const goal = this.sessionGoal;
     this.day += 1;
-    this.dailyGoal = getDailyGoal(this.day, this.level);
+    // 换日时保留玩家刚选的目标类型，只把目标值/奖励更新到新等级与天数
+    const nextOptions = getDailyGoalOptions(this.day, this.level);
+    this.dailyGoal = nextOptions.find((o) => o.kind === goal?.kind) ?? getDailyGoal(this.day, this.level);
     if (!goal) return;
     const stats = { served: this.sessionServed, revenue: this.sessionRevenue, wishes: this.sessionWishes };
     const payout = getGoalPayout(goal, stats);
@@ -6288,19 +6450,13 @@ class TavernScene extends Phaser.Scene {
     this.serveButton.setVisible(open);
     this.cookButton.setVisible(open);
     this.shoutButton.setVisible(open);
-    this.navPanel.setVisible(!open);
-    this.staffButton.setVisible(!open);
-    this.bankButton.setVisible(!open);
-    this.upgradeButton.setVisible(!open);
-    this.cultivationButton.setVisible(!open);
-    this.helpButton.setVisible(!open);
-    this.recordButton.setVisible(!open);
-    this.saveButton.setVisible(!open);
+    // 菜单/店铺面板打开时也收起事务卡，避免透明卡片的命中区压到面板按钮上
+    this.setClosedNavVisible(this.gameState === "closed" && !this.overlay);
     this.purchaseButton.setVisible(true);
 
     this.staffButton.setText("伙计");
     this.bankButton.setText("灵石商行");
-    this.cultivationButton.setText("修行·境界");
+    this.cultivationButton.setText("修行 · 境界");
     this.helpButton.setText("玩法");
     this.recordButton.setText("账簿");
     this.saveButton.setText("存档");
