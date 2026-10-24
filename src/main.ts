@@ -309,6 +309,8 @@ class Character extends Phaser.GameObjects.Container {
   private eyeR: Phaser.GameObjects.Arc;
   private eyeWhiteL: Phaser.GameObjects.Arc;
   private eyeWhiteR: Phaser.GameObjects.Arc;
+  private glintL: Phaser.GameObjects.Arc;
+  private glintR: Phaser.GameObjects.Arc;
   private aura?: Phaser.GameObjects.Arc;
   private patienceBg?: Phaser.GameObjects.Rectangle;
   private patienceFill?: Phaser.GameObjects.Rectangle;
@@ -348,15 +350,27 @@ class Character extends Phaser.GameObjects.Container {
     this.visual.add(this.art);
     this.eyeWhiteL = scene.add.circle(-4, -19, 3, 0xfff6e8).setDepth(1);
     this.eyeWhiteR = scene.add.circle(4, -19, 3, 0xfff6e8).setDepth(1);
-    this.eyeL = scene.add.circle(-4, -19, 1.4, 0x2a1c16).setDepth(2);
-    this.eyeR = scene.add.circle(4, -19, 1.4, 0x2a1c16).setDepth(2);
-    this.visual.add([this.eyeWhiteL, this.eyeWhiteR, this.eyeL, this.eyeR]);
+    const pupil =
+      look === "demonlord"
+        ? 0x8a1a1a
+        : look === "elder"
+          ? 0x3a4a6a
+          : look === "demon"
+            ? 0x5a2a1a
+            : look === "sword"
+              ? 0x1a1a2a
+              : 0x2a1c16;
+    this.eyeL = scene.add.circle(-4, -19, 1.4, pupil).setDepth(2);
+    this.eyeR = scene.add.circle(4, -19, 1.4, pupil).setDepth(2);
+    this.glintL = scene.add.circle(-4.8, -20.2, 0.8, 0xffffff, 0.92).setDepth(3);
+    this.glintR = scene.add.circle(3.2, -20.2, 0.8, 0xffffff, 0.92).setDepth(3);
+    this.visual.add([this.eyeWhiteL, this.eyeWhiteR, this.eyeL, this.eyeR, this.glintL, this.glintR]);
     this.add(this.visual);
     this.draw();
     this.setDepth(20);
     scene.add.existing(this);
     scene.tweens.add({
-      targets: [this.eyeWhiteL, this.eyeWhiteR, this.eyeL, this.eyeR],
+      targets: [this.eyeWhiteL, this.eyeWhiteR, this.eyeL, this.eyeR, this.glintL, this.glintR],
       scaleY: 0.12,
       duration: 70,
       yoyo: true,
@@ -416,6 +430,12 @@ class Character extends Phaser.GameObjects.Container {
     const deep = this.shade(body, 0.5);
     const skin = 0xffe0bd;
     const hair = this.hairColor;
+    const trim =
+      this.look === "demon" || this.look === "demonlord"
+        ? 0x8a2a22
+        : this.look === "elder"
+          ? 0xd9b45a
+          : 0xbfa06a;
     g.clear();
 
     // 影子与脚
@@ -464,6 +484,34 @@ class Character extends Phaser.GameObjects.Container {
     g.lineTo(-13, 28);
     g.closePath();
     g.fillPath();
+    // 受光面/暗面与下摆滚边，别让袍子是一块纯色
+    g.fillStyle(0xffffff, 0.08);
+    g.beginPath();
+    g.moveTo(-9, -8);
+    g.lineTo(-2, -8);
+    g.lineTo(-6, 28);
+    g.lineTo(-13, 28);
+    g.closePath();
+    g.fillPath();
+    g.fillStyle(0x000000, 0.1);
+    g.beginPath();
+    g.moveTo(4, -8);
+    g.lineTo(9, -8);
+    g.lineTo(13, 28);
+    g.lineTo(5, 28);
+    g.closePath();
+    g.fillPath();
+    g.fillStyle(trim, 0.92);
+    g.fillRect(-13, 25, 26, 3);
+    if (this.dining) {
+      // 坐姿下摆：腿收起，衣摆摊在桌后
+      g.fillStyle(deep, 1);
+      g.fillEllipse(0, 31, 36, 12);
+      g.fillStyle(body, 1);
+      g.fillEllipse(0, 30, 29, 9);
+      g.lineStyle(1.5, trim, 0.55);
+      g.lineBetween(-13, 32, 13, 32);
+    }
     // 衣褶
     g.lineStyle(1.5, deep, 0.7);
     g.lineBetween(-5, 2, -7, 26);
@@ -472,6 +520,9 @@ class Character extends Phaser.GameObjects.Container {
     g.fillStyle(dark, 1);
     g.fillRoundedRect(-18, -4, 9, 22, 4);
     g.fillRoundedRect(9, -4, 9, 22, 4);
+    g.fillStyle(trim, 0.8);
+    g.fillRect(-18, 9, 9, 3);
+    g.fillRect(9, 9, 9, 3);
     g.fillStyle(skin, 1);
     g.fillCircle(-14, 18, 3.2);
     g.fillCircle(14, 18, 3.2);
@@ -480,6 +531,9 @@ class Character extends Phaser.GameObjects.Container {
     g.fillRect(-13, 8, 26, 5);
     g.fillStyle(0xd9b45a, 0.9);
     g.fillRect(-3, 8, 6, 5);
+    g.fillCircle(0, 10.5, 2.1);
+    g.fillStyle(0x8a2a22, 0.9);
+    g.fillRect(-1.5, 12, 3, 7);
     // 交领
     g.fillStyle(0xf1e4cc, 1);
     g.beginPath();
@@ -490,6 +544,19 @@ class Character extends Phaser.GameObjects.Container {
     g.fillPath();
     g.fillStyle(skin, 1);
     g.fillTriangle(-4, -7, 4, -7, 0, 1);
+    if (this.dining) {
+      // 用膳时手搭在桌沿/碗边，别让双手垂在身侧
+      g.fillStyle(0x000000, 0.1);
+      g.fillEllipse(0, 28, 34, 8);
+      g.lineStyle(3, dark, 1);
+      g.lineBetween(-13, 19, 6, 12);
+      g.lineBetween(13, 19, 14, 10);
+      g.fillStyle(skin, 1);
+      g.fillCircle(6, 12, 2.6);
+      g.fillCircle(14, 10, 2.6);
+      g.lineStyle(2, 0x6a4a2a, 1);
+      g.lineBetween(11, 4, 18, -3);
+    }
 
     // 长发/后发
     if (this.longHair) {
@@ -500,6 +567,8 @@ class Character extends Phaser.GameObjects.Container {
     g.fillStyle(skin, 1);
     g.fillRect(-3, -12, 6, 5);
     g.fillCircle(0, -20, 11);
+    g.lineStyle(1.2, 0x4a3226, 0.35);
+    g.strokeCircle(0, -20, 11);
     // 后发与发髻：只盖住头顶，别把脸埋掉
     g.fillStyle(hair, 1);
     g.fillEllipse(0, -29, 24, 12);
@@ -555,13 +624,26 @@ class Character extends Phaser.GameObjects.Container {
     g.lineStyle(1.5, this.shade(hair, 1.35), 0.9);
     g.lineBetween(-8, -26, -10, -14);
     g.lineBetween(8, -26, 10, -14);
+    // 耳朵、鼻子与发顶高光
+    g.fillStyle(skin, 1);
+    g.fillCircle(-11, -17, 2.4);
+    g.fillCircle(11, -17, 2.4);
+    g.fillStyle(0xd8a07a, 0.55);
+    g.fillCircle(-11, -17, 1);
+    g.fillCircle(11, -17, 1);
+    g.lineStyle(1, 0xd8a07a, 0.7);
+    g.lineBetween(1, -17, 2, -15);
+    g.fillStyle(this.shade(hair, 1.6), 0.35);
+    g.fillEllipse(-4, -31, 12, 4);
+    g.lineStyle(1, this.shade(hair, 1.6), 0.4);
+    g.lineBetween(-6, -28, -9, -16);
     // 嘴：等菜微愁，用膳张嘴笑并带一点腮红，稀客冷脸
     if (this.mood === "dining") {
       g.fillStyle(0x7a3a30, 0.95);
       g.fillEllipse(0, -12, 6, 3.4);
-      g.fillStyle(0xffb0a0, 0.28);
-      g.fillCircle(-7, -16, 2.6);
-      g.fillCircle(7, -16, 2.6);
+      g.fillStyle(0xffb0a0, 0.45);
+      g.fillCircle(-7, -16, 3.2);
+      g.fillCircle(7, -16, 3.2);
     } else if (this.mood === "waiting") {
       g.lineStyle(1.2, 0x9a5a4a, 0.8);
       g.beginPath();
@@ -687,11 +769,13 @@ class Character extends Phaser.GameObjects.Container {
     this.draw();
   }
 
-  /** 用膳：收起腿、压低身子并做咀嚼起伏，看起来是坐着吃而不是站着。 */
+  /** 用膳：收起腿、坐到桌后（桌沿挡住腰腿），再做咀嚼起伏。 */
   setDining(on: boolean) {
     if (this.dining === on || !this.scene || !this.visual?.active) return;
     this.dining = on;
     this.mood = on ? "dining" : "idle";
+    // 桌子 depth=2：用膳时沉到桌子后面，桌沿自然挡住下半身
+    this.setDepth(on ? 1.8 : 20);
     this.draw();
     this.stopIdle();
     if (on) {
@@ -4555,8 +4639,8 @@ class TavernScene extends Phaser.Scene {
     this.eventToast = undefined;
     this.hintToast?.destroy();
     this.hintToast = undefined;
-    cam.pan(targetX, targetY - 14, 320, "Sine.easeInOut");
-    cam.zoomTo(2.2, 320, "Sine.easeInOut");
+    cam.pan(targetX, targetY - 30, 320, "Sine.easeInOut");
+    cam.zoomTo(2.5, 320, "Sine.easeInOut");
     char.focusPose();
     char.clearBubble();
     this.focusCaption?.destroy();
@@ -4570,7 +4654,7 @@ class TavernScene extends Phaser.Scene {
         padding: { x: 8, y: 4 },
         align: "center",
         fontFamily: XIAN_FONT,
-        wordWrap: { width: 300 },
+        wordWrap: { width: 250 },
       })
       .setOrigin(0.5)
       .setDepth(27);
