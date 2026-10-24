@@ -3489,11 +3489,18 @@ class TavernScene extends Phaser.Scene {
     const layer = this.add.container(cam.scrollX, cam.scrollY).setDepth(100);
     layer.add(this.add.rectangle(0, 0, SCREEN_W, SCREEN_H, 0x000000, 0.995).setOrigin(0, 0).setInteractive());
     layer.add(this.add.text(40, 58, "选择今日菜单", { fontSize: "36px", color: "#ffe6a8", fontFamily: XIAN_FONT }));
+    const unlocked = this.unlockedDishIds();
+    const booking = this.regulars.find((r) => unlocked.includes(r.wish));
+    const bookingDish = booking ? DISHES.find((d) => d.id === booking.wish)?.name : undefined;
     layer.add(
-      this.add.text(40, 108, "至少选一道菜才能开张；营业中可按顺序轮转，也可在出菜行指定", {
-        fontSize: "18px",
-        color: "#999999",
-      }),
+      this.add.text(
+        40,
+        108,
+        booking && bookingDish
+          ? `常客 ${booking.name} 已在路上 · 想吃 ${bookingDish}（上菜单 +50%）`
+          : "至少选一道菜才能开张；营业中可按顺序轮转，也可在出菜行指定",
+        { fontSize: "18px", color: booking && bookingDish ? "#e0c060" : "#999999" },
+      ),
     );
     const goalOptions = getDailyGoalOptions(this.day, this.level);
     this.dailyGoal =
