@@ -134,6 +134,7 @@ interface Booth {
   patronWish: string | null;
   patronName: string | null;
   patronRegular: boolean;
+  diningProp?: Phaser.GameObjects.Container;
 }
 interface BoothVisual {
   bg: Phaser.GameObjects.Rectangle;
@@ -319,6 +320,7 @@ class Character extends Phaser.GameObjects.Container {
   private bubble?: Phaser.GameObjects.Text;
   private bubbleTail?: Phaser.GameObjects.Triangle;
   private dining = false;
+  private seated = false;
   private mood: "idle" | "waiting" | "dining" | "cold" = "idle";
   private static readonly ART_SCALE = 1.18;
   private bodyColor: number;
@@ -441,7 +443,7 @@ class Character extends Phaser.GameObjects.Container {
     // 影子与脚
     g.fillStyle(0x000000, 0.24);
     g.fillEllipse(0, 40, 38, 10);
-    if (!this.dining) {
+    if (!this.dining && !this.seated) {
       g.fillStyle(0x211a16, 1);
       g.fillRect(-8, 30, 7, 10);
       g.fillRect(1, 30, 7, 10);
@@ -503,7 +505,7 @@ class Character extends Phaser.GameObjects.Container {
     g.fillPath();
     g.fillStyle(trim, 0.92);
     g.fillRect(-13, 25, 26, 3);
-    if (this.dining) {
+    if (this.dining || this.seated) {
       // 坐姿下摆：腿收起，衣摆摊在桌后
       g.fillStyle(deep, 1);
       g.fillEllipse(0, 31, 36, 12);
@@ -769,13 +771,23 @@ class Character extends Phaser.GameObjects.Container {
     this.draw();
   }
 
+  /** 入座后整个人沉到桌后；等菜和用膳都保持坐姿。 */
+  setSeated(on: boolean) {
+    if (this.seated === on || !this.scene || !this.visual?.active) return;
+    this.seated = on;
+    this.setDepth(on ? 1.8 : 20);
+    this.draw();
+  }
+
   /** 用膳：收起腿、坐到桌后（桌沿挡住腰腿），再做咀嚼起伏。 */
   setDining(on: boolean) {
     if (this.dining === on || !this.scene || !this.visual?.active) return;
     this.dining = on;
+    if (on && !this.seated) {
+      this.seated = true;
+      this.setDepth(1.8);
+    }
     this.mood = on ? "dining" : "idle";
-    // 桌子 depth=2：用膳时沉到桌子后面，桌沿自然挡住下半身
-    this.setDepth(on ? 1.8 : 20);
     this.draw();
     this.stopIdle();
     if (on) {
@@ -1027,6 +1039,8 @@ class TavernScene extends Phaser.Scene {
   /** 吃过满意一餐的熟客，隔日还会回来点同一道菜。 */
   private regulars: RegularGuest[] = [];
   private regularsToday = new Set<string>();
+  /** 今天还没见到常客时，保证至少来一位，避免关系层在短局里完全隐身。 */
+  private regularDueToday = false;
   /** 跑堂/灶上/采买是否自动；关掉后工资照付，玩家可亲自操作或省钱。 */
   private auto: AutoState = { server: true, cook: true, buyer: true };
 
@@ -2852,7 +2866,7 @@ class TavernScene extends Phaser.Scene {
         booth.state = "dining";
         booth.departAt = time + DINING_MS;
         booth.patronChar?.setDining(true);
-        this.showDiningProp(this.tablePosition(index).x);
+        this.showDiningProp(index);
         this.log("出餐完毕，食客开始用膳");
         // 另一桌正在用膳时，给一次看得见的碰杯，而不是只等 5.6 秒的随机闲聊
         const other = this.booths.find((b) => b !== booth && b.state === "dining" && b.patronChar);
@@ -2893,10 +2907,14 @@ class TavernScene extends Phaser.Scene {
         booth.patronWish = null;
         booth.patronName = null;
         booth.patronRegular = false;
+        booth.diningProp?.destroy();
+        booth.diningProp = undefined;
         booth.awaitingSince = 0;
         const leaver = booth.patronChar;
         booth.patronChar = undefined;
         if (this.focusChar === leaver) this.returnFromFocus();
+        leaver?.setDining(false);
+        leaver?.setSeated(false);
         if (hasWish && !matched) leaver?.say("这不是我想吃的……", "cold");
         leaver?.walkTo(440, ACTOR_Y, 500, () => leaver.destroy());
         playSfx("coin");
@@ -3231,6 +3249,8 @@ class TavernScene extends Phaser.Scene {
         booth.patronWish = null;
         booth.patronName = null;
         booth.patronRegular = false;
+        booth.diningProp?.destroy();
+        booth.diningProp = undefined;
         booth.awaitingSince = 0;
       });
       this.playerSeat = null;
@@ -3259,6 +3279,7 @@ class TavernScene extends Phaser.Scene {
       this.sessionCultivation = 0;
       this.goalAnnounced = false;
       this.regularsToday.clear();
+      this.regularDueToday = this.regulars.length > 0;
       this.shoutReadyAt = 0;
       this.lastClinkAt = 0;
       this.sessionGoal = this.currentDayGoal();
@@ -3346,6 +3367,8 @@ class TavernScene extends Phaser.Scene {
       booth.patronWish = null;
       booth.patronName = null;
       booth.patronRegular = false;
+      booth.diningProp?.destroy();
+      booth.diningProp = undefined;
       booth.awaitingSince = 0;
     });
     this.displayedCoins = this.coins;
@@ -4463,24 +4486,50 @@ class TavernScene extends Phaser.Scene {
   }
 
   /** 上菜后桌上出现碗筷与热气，让「用膳」这件事看得见。 */
-  private showDiningProp(x: number) {
-    const px = x + 16;
-    const y = FLOOR_Y - 24;
-    const bowl = this.add.ellipse(px, y, 32, 12, 0xf1e4cc).setDepth(21);
-    const soup = this.add.ellipse(px, y - 2, 22, 6, 0xd98a4a).setDepth(21);
-    const stick = this.add.rectangle(px + 13, y - 6, 2, 24, 0x6a4a2a).setAngle(26).setDepth(21);
-    this.spawnSteam(px, y - 14, 0.22);
-    this.tweens.add({
-      targets: [bowl, soup, stick],
-      alpha: 0,
-      delay: 2500,
-      duration: 600,
-      onComplete: () => {
-        bowl.destroy();
-        soup.destroy();
-        stick.destroy();
-      },
-    });
+  /** 用膳套件：桌沿上的碗、两只手、袖子与筷子，跟着整段用餐存在。 */
+  private showDiningProp(index: number) {
+    const booth = this.booths[index];
+    booth.diningProp?.destroy();
+    const table = this.tablePosition(index);
+    const skin = 0xffe0bd;
+    const body = booth.patronKind?.bodyColor ?? 0x7a8a6a;
+    const layer = this.add.container(table.x, FLOOR_Y - 24).setDepth(21);
+    const arms = this.add.graphics();
+    arms.lineStyle(5, body, 1);
+    arms.beginPath();
+    arms.moveTo(-22, 6);
+    arms.lineTo(-10, 0);
+    arms.strokePath();
+    arms.beginPath();
+    arms.moveTo(22, 6);
+    arms.lineTo(14, 0);
+    arms.strokePath();
+    arms.fillStyle(skin, 1);
+    arms.fillCircle(-9, 0, 3.4);
+    arms.fillCircle(14, 0, 3.4);
+    arms.lineStyle(1, 0xd8a07a, 0.8);
+    arms.lineBetween(-11, -1, -8, -1);
+    arms.lineBetween(12, -1, 15, -1);
+    layer.add(arms);
+    const bowl = this.add.ellipse(10, 0, 34, 13, 0xf1e4cc);
+    const rim = this.add.ellipse(10, -1, 28, 9, 0xe8d8bc);
+    const soup = this.add.ellipse(10, -1, 20, 6, 0xd98a4a);
+    const stick = this.add.rectangle(15, -7, 2, 24, 0x6a4a2a).setAngle(26);
+    layer.add([bowl, rim, soup, stick]);
+    for (const x of [-2, 10]) {
+      const steam = this.add.ellipse(x, -10, 10, 5, 0xe8e8e8, 0.22);
+      layer.add(steam);
+      this.tweens.add({
+        targets: steam,
+        y: -26,
+        alpha: 0,
+        duration: 1500,
+        delay: Phaser.Math.Between(0, 700),
+        repeat: -1,
+        ease: "Sine.easeOut",
+      });
+    }
+    booth.diningProp = layer;
   }
 
   /** 每日开张的题头：日期 + 天气，给每一局一个开场仪式。 */
@@ -4639,8 +4688,8 @@ class TavernScene extends Phaser.Scene {
     this.eventToast = undefined;
     this.hintToast?.destroy();
     this.hintToast = undefined;
-    cam.pan(targetX, targetY - 30, 320, "Sine.easeInOut");
-    cam.zoomTo(2.5, 320, "Sine.easeInOut");
+    cam.pan(targetX, targetY - 52, 320, "Sine.easeInOut");
+    cam.zoomTo(3.2, 320, "Sine.easeInOut");
     char.focusPose();
     char.clearBubble();
     this.focusCaption?.destroy();
@@ -4648,13 +4697,13 @@ class TavernScene extends Phaser.Scene {
     const line = this.focusLineFor(char);
     this.focusCaption = this.add
       .text(targetX, targetY - 152, `${who}${line ? `：「${line}」` : ""}\n再点一次退出 · 3.6s`, {
-        fontSize: "14px",
+        fontSize: "13px",
         color: "#ffe6c8",
         backgroundColor: "rgba(30,22,15,0.85)",
         padding: { x: 8, y: 4 },
         align: "center",
         fontFamily: XIAN_FONT,
-        wordWrap: { width: 250 },
+        wordWrap: { width: 200 },
       })
       .setOrigin(0.5)
       .setDepth(27);
@@ -4685,6 +4734,8 @@ class TavernScene extends Phaser.Scene {
     this.focusTimer?.remove();
     this.focusTimer = undefined;
     this.focusing = false;
+    // 看人物不该偷走营业时间：把特写的 3.6s 补回当天
+    if (this.gameState === "open" && !this.settling) this.sessionEndsAt += 3600;
     this.focusChar = undefined;
     this.focusCaption?.destroy();
     this.focusCaption = undefined;
@@ -4965,11 +5016,16 @@ class TavernScene extends Phaser.Scene {
     const regularPool = this.regulars.filter(
       (r) => !this.regularsToday.has(r.name) && unlocked.includes(r.wish),
     );
-    const regular =
-      regularPool.length > 0 && Math.random() < 0.3
+    const forceRegular = this.regularDueToday && regularPool.length > 0;
+    const regular = forceRegular
+      ? regularPool[0]
+      : regularPool.length > 0 && Math.random() < 0.3
         ? regularPool[Math.floor(Math.random() * regularPool.length)]
         : null;
-    if (regular) this.regularsToday.add(regular.name);
+    if (regular) {
+      this.regularsToday.add(regular.name);
+      if (forceRegular) this.regularDueToday = false;
+    }
     const kind = regular
       ? (PATRON_KINDS.find((k) => k.id === regular.kindId) ?? pickPatronKind(Math.random()))
       : pickPatronKind(Math.random());
@@ -5182,6 +5238,7 @@ class TavernScene extends Phaser.Scene {
       playSfx("seat");
       booth.state = "awaitingCook";
       booth.awaitingSince = time;
+      booth.patronChar?.setSeated(true);
       this.log(driver === "player" ? "你领食客入座雅座，等候烹饪" : "跑堂伙计领食客入座雅座");
       this.showBoothOrder(progress.boothIndex);
       if (this.day === 1 && this.tutorialHintStage <= 1) {
@@ -5288,10 +5345,13 @@ class TavernScene extends Phaser.Scene {
       const guest = booth.patronKind?.name ?? "食客";
       booth.patronChar = undefined;
       if (this.focusChar === leaver) this.returnFromFocus();
+      leaver?.setSeated(false);
       booth.patronKind = null;
       booth.patronWish = null;
       booth.patronName = null;
       booth.patronRegular = false;
+      booth.diningProp?.destroy();
+      booth.diningProp = undefined;
       booth.awaitingSince = 0;
       leaver?.walkTo(440, ACTOR_Y, 400, () => leaver.destroy());
       this.sessionLost += 1;
