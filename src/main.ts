@@ -350,6 +350,8 @@ class Character extends Phaser.GameObjects.Container {
   private look: CharacterLook;
   /** 特写字幕用：食客姓名或掌柜/伙计的岗位。 */
   displayName?: string;
+  /** 进场动画未完成前不能招待，避免御剑/乘云途中被拉去入座。 */
+  arrived = true;
   /** 最近一句台词，特写时并进字幕，避免气泡与桌卡叠字。 */
   lastLine?: string;
 
@@ -6868,6 +6870,7 @@ class TavernScene extends Phaser.Scene {
 
   /** 每位修士有自己的进店方式：御剑、乘云、化烟、裂空；凡人/散修走进来。 */
   private patronEntrance(char: Character, kind: PatronKind, slotX: number) {
+    char.arrived = false;
     char.setScale(char.x < slotX ? 1 : -1, 1);
     const id = kind.id;
     const spark = (x: number, y: number, color: number, count = 2) => {
@@ -6917,7 +6920,15 @@ class TavernScene extends Phaser.Scene {
             duration: 220,
             onComplete: () => board.destroy(),
           });
-          this.tweens.add({ targets: char, y: ACTOR_Y, duration: 260, ease: "Bounce.easeOut" });
+          this.tweens.add({
+            targets: char,
+            y: ACTOR_Y,
+            duration: 260,
+            ease: "Bounce.easeOut",
+            onComplete: () => {
+              char.arrived = true;
+            },
+          });
           spark(char.x, char.y + 30, 0xffe6a8, 6);
         },
       });
@@ -6945,7 +6956,15 @@ class TavernScene extends Phaser.Scene {
         ease: "Sine.easeOut",
         onComplete: () => {
           this.tweens.add({ targets: cloud, alpha: 0, duration: 260, onComplete: () => cloud.destroy() });
-          this.tweens.add({ targets: char, y: ACTOR_Y, duration: 300, ease: "Sine.easeOut" });
+          this.tweens.add({
+            targets: char,
+            y: ACTOR_Y,
+            duration: 300,
+            ease: "Sine.easeOut",
+            onComplete: () => {
+              char.arrived = true;
+            },
+          });
           spark(char.x, char.y + 30, green ? 0xa8e8c0 : 0xffe6a8, 5);
         },
       });
@@ -6973,6 +6992,9 @@ class TavernScene extends Phaser.Scene {
         alpha: 1,
         duration: 520,
         ease: "Bounce.easeOut",
+        onComplete: () => {
+          char.arrived = true;
+        },
       });
       return;
     }
@@ -6989,7 +7011,14 @@ class TavernScene extends Phaser.Scene {
         duration: 260,
         ease: "Sine.easeOut",
         onComplete: () => {
-          this.tweens.add({ targets: char, alpha: 1, duration: 220 });
+          this.tweens.add({
+            targets: char,
+            alpha: 1,
+            duration: 220,
+            onComplete: () => {
+              char.arrived = true;
+            },
+          });
           this.time.delayedCall(180, () => {
             this.tweens.add({
               targets: rift,
@@ -7005,7 +7034,9 @@ class TavernScene extends Phaser.Scene {
     }
     // 凡人/散修：正常走进来；散修脚下有急行的尘，凡人慢慢挑担
     const walkMs = id === "rogue" ? 430 : 760;
-    char.walkTo(slotX, ACTOR_Y, walkMs);
+    char.walkTo(slotX, ACTOR_Y, walkMs, () => {
+      char.arrived = true;
+    });
     for (let i = 0; i < 4; i++) {
       this.time.delayedCall(120 * i, () => {
         if (char.active) spark(char.x + 12, ACTOR_Y - 2, id === "rogue" ? 0xb8b0a0 : 0x8a7a62, 1);
@@ -7180,6 +7211,10 @@ class TavernScene extends Phaser.Scene {
       return;
     }
 
+    if (!this.queue[0]?.char.arrived) {
+      if (driver === "player") this.showHint("客人还在路上，稍等");
+      return;
+    }
     const emptyBooths = this.booths
       .map((booth, index) => ({ booth, index }))
       .filter(({ booth }) => booth.state === "empty");
