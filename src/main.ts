@@ -99,10 +99,10 @@ const SKY_TRANSITION_MS = 2000;
 const FLOOR_Y = 1010;
 const ACTOR_Y = FLOOR_Y - 34;
 const TABLE_X_MIN = -230;
-const TABLE_X_MAX = 200;
+const TABLE_X_MAX = 170;
 const QUEUE_X = 350;
 const QUEUE_GAP = 52;
-const PLAYER_HOME = { x: 0, y: ACTOR_Y };
+const PLAYER_HOME = { x: 240, y: ACTOR_Y };
 const HAWKER_HOME = { x: 280, y: ACTOR_Y };
 const SERVER_HOME = { x: 120, y: ACTOR_Y };
 const COOK_HOME = { x: -290, y: ACTOR_Y };
@@ -816,6 +816,7 @@ class TavernScene extends Phaser.Scene {
   private uiObjects: { obj: { x: number; setScrollFactor(v: number): unknown }; baseX: number }[] = [];
 
   private playerChar!: Character;
+  private playerLabel!: Phaser.GameObjects.Text;
   private staffChars: Partial<Record<StaffRole, Character>> = {};
   private playerGender: "male" | "female" = "male";
 
@@ -1157,10 +1158,15 @@ class TavernScene extends Phaser.Scene {
     for (const x of [180, 540]) {
       layer.add(
         this.add
+          .rectangle(x, 510, 176, 276, 0x1a120c, 0.82)
+          .setStrokeStyle(2, 0x8a6a3a, 0.7),
+      );
+      layer.add(
+        this.add
           .image(x, 500, "soft-glow")
           .setTint(0xffb060)
-          .setAlpha(0.32)
-          .setScale(1.25)
+          .setAlpha(0.48)
+          .setScale(1.35)
           .setBlendMode(Phaser.BlendModes.ADD),
       );
     }
@@ -1169,10 +1175,28 @@ class TavernScene extends Phaser.Scene {
     const female = new Character(this, 540, 500, 0xc86a9e, 0x4a2b1a, true, "player");
     female.setScale(-2.2, 2.2).disableInteractive();
     layer.add([male, female]);
+    layer.add(
+      this.add
+        .text(180, 622, "少年掌柜", {
+          fontSize: "14px",
+          color: "#c8b8a0",
+          fontFamily: XIAN_FONT,
+        })
+        .setOrigin(0.5),
+    );
+    layer.add(
+      this.add
+        .text(540, 622, "少女掌柜", {
+          fontSize: "14px",
+          color: "#c8b8a0",
+          fontFamily: XIAN_FONT,
+        })
+        .setOrigin(0.5),
+    );
 
     const pick = (x: number, label: string, gender: "male" | "female", color: string) => {
       const btn = this.add
-        .text(x, 660, label, {
+        .text(x, 700, label, {
           fontSize: "30px",
           color: "#ffe6c8",
           backgroundColor: color,
@@ -1429,6 +1453,17 @@ class TavernScene extends Phaser.Scene {
 
     this.playerChar = new Character(this, PLAYER_HOME.x, PLAYER_HOME.y, 0x4a7ab8, 0x2b2b2b, false, "player");
     this.playerChar.setVisible(false);
+    this.playerLabel = this.add
+      .text(PLAYER_HOME.x, PLAYER_HOME.y - 104, "掌柜", {
+        fontSize: "12px",
+        color: "#ffe6a8",
+        backgroundColor: "rgba(30,22,15,0.78)",
+        padding: { x: 5, y: 2 },
+        fontFamily: XIAN_FONT,
+      })
+      .setOrigin(0.5)
+      .setDepth(26)
+      .setVisible(false);
   }
 
   /** 酒楼内部（侧视图）：背景墙、地面、左侧厨房灶台、右侧门口、两侧窗户。 */
@@ -2169,17 +2204,20 @@ class TavernScene extends Phaser.Scene {
         .setStrokeStyle(2, 0x8a6a3a, 0.45),
     );
     this.navPanel.add(
-      this.add.text(24, 726, "掌柜事务", {
-        fontSize: "15px",
-        color: "#e0c9a0",
-        fontFamily: XIAN_FONT,
-      }),
+      this.add
+        .text(360, 726, "掌柜事务", {
+          fontSize: "18px",
+          color: "#e0c9a0",
+          fontFamily: XIAN_FONT,
+        })
+        .setOrigin(0.5, 0)
+        .setLetterSpacing(4),
     );
     this.navPanel.add(this.add.rectangle(24, 750, 672, 1, 0x8a6a3a, 0.4).setOrigin(0, 0));
     const nav = { x: 12, y: 28 };
     this.staffButton = this.addUiButton(
-      16,
-      760,
+      180,
+      797,
       () => {
         this.staffNotice = "";
         this.buildStaffOverlay();
@@ -2187,14 +2225,14 @@ class TavernScene extends Phaser.Scene {
       nav,
       6,
       "20px",
-    );
-    this.upgradeButton = this.addUiButton(16, 864, () => this.buildBuildOverlay(), nav, 6, "20px");
-    this.genderButton = this.addUiButton(16, 968, () => this.toggleGender(), nav, 6, "20px");
-    this.bankButton = this.addUiButton(16, 1072, () => this.buildBankOverlay(), nav, 6, "20px");
-    this.cultivationButton = this.addUiButton(360, 760, () => this.buildCultivationOverlay(), nav, 6, "20px");
-    this.helpButton = this.addUiButton(360, 864, () => this.showHelp(), nav, 6, "20px");
-    this.recordButton = this.addUiButton(360, 968, () => this.buildRecordOverlay(), nav, 6, "20px");
-    this.saveButton = this.addUiButton(360, 1072, () => this.openSaveDialog("export"), nav, 6, "20px");
+    ).setOrigin(0.5);
+    this.upgradeButton = this.addUiButton(180, 901, () => this.buildBuildOverlay(), nav, 6, "20px").setOrigin(0.5);
+    this.genderButton = this.addUiButton(180, 1005, () => this.toggleGender(), nav, 6, "20px").setOrigin(0.5);
+    this.bankButton = this.addUiButton(180, 1109, () => this.buildBankOverlay(), nav, 6, "20px").setOrigin(0.5);
+    this.cultivationButton = this.addUiButton(540, 797, () => this.buildCultivationOverlay(), nav, 6, "20px").setOrigin(0.5);
+    this.helpButton = this.addUiButton(540, 901, () => this.showHelp(), nav, 6, "20px").setOrigin(0.5);
+    this.recordButton = this.addUiButton(540, 1005, () => this.buildRecordOverlay(), nav, 6, "20px").setOrigin(0.5);
+    this.saveButton = this.addUiButton(540, 1109, () => this.openSaveDialog("export"), nav, 6, "20px").setOrigin(0.5);
 
     this.buildBoothVisuals();
     this.positionUi(false);
@@ -3765,6 +3803,7 @@ class TavernScene extends Phaser.Scene {
       fontSize: isOpen ? "17px" : "20px",
       color: "#f5e6c8",
       backgroundColor: isOpen ? "#3f2a22" : "#3f6a3f",
+      padding: isOpen ? { x: 20, y: 28 } : { x: 40, y: 28 },
     });
     this.boothVisuals.forEach((v) => {
       v.bg.setVisible(isOpen);
@@ -4276,8 +4315,8 @@ class TavernScene extends Phaser.Scene {
     const toast = this.add
       .text(SCREEN_W / 2, 600, message, {
         fontSize: "19px",
-        color: good ? "#ffd98a" : "#ff9a8a",
-        backgroundColor: good ? "#2a3a1a" : "#3a1a1a",
+        color: good ? "#ffe6c8" : "#ff9a8a",
+        backgroundColor: "rgba(30,22,15,0.94)",
         padding: { x: 16, y: 10 },
         align: "center",
         wordWrap: { width: 600 },
@@ -4914,6 +4953,8 @@ class TavernScene extends Phaser.Scene {
 
   private refreshHud() {
     const open = this.gameState === "open";
+    this.playerLabel.setVisible(open);
+    if (open) this.playerLabel.setPosition(this.playerChar.x, this.playerChar.y - 104);
 
     this.coinsText.setText(`灵石：${this.displayedCoins}`);
     this.inventoryText.setText(`灵材：${this.inventory}`);
