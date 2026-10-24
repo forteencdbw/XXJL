@@ -3776,6 +3776,70 @@ class TavernScene extends Phaser.Scene {
       }
     });
 
+    // 菜少时给一道大菜占住空桌，别让“卖菜的店”只剩黑屏
+    if (available.length <= 3) {
+      const showcase = special ?? available[0];
+      const showcaseName = showcase?.name ?? "一炉烟火";
+      const soup = special ? 0xd9b45a : 0x9fbf6a;
+      layer.add(
+        this.add
+          .image(360, 700, "soft-glow")
+          .setTint(0xffb060)
+          .setAlpha(0.13)
+          .setScale(2.4)
+          .setBlendMode(Phaser.BlendModes.ADD),
+      );
+      const dishArt = this.add.graphics();
+      dishArt.fillStyle(0x3a2818, 0.55);
+      dishArt.fillEllipse(360, 812, 480, 64);
+      dishArt.fillStyle(0x000000, 0.25);
+      dishArt.fillEllipse(360, 792, 300, 34);
+      dishArt.fillStyle(0xe8dcc0, 0.97);
+      dishArt.fillEllipse(360, 744, 258, 72);
+      dishArt.fillStyle(0xc8b89a, 1);
+      dishArt.fillEllipse(360, 752, 218, 54);
+      dishArt.fillStyle(soup, 1);
+      dishArt.fillEllipse(360, 738, 192, 42);
+      dishArt.fillStyle(0xffffff, 0.16);
+      dishArt.fillEllipse(320, 730, 90, 16);
+      for (const [gx, gy, r] of [
+        [320, 738, 5],
+        [362, 744, 4],
+        [402, 734, 6],
+        [382, 726, 3],
+      ] as const) {
+        dishArt.fillStyle(0x6a8a4a, 1);
+        dishArt.fillCircle(gx, gy, r);
+      }
+      dishArt.lineStyle(5, 0x8a5a32, 0.95);
+      dishArt.lineBetween(500, 672, 556, 760);
+      dishArt.lineBetween(516, 666, 572, 754);
+      dishArt.fillStyle(0xffe6c8, 0.2);
+      dishArt.fillEllipse(330, 690, 54, 12);
+      dishArt.fillEllipse(382, 676, 38, 9);
+      layer.add(dishArt);
+      layer.add(
+        this.add
+          .text(360, 866, `今日开张 · ${showcaseName}`, {
+            fontSize: "24px",
+            color: "#ffe6a8",
+            fontFamily: XIAN_FONT,
+          })
+          .setOrigin(0.5)
+          .setLetterSpacing(3),
+      );
+      layer.add(
+        this.add
+          .text(360, 904, "一炉烟火 · 半盏仙途", {
+            fontSize: "15px",
+            color: "#8a7a62",
+            fontFamily: XIAN_FONT,
+          })
+          .setOrigin(0.5)
+          .setLetterSpacing(3),
+      );
+    }
+
     if (this.inventory <= 0) {
       layer.add(
         this.add.text(40, 982, "库存为 0：先点下面「备货」再开张，否则客人来了没菜可做", {
