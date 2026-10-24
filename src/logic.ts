@@ -189,11 +189,20 @@ export function pickPatronKind(roll: number): PatronKind {
   return PATRON_KINDS[PATRON_KINDS.length - 1];
 }
 
-/** 从今日菜单里挑一道本类食客偏爱的菜；菜单里没有偏爱菜就不挑食。roll 取 [0,1)。 */
-export function pickPatronWish(kind: PatronKind, menuDishIds: string[], roll: number): string | null {
-  const options = kind.favorites.filter((id) => menuDishIds.includes(id));
+/**
+ * 从「当前已解锁的菜」里挑一道本类食客偏爱的菜。
+ * 注意不是从今日菜单里挑：菜单没上的菜也会被点名，端不上就只付半价——这样“只挂一道最贵菜”会被口味需求惩罚。
+ * roll 取 [0,1)。
+ */
+export function pickPatronWish(kind: PatronKind, availableDishIds: string[], roll: number): string | null {
+  const options = kind.favorites.filter((id) => availableDishIds.includes(id));
   if (options.length === 0) return null;
   return options[Math.floor(roll * options.length) % options.length];
+}
+
+/** 菜单页提示：哪些食客类型会偏爱这道菜。 */
+export function getDishFans(dishId: string): string[] {
+  return PATRON_KINDS.filter((kind) => kind.favorites.includes(dishId)).map((kind) => kind.name);
 }
 
 export const WISH_PRICE_BONUS = 0.5;

@@ -20,6 +20,7 @@ import {
   getBoothCount,
   getCultivationGain,
   getDailyGoal,
+  getDishFans,
   getGoalCoinReward,
   getGoalProgress,
   getLoanDue,
@@ -231,12 +232,18 @@ describe("食客类型与口味", () => {
     expect(pickPatronKind(1)).toBe(PATRON_KINDS[PATRON_KINDS.length - 1]);
   });
 
-  it("只从今日菜单里挑偏爱菜，没有就返回 null", () => {
+  it("只从可用菜品里挑偏爱菜，没有就返回 null", () => {
     const sword = PATRON_KINDS.find((k) => k.id === "sword")!;
     const wish = pickPatronWish(sword, ["jelly", "stirfry"], 0);
     expect(wish).toBe("jelly");
     expect(pickPatronWish(sword, ["stirfry"], 0)).toBeNull();
     expect(pickPatronWish(PATRON_KINDS.find((k) => k.id === "mortal")!, ["fish"], 0)).toBeNull();
+  });
+
+  it("菜单页能看出每道菜被哪些食客偏爱", () => {
+    expect(getDishFans("stirfry")).toEqual(expect.arrayContaining(["散修", "妖修"]));
+    expect(getDishFans("porridge")).toEqual(expect.arrayContaining(["丹修"]));
+    expect(getDishFans("not-a-dish")).toEqual([]);
   });
 
   it("roll 覆盖所有偏爱菜且始终落在菜单内", () => {
