@@ -6,6 +6,7 @@ import {
   LOAN_PERIODS,
   MAX_STAFF_LEVEL,
   NIGHT_COLOR,
+  PATRON_KINDS,
   REALMS,
   getArrivalInterval,
   getBoothCount,
@@ -25,6 +26,8 @@ import {
   getStaffLevel,
   getStaffWage,
   getUpgradeCost,
+  getWishPrice,
+  pickPatronWish,
   skyColorAt,
 } from "./logic";
 
@@ -156,6 +159,38 @@ describe("菜品与昼夜", () => {
     expect(skyColorAt(0)).not.toBe(skyColorAt(1));
     expect(skyColorAt(1)).toBe(NIGHT_COLOR);
     expect(skyColorAt(1.5)).toBe(NIGHT_COLOR);
+  });
+});
+
+describe("食客类型与口味", () => {
+  it("食客类型齐全，耐心系数为正", () => {
+    expect(PATRON_KINDS.length).toBeGreaterThanOrEqual(4);
+    for (const kind of PATRON_KINDS) {
+      expect(kind.patienceFactor).toBeGreaterThan(0);
+      expect(kind.name.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("只从今日菜单里挑偏爱菜，没有就返回 null", () => {
+    const sword = PATRON_KINDS.find((k) => k.id === "sword")!;
+    const wish = pickPatronWish(sword, ["jelly", "stirfry"], 0);
+    expect(wish).toBe("jelly");
+    expect(pickPatronWish(sword, ["stirfry"], 0)).toBeNull();
+    expect(pickPatronWish(PATRON_KINDS.find((k) => k.id === "mortal")!, ["fish"], 0)).toBeNull();
+  });
+
+  it("roll 覆盖所有偏爱菜且始终落在菜单内", () => {
+    const demon = PATRON_KINDS.find((k) => k.id === "demon")!;
+    const menu = ["stirfry", "fish", "jelly"];
+    const wishes = new Set([0, 0.49, 0.99].map((roll) => pickPatronWish(demon, menu, roll)));
+    expect(wishes.size).toBe(2);
+    for (const wish of wishes) expect(menu).toContain(wish);
+  });
+
+  it("命中口味加价 50%，未命中保持原价", () => {
+    expect(getWishPrice(6, true)).toBe(9);
+    expect(getWishPrice(6, false)).toBe(6);
+    expect(getWishPrice(6, true)).toBeGreaterThan(getWishPrice(6, false));
   });
 });
 

@@ -115,6 +115,39 @@ export function getArrivalInterval(
   );
 }
 
+// ===== 食客类型与口味 =====
+/** 不同来客的耐心与口味不同；偏爱菜在今日菜单里时才会提出想吃。 */
+export interface PatronKind {
+  id: string;
+  name: string;
+  bodyColor: number;
+  hairColor: number;
+  patienceFactor: number;
+  favorites: string[];
+}
+
+export const PATRON_KINDS: PatronKind[] = [
+  { id: "rogue", name: "散修", bodyColor: 0x7a8a6a, hairColor: 0x2b2b2b, patienceFactor: 1, favorites: ["stirfry"] },
+  { id: "sword", name: "剑修", bodyColor: 0x5a7a9a, hairColor: 0x1b1b2b, patienceFactor: 0.8, favorites: ["fish", "jelly"] },
+  { id: "alchemist", name: "丹修", bodyColor: 0x8a6a9a, hairColor: 0x3b2b3b, patienceFactor: 1.1, favorites: ["porridge", "jelly"] },
+  { id: "demon", name: "妖修", bodyColor: 0x9a5a3a, hairColor: 0x4a2b1b, patienceFactor: 1.2, favorites: ["fish", "stirfry"] },
+  { id: "mortal", name: "凡人", bodyColor: 0xb0a090, hairColor: 0x3b3b3b, patienceFactor: 1.3, favorites: [] },
+];
+
+/** 从今日菜单里挑一道本类食客偏爱的菜；菜单里没有偏爱菜就不挑食。roll 取 [0,1)。 */
+export function pickPatronWish(kind: PatronKind, menuDishIds: string[], roll: number): string | null {
+  const options = kind.favorites.filter((id) => menuDishIds.includes(id));
+  if (options.length === 0) return null;
+  return options[Math.floor(roll * options.length) % options.length];
+}
+
+export const WISH_PRICE_BONUS = 0.5;
+
+/** 端上食客想吃的菜，售价加成。 */
+export function getWishPrice(base: number, matched: boolean): number {
+  return matched ? Math.round(base * (1 + WISH_PRICE_BONUS)) : base;
+}
+
 // ===== 修为与境界 =====
 /** 境界越高，酒楼的仙缘越盛：售价、操作速度、客流依次获得加成。 */
 export interface RealmDef {
