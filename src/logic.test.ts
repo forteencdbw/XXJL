@@ -20,6 +20,7 @@ import {
   getBoothCount,
   getCultivationGain,
   getDailyGoal,
+  getDailySpecial,
   getDishFans,
   getGoalCoinReward,
   getGoalPayout,
@@ -41,6 +42,7 @@ import {
   getRealmStaffSpeedFactor,
   getSignArrivalFactor,
   getSignUpgradeCost,
+  getSpecialPrice,
   getStaffDuration,
   getStaffLevel,
   getStaffWage,
@@ -255,6 +257,18 @@ describe("食客类型与口味", () => {
     expect(getDishFans("stirfry")).toEqual(expect.arrayContaining(["散修", "妖修"]));
     expect(getDishFans("porridge")).toEqual(expect.arrayContaining(["丹修"]));
     expect(getDishFans("not-a-dish")).toEqual([]);
+  });
+
+  it("今日招牌按天轮换，只有一道菜时不设招牌", () => {
+    expect(getDailySpecial(1, 1, ["stirfry"])).toBeNull();
+    const a = getDailySpecial(1, 1, ["stirfry", "porridge"]);
+    const b = getDailySpecial(2, 1, ["stirfry", "porridge"]);
+    expect(a).not.toBeNull();
+    expect(b).not.toBeNull();
+    expect(a).not.toBe(b);
+    expect(getDailySpecial(1, 1, ["stirfry", "porridge"])).toBe(a);
+    expect(getSpecialPrice(8, true)).toBe(10);
+    expect(getSpecialPrice(8, false)).toBe(8);
   });
 
   it("roll 覆盖所有偏爱菜且始终落在菜单内", () => {

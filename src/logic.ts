@@ -18,8 +18,8 @@ export const PURCHASE_TAVERN_SHRINK_PER_LEVEL_MS = 300;
 export const PURCHASE_FLOOR_MS = 3000;
 export const PURCHASE_DISCOUNT_PER_LEVEL = 0.08;
 export const PURCHASE_DISCOUNT_CAP = 0.5;
-export const UPGRADE_BASE_COST = 15;
-export const UPGRADE_COST_MULTIPLIER = 1.6;
+export const UPGRADE_BASE_COST = 30;
+export const UPGRADE_COST_MULTIPLIER = 1.75;
 export const STAFF_SPEED_PENALTY = 1.6;
 // 4 级时三岗都应快于玩家：1.6 × 0.82^3 ≈ 0.88、0.85^3 ≈ 0.98、0.84^3 ≈ 0.95
 export const STAFF_LEVEL_SPEEDUP = { hawker: 0.82, server: 0.85, cook: 0.84 } as const;
@@ -83,7 +83,7 @@ export function getUpgradeCost(level: number): number {
 }
 
 // ===== 营造：除雅座扩建外的两条专精线 =====
-export const STOVE_BASE_COST = 24;
+export const STOVE_BASE_COST = 34;
 export const STOVE_COST_MULTIPLIER = 1.75;
 export const STOVE_SPEEDUP = 0.9;
 export const STOVE_SPEED_FLOOR = 0.5;
@@ -97,7 +97,7 @@ export function getStoveSpeedFactor(level: number): number {
   return Math.max(STOVE_SPEED_FLOOR, Math.pow(STOVE_SPEEDUP, Math.max(0, level)));
 }
 
-export const SIGN_BASE_COST = 18;
+export const SIGN_BASE_COST = 26;
 export const SIGN_COST_MULTIPLIER = 1.7;
 export const SIGN_ARRIVAL_SHRINK = 0.93;
 export const SIGN_ARRIVAL_FLOOR = 0.5;
@@ -214,6 +214,23 @@ export function getDishFans(dishId: string): string[] {
 
 export const WISH_PRICE_BONUS = 0.5;
 export const WISH_MISS_MULTIPLIER = 0.5;
+export const DAILY_SPECIAL_BONUS = 0.25;
+
+/**
+ * 今日招牌：从已解锁菜品里按天轮换一道，售价 +25%。
+ * 只有一道菜时不设招牌，避免新手日凭空多一条规则；roll 由天数和等级确定，读档一致。
+ */
+export function getDailySpecial(day: number, level: number, availableDishIds: string[]): string | null {
+  if (availableDishIds.length < 2) return null;
+  const index =
+    ((Math.max(1, day) * 7 + Math.max(1, level) * 3) % availableDishIds.length + availableDishIds.length) %
+    availableDishIds.length;
+  return availableDishIds[index] ?? null;
+}
+
+export function getSpecialPrice(base: number, isSpecial: boolean): number {
+  return isSpecial ? Math.round(base * (1 + DAILY_SPECIAL_BONUS)) : base;
+}
 
 /** 端上想吃的菜加价；有想吃的却上错，食客只付半价。 */
 export function getWishPrice(base: number, matched: boolean, hasWish = false): number {
