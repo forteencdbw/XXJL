@@ -67,7 +67,7 @@ const HIRE_COST_HAWKER = 30;
 const HIRE_COST_SERVER = 40;
 const HIRE_COST_COOK = 50;
 const HIRE_COST_BUYER = 35;
-const CHRONICLE_MAX_LINES = 2;
+const CHRONICLE_MAX_LINES = 1;
 const SAVE_KEY = "tavern_save_v1";
 const AUTOSAVE_MS = 2000;
 const MAX_EVENTS_PER_SESSION = 2;
@@ -85,7 +85,7 @@ const COLOR_STAFF = 0x4da6ff;
 const SCREEN_W = 720;
 const SCREEN_H = 1280;
 /** 界面分区（见 GLOSSARY）：状态栏 / 主屏 / 副屏。 */
-const STATUS_BAR_H = 150;
+const STATUS_BAR_H = 130;
 const XIAN_FONT = '"KaiTi","STKaiti","Kaiti SC","Noto Serif SC",serif';
 const SECONDARY_TOP = 1077;
 const CARD_W = 600;
@@ -98,15 +98,15 @@ const SKY_TRANSITION_MS = 2000;
 
 const FLOOR_Y = 1010;
 const ACTOR_Y = FLOOR_Y - 34;
-const TABLE_X_MIN = -175;
-const TABLE_X_MAX = 145;
+const TABLE_X_MIN = -230;
+const TABLE_X_MAX = 200;
 const QUEUE_X = 350;
 const QUEUE_GAP = 52;
 const PLAYER_HOME = { x: 0, y: ACTOR_Y };
 const HAWKER_HOME = { x: 280, y: ACTOR_Y };
 const SERVER_HOME = { x: 120, y: ACTOR_Y };
 const COOK_HOME = { x: -290, y: ACTOR_Y };
-const SERVE_SPOT = { x: 238, y: ACTOR_Y };
+const SERVE_SPOT = { x: 275, y: ACTOR_Y };
 const COOK_SPOT = { x: -230, y: ACTOR_Y };
 const DOOR_X = 320;
 
@@ -295,7 +295,7 @@ class Character extends Phaser.GameObjects.Container {
   private bubble?: Phaser.GameObjects.Text;
   private bubbleTail?: Phaser.GameObjects.Triangle;
   private dining = false;
-  private static readonly ART_SCALE = 1.12;
+  private static readonly ART_SCALE = 1.18;
   private bodyColor: number;
   private hairColor: number;
   private longHair: boolean;
@@ -651,7 +651,7 @@ class Character extends Phaser.GameObjects.Container {
     this.bubble?.destroy();
     this.bubbleTail?.destroy();
     const cam = this.scene.cameras.main;
-    const bx = Phaser.Math.Clamp(this.x, cam.scrollX + 100, cam.scrollX + SCREEN_W - 100);
+    const bx = Phaser.Math.Clamp(this.x, cam.scrollX + 120, cam.scrollX + SCREEN_W - 120);
     const bubble = this.scene.add
       .text(bx, this.y - 76, text, {
         fontSize: "17px",
