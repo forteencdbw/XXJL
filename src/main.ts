@@ -5460,10 +5460,18 @@ class TavernScene extends Phaser.Scene {
     const panel = this.add.container(SCREEN_W / 2, STATUS_BAR_H + 16);
     panel.add(
       this.add
-        .rectangle(0, 0, CARD_W, cardHeight, 0x241a12, 1)
+        .rectangle(0, 0, CARD_W, cardHeight, 0x0d0a08, 1)
         .setOrigin(0.5, 0)
-        .setStrokeStyle(2, 0x8a6a3a),
+        .setStrokeStyle(2, 0x9a3a2a),
     );
+    for (const [cx, cy] of [
+      [-CARD_W / 2 + 8, 8],
+      [CARD_W / 2 - 8, 8],
+      [-CARD_W / 2 + 8, cardHeight - 8],
+      [CARD_W / 2 - 8, cardHeight - 8],
+    ] as const) {
+      panel.add(this.add.rectangle(cx, cy, 10, 10, 0xd9b45a).setAngle(45));
+    }
     panel.setAlpha(0).setScale(0.92);
     this.tweens.add({ targets: panel, alpha: 1, scale: 1, duration: 200, ease: "Sine.easeOut" });
     layer.add(panel);
@@ -5693,7 +5701,7 @@ class TavernScene extends Phaser.Scene {
       } = this.lastGoalResult;
       panel.add(
         this.add
-          .rectangle(left - 8, y - 8, CARD_W - 20, 90, 0x2a2118, 0.95)
+          .rectangle(left - 8, y - 8, CARD_W - 20, 90, 0x14100c, 0.97)
           .setOrigin(0, 0)
           .setStrokeStyle(1, 0xd9b45a, 0.55),
       );
