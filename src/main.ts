@@ -449,6 +449,8 @@ class Character extends Phaser.GameObjects.Container {
             : 0xffe0bd;
     const headR =
       this.look === "mortal" ? 11.8 : this.look === "elder" ? 11.3 : this.look === "sword" ? 10.6 : 11;
+    const faceW =
+      this.look === "mortal" ? 1.04 : this.look === "sword" ? 0.94 : this.look === "demon" ? 0.97 : 1;
     const hair = this.hairColor;
     const trim =
       this.look === "demon" || this.look === "demonlord"
@@ -592,9 +594,18 @@ class Character extends Phaser.GameObjects.Container {
     // 脖子与头
     g.fillStyle(skin, 1);
     g.fillRect(-3, -12, 6, 5);
-    g.fillCircle(0, -20, headR);
+    g.fillEllipse(0, -20, headR * 2 * faceW, headR * 2);
+    // 脸侧阴影/颧骨高光，别是一块纯色圆
+    g.fillStyle(0xc08060, 0.1);
+    g.fillEllipse(headR * 0.45 * faceW, -18, headR * 0.8, headR * 1.5);
+    g.fillStyle(0xffffff, 0.08);
+    g.fillEllipse(-headR * 0.4 * faceW, -24, headR * 0.5, headR * 0.5);
     g.lineStyle(1.2, 0x4a3226, 0.35);
-    g.strokeCircle(0, -20, headR);
+    g.strokeEllipse(0, -20, headR * 2 * faceW, headR * 2);
+    // 上眼睑
+    g.lineStyle(1, 0x4a2a20, 0.5);
+    g.lineBetween(-6.5, -21.4, -1.5, -21.4);
+    g.lineBetween(1.5, -21.4, 6.5, -21.4);
     // 后发与发髻：只盖住头顶，别把脸埋掉
     g.fillStyle(hair, 1);
     g.fillEllipse(0, -29, 24, 12);
@@ -652,11 +663,11 @@ class Character extends Phaser.GameObjects.Container {
     g.lineBetween(8, -26, 10, -14);
     // 耳朵、鼻子与发顶高光
     g.fillStyle(skin, 1);
-    g.fillCircle(-(headR - 0.5), -17, 2.4);
-    g.fillCircle(headR - 0.5, -17, 2.4);
+    g.fillCircle(-(headR * faceW - 0.5), -17, 2.4);
+    g.fillCircle(headR * faceW - 0.5, -17, 2.4);
     g.fillStyle(0xd8a07a, 0.55);
-    g.fillCircle(-(headR - 0.5), -17, 1);
-    g.fillCircle(headR - 0.5, -17, 1);
+    g.fillCircle(-(headR * faceW - 0.5), -17, 1);
+    g.fillCircle(headR * faceW - 0.5, -17, 1);
     g.lineStyle(1, 0xd8a07a, 0.7);
     g.lineBetween(1, -17, 2, -15);
     // 年龄/身份留下的小痕迹
@@ -683,6 +694,11 @@ class Character extends Phaser.GameObjects.Container {
     g.fillEllipse(-4, -31, 12, 4);
     g.lineStyle(1, this.shade(hair, 1.6), 0.4);
     g.lineBetween(-6, -28, -9, -16);
+    // 额前碎发
+    g.lineStyle(1, this.shade(hair, 1.25), 0.5);
+    g.lineBetween(-7, -28, -4, -23);
+    g.lineBetween(-2, -30, 0, -24);
+    g.lineBetween(3, -29, 5, -23);
     // 嘴：等菜微愁，用膳张嘴笑并带一点腮红，稀客冷脸
     if (this.mood === "dining") {
       g.lineStyle(1.2, 0x7a3a30, 0.85);
@@ -4791,6 +4807,14 @@ class TavernScene extends Phaser.Scene {
     panel.strokeRoundedRect(180, 580, 360, 540, 18);
     panel.lineStyle(1, 0xd9b45a, 0.3);
     panel.strokeRoundedRect(194, 594, 332, 512, 14);
+    // 卡内淡墨山与朱印，和标题页的水墨气质接上
+    panel.fillStyle(0x0b0704, 0.45);
+    panel.fillTriangle(205, 990, 300, 790, 395, 990);
+    panel.fillTriangle(330, 990, 425, 820, 515, 990);
+    panel.fillStyle(0x8a2a22, 0.85);
+    panel.fillRect(506, 606, 16, 22);
+    panel.lineStyle(1, 0xd9b45a, 0.6);
+    panel.strokeRect(506, 606, 16, 22);
     const spec = char.portraitSpec();
     const portrait = new Character(
       this,
