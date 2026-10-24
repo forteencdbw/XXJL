@@ -239,8 +239,8 @@ class ProgressButton {
     this.playerFill.setVisible(visible);
     this.staffFill.setVisible(visible);
     this.label.setVisible(visible);
-    if (!visible) this.zone.disableInteractive();
-    else this.zone.setInteractive({ useHandCursor: true });
+    if (visible && this.enabled) this.zone.setInteractive({ useHandCursor: true });
+    else this.zone.disableInteractive();
   }
 }
 
@@ -2258,6 +2258,7 @@ class TavernScene extends Phaser.Scene {
   /** 突破：白光一闪、金色灵环扩散、境界浮字。 */
   private celebrateBreakthrough(realmName: string) {
     playSfx("upgrade");
+    this.showEventToast(`突破 · ${realmName}`, true);
     this.cameras.main.flash(500, 255, 236, 170);
     const { x, y } = this.playerChar;
     for (let i = 0; i < 3; i++) {
