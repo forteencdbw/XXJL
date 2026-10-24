@@ -97,6 +97,8 @@ const SCREEN_H = 1280;
 /** 界面分区（见 GLOSSARY）：状态栏 / 主屏 / 副屏。 */
 const STATUS_BAR_H = 124;
 const XIAN_FONT = '"KaiTi","STKaiti","Kaiti SC","Noto Serif SC",serif';
+/** 旧的平滑标题页保留作回退；当前用 ink-title 像素底。 */
+const USE_VECTOR_TITLE = false;
 const CARD_W = 600;
 
 const EXTERIOR_X = -2000;
@@ -1300,6 +1302,7 @@ class TavernScene extends Phaser.Scene {
     this.ensureGlowTexture();
     this.ensurePaperTextures();
     this.ensureDishTexture();
+    this.ensureInkTitleTexture();
     this.booths = Array.from({ length: getBoothCount(this.level) }, () => this.makeBooth());
     if (this.selectedDishIds.size === 0) {
       this.selectedDishIds = new Set(DISHES.filter((d) => d.unlockLevel <= this.level).map((d) => d.id));
@@ -1327,7 +1330,10 @@ class TavernScene extends Phaser.Scene {
     document.addEventListener("visibilitychange", () => {
       if (document.hidden) this.save();
     });
-    if (!hadSave) this.showTitleScreen();
+    if (!hadSave) {
+      if (USE_VECTOR_TITLE) this.showTitleScreen();
+      else this.showInkPixelTitle();
+    }
 
     // Debug 面板只在开发环境引入，生产构建会被整块剔除
     if (import.meta.env.DEV) {
@@ -1526,6 +1532,356 @@ class TavernScene extends Phaser.Scene {
       c.stroke();
     }
     tex.refresh();
+  }
+
+  /** 水墨像素风的标题底：360×640 硬边像素，最近邻放大。 */
+  private ensureInkTitleTexture() {
+    if (this.textures.exists("ink-title")) return;
+    const W = 360;
+    const H = 640;
+    const tex = this.textures.createCanvas("ink-title", W, H);
+    if (!tex) return;
+    const c = tex.getContext();
+    const px = (x: number, y: number, w: number, h: number, col: string) => {
+      c.fillStyle = col;
+      c.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h));
+    };
+    c.fillStyle = "#070b14";
+    c.fillRect(0, 0, W, H);
+    // 天空的稀疏像素与星
+    for (let i = 0; i < 6800; i++) {
+      const x = Math.random() * W;
+      const y = Math.random() * 470;
+      const a = Math.random();
+      px(x, y, 1, 1, a > 0.9 ? "#2a3a50" : a > 0.64 ? "#122032" : "#0b1421");
+    }
+    for (let i = 0; i < 34; i++) {
+      px(Math.random() * W, Math.random() * 300, 1, 1, Math.random() > 0.7 ? "#d8c8a0" : "#6a7a8a");
+    }
+    // 月亮与抖动光晕
+    const moon = (cx: number, cy: number, r: number, col: string, chance = 1) => {
+      for (let y = -r; y <= r; y++) {
+        for (let x = -r; x <= r; x++) {
+          if (x * x + y * y <= r * r && Math.random() < chance) px(cx + x, cy + y, 1, 1, col);
+        }
+      }
+    };
+    moon(272, 106, 34, "#1e2b3e", 0.35);
+    moon(272, 106, 26, "#3a4a5e", 0.55);
+    moon(272, 106, 20, "#f2e6c2", 1);
+    moon(266, 100, 6, "#fff6dc", 1);
+    // 云带
+    for (const [y0, len] of [
+      [150, 150],
+      [172, 110],
+      [206, 180],
+    ] as const) {
+      for (let i = 0; i < len * 2.4; i++) {
+        px(Math.random() * 360, y0 + Math.random() * 18, 1, 1, Math.random() > 0.55 ? "#1a2638" : "#131e2e");
+      }
+    }
+    // 山的像素三角：逐行填，保留硬边
+    const tri = (pts: [number, number][], col: string, edge?: string) => {
+      const ys = pts.map((p) => p[1]);
+      const minY = Math.floor(Math.min(...ys));
+      const maxY = Math.floor(Math.max(...ys));
+      for (let y = minY; y <= maxY; y++) {
+        const xs: number[] = [];
+        for (let i = 0; i < pts.length; i++) {
+          const [x1, y1] = pts[i];
+          const [x2, y2] = pts[(i + 1) % pts.length];
+          if ((y1 <= y && y2 >= y) || (y2 <= y && y1 >= y)) {
+            if (y1 === y2) {
+              xs.push(x1, x2);
+            } else {
+              xs.push(x1 + ((y - y1) / (y2 - y1)) * (x2 - x1));
+            }
+          }
+        }
+        if (xs.length < 2) continue;
+        const x0 = Math.floor(Math.min(...xs));
+        const x1 = Math.ceil(Math.max(...xs));
+        px(x0, y, Math.max(1, x1 - x0), 1, col);
+        if (edge && Math.random() > 0.55) {
+          px(x0, y, 1, 1, edge);
+          px(x1 - 1, y, 1, 1, edge);
+        }
+      }
+    };
+    tri(
+      [
+        [0, 430],
+        [90, 330],
+        [180, 430],
+      ],
+      "#101b2a",
+      "#1c2b3e",
+    );
+    tri(
+      [
+        [140, 440],
+        [255, 312],
+        [380, 440],
+      ],
+      "#0d1724",
+      "#182638",
+    );
+    tri(
+      [
+        [0, 470],
+        [70, 390],
+        [165, 470],
+      ],
+      "#0a1420",
+      "#152234",
+    );
+    // 雾气
+    for (let i = 0; i < 420; i++) {
+      px(20 + Math.random() * 320, 420 + Math.random() * 30, 1, 1, Math.random() > 0.5 ? "#1a2838" : "#243448");
+    }
+    // 前景山坡与地面
+    for (let i = 0; i < 520; i++) {
+      px(Math.random() * W, 592 + Math.random() * 48, 1, 1, Math.random() > 0.5 ? "#0b1018" : "#070b12");
+    }
+    px(0, 618, W, 22, "#0c131b");
+    // 左侧松影
+    px(67, 512, 5, 108, "#0a1110");
+    px(59, 520, 8, 3, "#0c1614");
+    px(71, 548, 8, 3, "#0c1614");
+    for (const [lx, ly] of [
+      [56, 514],
+      [64, 528],
+      [52, 540],
+      [68, 554],
+    ] as const) {
+      px(lx, ly, 12, 3, "#0c1714");
+      px(lx - 3, ly - 2, 9, 2, "#0e1a16");
+    }
+    // 右侧竹影
+    for (const [bx, top] of [
+      [292, 520],
+      [300, 548],
+      [284, 566],
+    ] as const) {
+      px(bx, top, 2, 110, "#101a14");
+      px(bx - 4, top + 14, 10, 2, "#16241a");
+      px(bx - 6, top + 38, 12, 2, "#16241a");
+      px(bx - 4, top + 62, 10, 2, "#16241a");
+    }
+    // 两层屋檐
+    tri(
+      [
+        [180, 514],
+        [74, 558],
+        [286, 558],
+      ],
+      "#4a201a",
+      "#9a3a2a",
+    );
+    px(68, 556, 26, 3, "#6a2a20");
+    px(266, 556, 26, 3, "#6a2a20");
+    tri(
+      [
+        [180, 508],
+        [96, 544],
+        [264, 544],
+      ],
+      "#2a1411",
+      "#7a2f22",
+    );
+    for (let y = 518; y < 556; y += 5) {
+      const half = Math.floor(((y - 508) / 36) * 84);
+      px(180 - half, y, half * 2, 1, "#5a241a");
+    }
+    // 墙体与柱
+    px(112, 558, 136, 62, "#2a1c14");
+    px(118, 564, 124, 56, "#3a2818");
+    px(112, 558, 10, 62, "#20140d");
+    px(238, 558, 10, 62, "#20140d");
+    px(112, 558, 136, 3, "#5a3a22");
+    // 匾额
+    px(154, 558, 52, 14, "#1a120c");
+    px(156, 560, 48, 10, "#3a2416");
+    px(156, 560, 48, 1, "#d9b45a");
+    px(156, 569, 48, 1, "#d9b45a");
+    px(176, 563, 3, 4, "#e8c070");
+    px(182, 563, 3, 4, "#e8c070");
+    // 窗与暖光
+    for (const wx of [128, 206]) {
+      px(wx, 574, 28, 26, "#3a2a1a");
+      px(wx + 2, 576, 24, 22, "#e0a050");
+      px(wx + 2, 576, 24, 2, "#f4c878");
+      px(wx + 13, 576, 2, 22, "#3a2a1a");
+      px(wx + 2, 586, 24, 2, "#3a2a1a");
+      for (let i = 0; i < 16; i++) {
+        px(wx + 1 + Math.random() * 26, 573 - Math.random() * 10, 1, 1, Math.random() > 0.5 ? "#5a4a3a" : "#3a3028");
+      }
+      for (let i = 0; i < 10; i++) {
+        px(wx + 3 + Math.random() * 22, 578 + Math.random() * 18, 1, 1, "#ffd08a");
+      }
+    }
+    // 门与台阶
+    px(172, 588, 16, 32, "#160f0a");
+    px(174, 590, 12, 30, "#0b0806");
+    px(170, 618, 20, 4, "#4a3420");
+    px(166, 622, 28, 3, "#3a2818");
+    // 灯笼
+    for (const lx of [100, 260]) {
+      px(lx - 1, 550, 2, 8, "#1a120a");
+      px(lx - 4, 558, 9, 11, "#a02a20");
+      px(lx - 3, 559, 7, 8, "#ff6a3a");
+      px(lx - 2, 560, 3, 5, "#ffd08a");
+      px(lx - 1, 569, 2, 5, "#d9b45a");
+      for (let i = 0; i < 10; i++) {
+        px(lx - 8 + Math.random() * 16, 556 + Math.random() * 16, 1, 1, "#6a3a2a");
+      }
+    }
+    // 门前石径与草
+    for (let i = 0; i < 40; i++) px(150 + Math.random() * 60, 622 + Math.random() * 16, 1, 1, "#3a3a30");
+    for (let i = 0; i < 24; i++) px(80 + Math.random() * 200, 626 + Math.random() * 12, 1, 1, "#1a2418");
+    // 鹤影
+    for (const [cx, cy] of [
+      [150, 190],
+      [198, 166],
+    ] as const) {
+      px(cx - 5, cy + 1, 3, 1, "#0a1018");
+      px(cx + 2, cy + 1, 3, 1, "#0a1018");
+      px(cx - 2, cy, 1, 1, "#0a1018");
+      px(cx + 1, cy, 1, 1, "#0a1018");
+    }
+    tex.refresh();
+    tex.setFilter(Phaser.Textures.FilterMode.NEAREST);
+  }
+
+  /** 水墨像素标题页：像素底图 + 楷体题字，风格从这里定下来。 */
+  private showInkPixelTitle() {
+    this.destroyOverlay();
+    const cam = this.cameras.main;
+    const layer = this.add.container(cam.scrollX, cam.scrollY).setDepth(140);
+    layer.add(
+      this.add
+        .image(360, 640, "ink-title")
+        .setDisplaySize(SCREEN_W, SCREEN_H)
+        .setInteractive()
+        .on("pointerdown", () => {
+          playSfx("click");
+          this.showGenderPicker();
+        }),
+    );
+    layer.add(
+      this.add
+        .image(360, 640, "vignette")
+        .setDisplaySize(SCREEN_W, SCREEN_H)
+        .setAlpha(0.8),
+    );
+    const title = this.add
+      .text(360, 414, "灵膳楼", {
+        fontSize: "98px",
+        color: "#ffe6a8",
+        stroke: "#241506",
+        strokeThickness: 10,
+        fontFamily: XIAN_FONT,
+      })
+      .setOrigin(0.5)
+      .setLetterSpacing(14);
+    layer.add(title);
+    layer.add(
+      this.add
+        .text(360, 530, "一炉烟火 · 半盏仙途", {
+          fontSize: "23px",
+          color: "#c8b8a0",
+          fontFamily: XIAN_FONT,
+        })
+        .setOrigin(0.5)
+        .setLetterSpacing(6),
+    );
+    layer.add(this.add.rectangle(360, 588, 300, 1, 0xb08a4a, 0.7));
+    layer.add(
+      this.add
+        .text(360, 638, "青云镇外 · 散修旧铺", {
+          fontSize: "16px",
+          color: "#8a7a62",
+          fontFamily: XIAN_FONT,
+        })
+        .setOrigin(0.5)
+        .setLetterSpacing(3),
+    );
+    const button = this.add
+      .rectangle(360, 830, 300, 82, 0x1a120c, 0.94)
+      .setStrokeStyle(3, 0xd9b45a)
+      .setInteractive({ useHandCursor: true })
+      .on("pointerdown", () => {
+        playSfx("click");
+        this.showGenderPicker();
+      });
+    layer.add(button);
+    // 像素角标
+    for (const [bx, by] of [
+      [214, 792],
+      [506, 792],
+      [214, 864],
+      [506, 864],
+    ] as const) {
+      layer.add(this.add.rectangle(bx, by, 6, 6, 0xd9b45a).setAngle(45));
+    }
+    layer.add(
+      this.add
+        .text(360, 830, "推门入座", {
+          fontSize: "28px",
+          color: "#ffe6a8",
+          fontFamily: XIAN_FONT,
+        })
+        .setOrigin(0.5),
+    );
+    layer.add(
+      this.add.rectangle(360, 930, 48, 48, 0x8a2a22, 0.95).setStrokeStyle(2, 0xe8b06a).setAngle(4),
+    );
+    layer.add(
+      this.add
+        .text(360, 930, "灵膳", {
+          fontSize: "16px",
+          color: "#ffe6c8",
+          fontFamily: XIAN_FONT,
+          align: "center",
+          lineSpacing: 2,
+        })
+        .setOrigin(0.5)
+        .setAngle(4),
+    );
+    layer.add(
+      this.add
+        .text(360, 990, "迎客入座 · 点菜出餐 · 打烊修行", {
+          fontSize: "15px",
+          color: "#8a7a62",
+          fontFamily: XIAN_FONT,
+        })
+        .setOrigin(0.5)
+        .setLetterSpacing(3),
+    );
+    // 少量像素浮尘：和底图同一套硬边
+    for (let i = 0; i < 18; i++) {
+      const dot = this.add.rectangle(
+        Phaser.Math.Between(40, 680),
+        Phaser.Math.Between(460, 1080),
+        Phaser.Math.Between(2, 4),
+        Phaser.Math.Between(2, 4),
+        Math.random() > 0.5 ? 0xffd98a : 0xc8d8e8,
+        Phaser.Math.FloatBetween(0.18, 0.5),
+      );
+      layer.add(dot);
+      this.tweens.add({
+        targets: dot,
+        y: dot.y - Phaser.Math.Between(40, 120),
+        alpha: 0,
+        duration: Phaser.Math.Between(3600, 6800),
+        delay: Phaser.Math.Between(0, 2500),
+        repeat: -1,
+        ease: "Sine.easeInOut",
+      });
+    }
+    layer.setAlpha(0);
+    this.tweens.add({ targets: layer, alpha: 1, duration: 700, ease: "Sine.easeOut" });
+    this.overlay = layer;
   }
 
   private buildSceneGrade() {
