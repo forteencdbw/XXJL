@@ -642,8 +642,12 @@ class Character extends Phaser.GameObjects.Container {
     g.lineBetween(-6, -28, -9, -16);
     // 嘴：等菜微愁，用膳张嘴笑并带一点腮红，稀客冷脸
     if (this.mood === "dining") {
+      g.lineStyle(1.2, 0x7a3a30, 0.85);
+      g.beginPath();
+      g.arc(0, -13, 3.8, 0.15, Math.PI - 0.15, false);
+      g.strokePath();
       g.fillStyle(0x7a3a30, 0.95);
-      g.fillEllipse(0, -12, 6, 3.4);
+      g.fillEllipse(0, -12, 5.4, 2.6);
       g.fillStyle(0xffb0a0, 0.45);
       g.fillCircle(-7, -16, 3.2);
       g.fillCircle(7, -16, 3.2);
@@ -763,6 +767,19 @@ class Character extends Phaser.GameObjects.Container {
   setLongHair(long: boolean) {
     this.longHair = long;
     this.draw();
+  }
+
+  /** 特写用：同一套配色/身份/状态的肖像副本。 */
+  portraitSpec() {
+    return {
+      bodyColor: this.bodyColor,
+      hairColor: this.hairColor,
+      longHair: this.longHair,
+      look: this.look,
+      mood: this.mood,
+      dining: this.dining,
+      seated: this.seated,
+    };
   }
 
   /** 表情：排队等菜微愁、用膳张嘴笑、稀客冷脸。 */
@@ -1156,7 +1173,11 @@ class TavernScene extends Phaser.Scene {
   private lastClinkAt = 0;
   private focusChar?: Character;
   private focusCaption?: Phaser.GameObjects.Text;
-  private focusReturn = { x: CAMERA_OPEN_X, y: SCREEN_H / 2 };
+  private focusOverlay?: Phaser.GameObjects.Rectangle;
+  private focusPanel?: Phaser.GameObjects.Graphics;
+  private focusPortrait?: Character;
+  private focusProp?: Phaser.GameObjects.Container;
+  private focusName?: Phaser.GameObjects.Text;
   private eventToast?: Phaser.GameObjects.Text;
   private hintToast?: Phaser.GameObjects.Text;
   private focusing = false;
@@ -3328,17 +3349,12 @@ class TavernScene extends Phaser.Scene {
   }
 
   private endSession() {
-    const wasFocusing = this.focusing;
     this.focusTimer?.remove();
+    this.focusTimer = undefined;
     this.focusing = false;
     this.focusChar = undefined;
-    this.focusCaption?.destroy();
-    this.focusCaption = undefined;
+    this.clearFocusCard();
     this.setFocusUiHidden(false);
-    if (wasFocusing) {
-      this.cameras.main.setZoom(1);
-      this.cameras.main.centerOn(this.focusReturn.x, this.focusReturn.y);
-    }
     this.settling = true;
     this.sessionEndsAt = 0;
     if (this.playerPurchasing) {
@@ -4057,7 +4073,13 @@ class TavernScene extends Phaser.Scene {
 
     if (this.lastGoalResult) {
       const { goal, met, partial, progress, rewardCoins, rewardCultivation } = this.lastGoalResult;
-      panel.add(this.add.text(left, y, `今日目标 · ${goal.label}`, { fontSize: "17px", color: "#aaaaaa" }));
+      panel.add(
+        this.add
+          .rectangle(left - 8, y - 8, 624, 64, 0x2a2118, 0.95)
+          .setOrigin(0, 0)
+          .setStrokeStyle(1, 0xd9b45a, 0.55),
+      );
+      panel.add(this.add.text(left, y, `今日目标 · ${goal.label}`, { fontSize: "17px", color: "#e0c9a0" }));
       y += 26;
       panel.add(
         this.add.text(
@@ -4068,7 +4090,7 @@ class TavernScene extends Phaser.Scene {
             : partial
               ? `差一点（${progress}/${goal.target}）· 半赏 +${rewardCoins} 灵石、+${rewardCultivation} 修为`
               : `未达成（${progress}/${goal.target}）`,
-          { fontSize: "18px", color: met ? "#9fdf6a" : partial ? "#e0c060" : "#999999" },
+          { fontSize: "19px", color: met ? "#9fdf6a" : partial ? "#e0c060" : "#999999" },
         ),
       );
       y += 32;
@@ -4671,36 +4693,19 @@ class TavernScene extends Phaser.Scene {
     chars[Math.floor(Math.random() * chars.length)]?.twitch();
   }
 
-  /** 点人物时的短暂特写：镜头推近、清空 HUD、停四秒、再拉回原视角。 */
+  /** 点人物/桌卡：拉出一张人物卡，而不是裸镜头推近。 */
   private focusOnCharacter(char: Character) {
     if (this.gameState !== "open" || this.settling) return;
     if (this.focusing && this.focusChar === char) {
       this.returnFromFocus();
       return;
     }
-    const cam = this.cameras.main;
     if (!this.focusing) {
-      this.focusReturn = { x: cam.midPoint.x, y: cam.midPoint.y };
       this.focusing = true;
       this.setFocusUiHidden(true);
     }
     this.focusChar = char;
-    // 刚进门的客人还在走：镜头对准队列/桌位终点，别对着它路过的一帧
-    let targetX = char.x;
-    let targetY = char.y;
-    const queueIndex = this.queue.findIndex((p) => p.char === char);
-    if (queueIndex >= 0) {
-      targetX = QUEUE_X + queueIndex * this.queueGap();
-      targetY = ACTOR_Y;
-    } else {
-      const boothIndex = this.booths.findIndex((b) => b.patronChar === char);
-      if (boothIndex >= 0) {
-        const table = this.tablePosition(boothIndex);
-        targetX = table.x;
-        targetY = table.y;
-      }
-    }
-    // 特写期间让用膳中的客人多坐一会儿，否则 3 秒的饭会在镜头里提前离席
+    // 用膳中的客人多留一会儿，卡还没收起饭不能先撤
     const diningBooth = this.booths.find((b) => b.patronChar === char && b.state === "dining");
     if (diningBooth) diningBooth.departAt = Math.max(diningBooth.departAt, this.time.now + 4500);
     this.focusTimer?.remove();
@@ -4708,26 +4713,111 @@ class TavernScene extends Phaser.Scene {
     this.eventToast = undefined;
     this.hintToast?.destroy();
     this.hintToast = undefined;
-    cam.pan(targetX, targetY - 52, 320, "Sine.easeInOut");
-    cam.zoomTo(3.2, 320, "Sine.easeInOut");
-    char.focusPose();
     char.clearBubble();
-    this.focusCaption?.destroy();
+    this.clearFocusCard();
     const who = char.displayName ?? "人物";
     const line = this.focusLineFor(char);
-    this.focusCaption = this.add
-      .text(targetX, targetY - 152, `${who}${line ? `：「${line}」` : ""}\n再点一次退出 · 3.6s`, {
-        fontSize: "13px",
-        color: "#ffe6c8",
-        backgroundColor: "rgba(30,22,15,0.85)",
-        padding: { x: 8, y: 4 },
-        align: "center",
+    const overlay = this.add
+      .rectangle(0, 0, SCREEN_W, SCREEN_H, 0x0a0704, 0.78)
+      .setOrigin(0, 0)
+      .setScrollFactor(0)
+      .setDepth(100);
+    const openedAt = this.time.now;
+    overlay.setInteractive({ useHandCursor: true }).on("pointerup", () => {
+      if (this.time.now - openedAt > 250) this.returnFromFocus();
+    });
+    const panel = this.add.graphics().setScrollFactor(0).setDepth(101);
+    panel.fillStyle(0x1b140d, 0.97);
+    panel.fillRoundedRect(180, 580, 360, 540, 18);
+    panel.lineStyle(3, 0xd9b45a, 0.85);
+    panel.strokeRoundedRect(180, 580, 360, 540, 18);
+    panel.lineStyle(1, 0xd9b45a, 0.3);
+    panel.strokeRoundedRect(194, 594, 332, 512, 14);
+    const spec = char.portraitSpec();
+    const portrait = new Character(
+      this,
+      360,
+      900,
+      spec.bodyColor,
+      spec.hairColor,
+      spec.longHair,
+      spec.look,
+    );
+    portrait.setScrollFactor(0).setScale(4.2).setDepth(101.5);
+    portrait.disableInteractive();
+    portrait.setMood(spec.mood);
+    if (spec.dining) portrait.setDining(true);
+    else if (spec.seated) portrait.setSeated(true);
+    portrait.setDepth(101.5).setScrollFactor(0);
+    this.tweens.add({
+      targets: portrait,
+      y: 894,
+      duration: 220,
+      yoyo: true,
+      repeat: 1,
+      ease: "Sine.easeInOut",
+    });
+    this.focusOverlay = overlay;
+    this.focusPanel = panel;
+    this.focusPortrait = portrait;
+    this.focusName = this.add
+      .text(360, 606, who, {
+        fontSize: "20px",
+        color: "#ffe6a8",
         fontFamily: XIAN_FONT,
-        wordWrap: { width: 200 },
       })
       .setOrigin(0.5)
-      .setDepth(27);
+      .setScrollFactor(0)
+      .setDepth(102);
+    if (spec.dining) {
+      const prop = this.add.container(360, 958).setScrollFactor(0).setDepth(101.6);
+      const bowl = this.add.ellipse(0, 0, 130, 44, 0xf1e4cc);
+      const rim = this.add.ellipse(0, -2, 108, 30, 0xe8d8bc);
+      const soup = this.add.ellipse(0, -2, 80, 20, 0xd98a4a);
+      const stick = this.add.rectangle(18, -24, 6, 90, 0x6a4a2a).setAngle(26);
+      prop.add([bowl, rim, soup, stick]);
+      for (const sx of [-18, 18]) {
+        const steam = this.add.ellipse(sx, -36, 30, 14, 0xe8e8e8, 0.2);
+        prop.add(steam);
+        this.tweens.add({
+          targets: steam,
+          y: -86,
+          alpha: 0,
+          duration: 1800,
+          delay: Phaser.Math.Between(0, 800),
+          repeat: -1,
+          ease: "Sine.easeOut",
+        });
+      }
+      this.focusProp = prop;
+    }
+    this.focusCaption = this.add
+      .text(360, 1152, `${line ? `「${line}」\n` : ""}点画面任意处退出 · 3.6s`, {
+        fontSize: "20px",
+        color: "#ffe6c8",
+        align: "center",
+        fontFamily: XIAN_FONT,
+        wordWrap: { width: 600 },
+      })
+      .setOrigin(0.5)
+      .setScrollFactor(0)
+      .setDepth(102);
     this.focusTimer = this.time.delayedCall(3600, () => this.returnFromFocus());
+  }
+
+  private clearFocusCard() {
+    this.focusOverlay?.destroy();
+    this.focusOverlay = undefined;
+    this.focusPanel?.destroy();
+    this.focusPanel = undefined;
+    this.focusPortrait?.destroy();
+    this.focusPortrait = undefined;
+    this.focusProp?.destroy();
+    this.focusProp = undefined;
+    this.focusCaption?.destroy();
+    this.focusCaption = undefined;
+    this.focusName?.destroy();
+    this.focusName = undefined;
   }
 
   /** 特写台词按此人此刻在做什么来取，避免排队客人说"结账"。 */
@@ -4749,7 +4839,7 @@ class TavernScene extends Phaser.Scene {
     return char.lastLine ?? "";
   }
 
-  /** 退出人物特写：恢复 HUD、镜头和原视角；再点同一人也会立即退出。 */
+  /** 退出人物卡：恢复 HUD；点画面任意处、再点同一人或计时结束都会退出。 */
   private returnFromFocus() {
     this.focusTimer?.remove();
     this.focusTimer = undefined;
@@ -4757,15 +4847,9 @@ class TavernScene extends Phaser.Scene {
     // 看人物不该偷走营业时间：把特写的 3.6s 补回当天
     if (this.gameState === "open" && !this.settling) this.sessionEndsAt += 3600;
     this.focusChar = undefined;
-    this.focusCaption?.destroy();
-    this.focusCaption = undefined;
-    const cam = this.cameras.main;
-    cam.pan(this.focusReturn.x, this.focusReturn.y, 360, "Sine.easeInOut");
-    cam.zoomTo(1, 360, "Sine.easeInOut");
-    this.time.delayedCall(380, () => {
-      this.setFocusUiHidden(false);
-      this.refreshHud();
-    });
+    this.clearFocusCard();
+    this.setFocusUiHidden(false);
+    this.refreshHud();
   }
 
   /** 特写期间收起界面；否则相机缩放会把屏幕固定的 HUD 一起放大、错位。 */
@@ -4951,7 +5035,7 @@ class TavernScene extends Phaser.Scene {
       targets: label,
       y: y - 44,
       alpha: 0,
-      duration: 1050,
+      duration: 1600,
       ease: "Sine.easeOut",
       onComplete: () => label.destroy(),
     });
@@ -4963,7 +5047,7 @@ class TavernScene extends Phaser.Scene {
         targets: spark,
         y: spark.y - Phaser.Math.Between(18, 30),
         alpha: 0,
-        duration: 760,
+        duration: 900,
         delay: i * 60,
         ease: "Sine.easeOut",
         onComplete: () => spark.destroy(),
@@ -5449,6 +5533,8 @@ class TavernScene extends Phaser.Scene {
     this.booths.push(this.makeBooth());
     this.addBoothVisual(this.booths.length - 1);
     this.drawInterior(this.interiorGfx);
+    // 多一张桌子就会多吃货，升级附赠一点灵材，避免第二天立刻断货
+    this.inventory += 5;
     // 打烊期升级发生在开张前：目标和菜单都应立即跟上新等级
     if (this.gameState === "closed") this.dailyGoal = getDailyGoal(this.day, this.level);
     const unlocked = DISHES.find((d) => d.unlockLevel === this.level);
@@ -5457,8 +5543,8 @@ class TavernScene extends Phaser.Scene {
     playSfx("upgrade");
     this.log(
       unlocked
-        ? `酒楼扩建到 ${this.level} 级，解锁新菜品「${unlocked.name}」并加入今日菜单`
-        : `酒楼扩建到 ${this.level} 级`,
+        ? `酒楼扩建到 ${this.level} 级，解锁新菜品「${unlocked.name}」并加入今日菜单，附赠 5 灵材`
+        : `酒楼扩建到 ${this.level} 级，附赠 5 灵材`,
     );
     this.destroyOverlay();
     this.showEventToast(`营造升至 Lv${this.level}`, true);
