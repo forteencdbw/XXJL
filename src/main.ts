@@ -341,6 +341,7 @@ class TavernScene extends Phaser.Scene {
   private sessionLost = 0;
   private sessionWishes = 0;
   private sessionCultivation = 0;
+  private goalAnnounced = false;
   private day = 1;
   private ascensions = 0;
   private ascending = false;
@@ -1327,6 +1328,7 @@ class TavernScene extends Phaser.Scene {
       this.sessionLost = 0;
       this.sessionWishes = 0;
       this.sessionCultivation = 0;
+      this.goalAnnounced = false;
       this.sessionGoal = this.currentDayGoal();
       this.sessionEndsAt = this.time.now + SESSION_DURATION_MS;
       this.nextArrivalAt =
@@ -1699,7 +1701,7 @@ class TavernScene extends Phaser.Scene {
       "踏破虚空，此局经营从头再来。",
       "",
       "保留：仙缘、玩家形象",
-      `失去：灵石、灵材、酒楼 ${this.level} 级、伙计、借据、修为、天数`,
+      `失去：灵石、灵材、酒楼 ${this.level} 级、灶台/门面、伙计、借据、修为、天数`,
       "",
       `飞升后：仙缘 ${next} 重，菜品售价 +${Math.round((getAscensionPriceMultiplier(next) - 1) * 100)}%`,
       `开局灵石 ${STARTING_COINS + next * 20}、灵材 ${STARTING_INVENTORY + next * 2}`,
@@ -2382,6 +2384,7 @@ class TavernScene extends Phaser.Scene {
     this.log(`【事件】${event.text}${parts.length ? `（${parts.join("，")}）` : ""}`);
     if (gainedCultivation > 0) this.gainCultivation(gainedCultivation);
     this.showEventToast(event.text, event.kind !== "bad");
+    if (event.kind === "bad") this.cameras.main.shake(220, 0.006);
     playSfx("event");
   }
 
@@ -2594,7 +2597,7 @@ class TavernScene extends Phaser.Scene {
     playSfx("upgrade");
     const unlocked = DISHES.find((d) => d.unlockLevel === this.level);
     this.log(
-      unlocked ? `酒楼装潢升级到 ${this.level} 级，解锁新菜品「${unlocked.name}」` : `酒楼装潢升级到 ${this.level} 级`,
+      unlocked ? `酒楼扩建到 ${this.level} 级，解锁新菜品「${unlocked.name}」` : `酒楼扩建到 ${this.level} 级`,
     );
   }
 
@@ -2910,6 +2913,11 @@ class TavernScene extends Phaser.Scene {
         reached ? "今日目标 ✓" : `${prefix} ${progress}/${this.sessionGoal.target}${unit}`,
       );
       this.goalText.setColor(reached ? "#9fdf6a" : "#e0c060");
+      if (reached && !this.goalAnnounced) {
+        this.goalAnnounced = true;
+        playSfx("upgrade");
+        this.showEventToast("今日目标达成", true);
+      }
     } else {
       const goal = this.currentDayGoal();
       this.sessionText.setText(
