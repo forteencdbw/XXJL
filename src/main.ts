@@ -1017,19 +1017,19 @@ class TavernScene extends Phaser.Scene {
     this.refreshAudioButtons();
 
     // 营业中操作按钮：与采购/打烊同处底部操作区
-    this.serveButton = this.addUiButton(346, 1186, () => this.startSeat("player"), { x: 14, y: 16 }, 6, "20px");
-    this.cookButton = this.addUiButton(460, 1186, () => this.manualCook(), { x: 14, y: 16 }, 6, "20px");
+    this.serveButton = this.addUiButton(346, 1186, () => this.startSeat("player"), { x: 14, y: 28 }, 6, "20px");
+    this.cookButton = this.addUiButton(460, 1186, () => this.manualCook(), { x: 14, y: 28 }, 6, "20px");
     // 出菜行：点哪道菜就做哪道，优先端给想吃它的那一桌
-    this.dishChipLabel = this.addUiText(16, 1036, "出菜 · 点菜名", "15px", "#bbbbbb");
+    this.dishChipLabel = this.addUiText(16, 1004, "出菜 · 点菜名", "15px", "#bbbbbb");
     this.dishChips = DISHES.map((_, i) =>
       this.addUiButton(
         56 + (i % 4) * 150,
-        1070 + Math.floor(i / 4) * 58,
+        1042 + Math.floor(i / 4) * 68,
         () => {
           const dish = this.getMenuDishes()[i];
           if (dish) this.manualCookDish(dish);
         },
-        { x: 10, y: 14 },
+        { x: 8, y: 22 },
         3,
         "16px",
       ),
@@ -1037,8 +1037,8 @@ class TavernScene extends Phaser.Scene {
     this.dishChips.forEach((chip) => chip.setVisible(false));
 
     // 通用按钮：底部固定
-    this.purchaseButton = new ProgressButton(this, 16, 1186, 200, 50, () => this.startPurchase(), this.registerUi);
-    this.startButton = this.addUiButton(222, 1186, () => this.onStartButton(), { x: 12, y: 14 }, 6, "20px");
+    this.purchaseButton = new ProgressButton(this, 16, 1186, 200, 80, () => this.startPurchase(), this.registerUi);
+    this.startButton = this.addUiButton(222, 1186, () => this.onStartButton(), { x: 12, y: 28 }, 6, "20px");
 
     // 打烊期的经营按钮（屏幕左侧竖排）
     const nav = { x: 12, y: 14 };
@@ -1093,14 +1093,14 @@ class TavernScene extends Phaser.Scene {
   private addOverlayClose(layer: Phaser.GameObjects.Container, y: number, label = "关闭") {
     layer.add(
       this.add
-        .rectangle(40, y, 640, 64, 0x3a3a3a)
+        .rectangle(40, y, 640, 80, 0x3a3a3a)
         .setOrigin(0, 0)
         .setStrokeStyle(2, 0x666666)
         .setInteractive({ useHandCursor: true })
         .on("pointerup", () => this.destroyOverlay()),
     );
     layer.add(
-      this.add.text(360, y + 32, label, { fontSize: "22px", color: "#ffffff" }).setOrigin(0.5),
+      this.add.text(360, y + 40, label, { fontSize: "22px", color: "#ffffff" }).setOrigin(0.5),
     );
   }
 
