@@ -1112,10 +1112,12 @@ class TavernScene extends Phaser.Scene {
 
   private tickClosedProcurement() {
     if (this.staffLevel.buyer === 0) return;
-    if (this.inventory >= PURCHASE_TARGET_STOCK) return;
+    // 酒楼越大，备货目标越高，避免高等级时 10 份存货撑不过一局
+    const target = PURCHASE_TARGET_STOCK + this.level * 2;
+    if (this.inventory >= target) return;
     const price = getPurchasePrice(this.staffLevel.buyer, false);
     let bought = 0;
-    while (this.inventory < PURCHASE_TARGET_STOCK && this.coins >= price) {
+    while (this.inventory < target && this.coins >= price) {
       this.coins -= price;
       this.displayedCoins = this.coins;
       this.inventory += PURCHASE_AMOUNT;
@@ -1210,7 +1212,10 @@ class TavernScene extends Phaser.Scene {
     layer.add(this.add.rectangle(0, 0, SCREEN_W, SCREEN_H, 0x000000, 0.92).setOrigin(0, 0));
     layer.add(this.add.text(40, 70, "选择今日菜单", { fontSize: "30px", color: "#ffffff" }));
     layer.add(
-      this.add.text(40, 115, "至少选一道菜才能开张；营业中按顺序轮转上菜", { fontSize: "16px", color: "#999999" }),
+      this.add.text(40, 115, "至少选一道菜才能开张；营业中可按顺序轮转，也可在出菜行指定", {
+        fontSize: "16px",
+        color: "#999999",
+      }),
     );
     const goal = this.currentDayGoal();
     layer.add(
@@ -2057,7 +2062,7 @@ class TavernScene extends Phaser.Scene {
     );
     layer.add(this.add.rectangle(40, 218, 640, 2, 0x8a6a3a).setOrigin(0, 0));
     const lines = [
-      "营业前：采购灵材、雇伙计、装潢升级、选菜单，然后「开始营业」。",
+      "营业前：采购灵材、雇伙计、营造升级、选菜单，然后「开始营业」。",
       "营业中：门口排队 → 招待入座 → 出菜行点菜 → 用膳结账。",
       "营业中可左右拖动画面，查看门外排队与空地。",
       "亲自下厨得双倍修为；端上食客想吃的菜，售价 +50%。",
@@ -2897,9 +2902,13 @@ class TavernScene extends Phaser.Scene {
         revenue: this.sessionRevenue,
         wishes: this.sessionWishes,
       });
-      const spent = this.sessionGoal.kind === "revenue" ? " 灵石" : " 位";
+      const kind = this.sessionGoal.kind;
+      const prefix = kind === "serve" ? "接待" : kind === "revenue" ? "收入" : "口味";
+      const unit = kind === "revenue" ? " 灵石" : " 位";
       const reached = progress >= this.sessionGoal.target;
-      this.goalText.setText(reached ? "今日目标 ✓" : `目标 ${progress}/${this.sessionGoal.target}${spent}`);
+      this.goalText.setText(
+        reached ? "今日目标 ✓" : `${prefix} ${progress}/${this.sessionGoal.target}${unit}`,
+      );
       this.goalText.setColor(reached ? "#9fdf6a" : "#e0c060");
     } else {
       const goal = this.currentDayGoal();
