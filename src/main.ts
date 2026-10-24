@@ -21,6 +21,7 @@ import {
   getBoothCount,
   getCultivationGain,
   getDailyGoal,
+  getGoalCoinReward,
   getGoalProgress,
   getLoanDue,
   getNextRealm,
@@ -56,6 +57,8 @@ import { decodeSaveCode, encodeSaveCode } from "./savecode";
 const QUEUE_PATIENCE_MS = 8000;
 const LAST_CALL_MS = 10000;
 const DINING_MS = 3000;
+/** 桌子入座后先给玩家这么久亲手出菜，伙计再接手。 */
+const COOK_PRIORITY_MS = 1500;
 const SESSION_DURATION_MS = 60000;
 const PURCHASE_AMOUNT = 5;
 const PURCHASE_TARGET_STOCK = 10;
@@ -86,7 +89,7 @@ const SECONDARY_TOP = 1077;
 const CARD_W = 600;
 
 const EXTERIOR_X = -2000;
-const CAMERA_OPEN_X = 0;
+const CAMERA_OPEN_X = 60;
 const CAMERA_CLOSED_X = -2360;
 const TAVERN_W = 360;
 const SKY_TRANSITION_MS = 2000;
@@ -118,6 +121,7 @@ interface Booth {
   cookStartedAt: number;
   cookDoneAt: number;
   departAt: number;
+  awaitingSince: number;
   patronChar?: Character;
   patronKind: PatronKind | null;
   patronWish: string | null;
@@ -152,6 +156,12 @@ interface StaffLevels {
   buyer: number;
 }
 
+interface AutoState {
+  server: boolean;
+  cook: boolean;
+  buyer: boolean;
+}
+
 interface SaveData {
   v: 1;
   coins: number;
@@ -159,6 +169,7 @@ interface SaveData {
   level: number;
   stoveLevel: number;
   signLevel: number;
+  auto: AutoState;
   staffLevel: StaffLevels;
   staffExp: StaffLevels;
   borrowedIds: string[];
@@ -343,6 +354,8 @@ class TavernScene extends Phaser.Scene {
   private chronicleLines: string[] = [];
   private cultivation = 0;
   private meta: MetaStats = { ...EMPTY_META };
+  /** 跑堂/灶上/采买是否自动；关掉后工资照付，玩家可亲自操作或省钱。 */
+  private auto: AutoState = { server: true, cook: true, buyer: true };
 
   private gameState: GameState = "closed";
   private selectedDishIds = new Set<string>();
@@ -362,7 +375,8 @@ class TavernScene extends Phaser.Scene {
   private sessionGoal: DailyGoal | null = null;
   /** 当天目标在进入这一天时锁定，之后升级装潢不会临时抬高目标。 */
   private dailyGoal: DailyGoal | null = null;
-  private lastGoalResult: { goal: DailyGoal; met: boolean; progress: number } | null = null;
+  private lastGoalResult: { goal: DailyGoal; met: boolean; progress: number; rewardCoins: number } | null =
+    null;
 
   private playerSeat: SeatProgress | null = null;
   private playerCookingBooth: number | null = null;
@@ -434,6 +448,7 @@ class TavernScene extends Phaser.Scene {
   private celebrationTimer?: Phaser.Time.TimerEvent;
   private sparkles: Phaser.GameObjects.Arc[] = [];
   private fireflyCount = 0;
+  private lastHintAt = -9999;
 
   constructor() {
     super("tavern");
@@ -515,6 +530,7 @@ class TavernScene extends Phaser.Scene {
       level: this.level,
       stoveLevel: this.stoveLevel,
       signLevel: this.signLevel,
+      auto: { ...this.auto },
       staffLevel: this.staffLevel,
       staffExp: this.staffExp,
       borrowedIds: [...this.borrowedIds],
@@ -553,6 +569,7 @@ class TavernScene extends Phaser.Scene {
       level: startLevel,
       stoveLevel: 0,
       signLevel: 0,
+      auto: { server: true, cook: true, buyer: true },
       staffLevel: { hawker: 0, server: 0, cook: 0, buyer: 0 },
       staffExp: { hawker: 0, server: 0, cook: 0, buyer: 0 },
       borrowedIds: [],
@@ -582,6 +599,12 @@ class TavernScene extends Phaser.Scene {
       this.level = Math.max(1, Math.floor(num(data.level, 1)));
       this.stoveLevel = count(data.stoveLevel);
       this.signLevel = count(data.signLevel);
+      const auto = data.auto;
+      this.auto = {
+        server: auto?.server !== false,
+        cook: auto?.cook !== false,
+        buyer: auto?.buyer !== false,
+      };
       this.cultivation = count(data.cultivation);
       this.negativeStreak = count(data.negativeStreak);
       this.day = Math.max(1, Math.floor(num(data.day, 1)));
@@ -920,21 +943,33 @@ class TavernScene extends Phaser.Scene {
     this.cultivationText = this.addUiText(400, 36, "", "14px", "#d8c8ff");
     this.goalText = this.addUiText(400, 62, "", "14px", "#9fdf6a");
     this.sessionText = this.addUiText(16, 62, "", "14px", "#a8d8ff");
-    this.chronicleText = this.addUiText(16, 82, "", "13px", "#cccccc");
+    this.chronicleText = this.addUiText(16, 82, "", "14px", "#cccccc");
 
     const audio = loadAudioSettings();
     this.sfxMuted = audio.sfxMuted;
     this.bgmMuted = audio.bgmMuted;
-    this.sfxButton = this.addUiButton(560, 8, () => {
-      this.sfxMuted = !this.sfxMuted;
-      setSfxMuted(this.sfxMuted);
-      this.refreshAudioButtons();
-    });
-    this.bgmButton = this.addUiButton(560, 36, () => {
-      this.bgmMuted = !this.bgmMuted;
-      setBgmMuted(this.bgmMuted);
-      this.refreshAudioButtons();
-    });
+    this.sfxButton = this.addUiButton(
+      560,
+      8,
+      () => {
+        this.sfxMuted = !this.sfxMuted;
+        setSfxMuted(this.sfxMuted);
+        this.refreshAudioButtons();
+      },
+      { x: 8, y: 4 },
+      0,
+    );
+    this.bgmButton = this.addUiButton(
+      560,
+      36,
+      () => {
+        this.bgmMuted = !this.bgmMuted;
+        setBgmMuted(this.bgmMuted);
+        this.refreshAudioButtons();
+      },
+      { x: 8, y: 4 },
+      0,
+    );
     this.refreshAudioButtons();
 
     // 营业中操作按钮：与采购/打烊同处底部操作区
@@ -951,6 +986,7 @@ class TavernScene extends Phaser.Scene {
           if (dish) this.manualCookDish(dish);
         },
         { x: 12, y: 11 },
+        2,
       ),
     );
     this.dishChips.forEach((chip) => chip.setVisible(false));
@@ -960,14 +996,15 @@ class TavernScene extends Phaser.Scene {
     this.startButton = this.addUiButton(230, 1186, () => this.onStartButton());
 
     // 打烊期的经营按钮（屏幕左侧竖排）
-    this.staffButton = this.addUiButton(16, 700, () => this.buildStaffOverlay());
-    this.upgradeButton = this.addUiButton(16, 760, () => this.buildBuildOverlay());
-    this.genderButton = this.addUiButton(16, 820, () => this.toggleGender());
-    this.bankButton = this.addUiButton(16, 880, () => this.buildBankOverlay());
-    this.cultivationButton = this.addUiButton(16, 940, () => this.buildCultivationOverlay());
-    this.helpButton = this.addUiButton(16, 1000, () => this.showHelp());
-    this.recordButton = this.addUiButton(16, 1060, () => this.buildRecordOverlay());
-    this.saveButton = this.addUiButton(16, 1120, () => this.openSaveDialog("export"));
+    const nav = { x: 12, y: 11 };
+    this.staffButton = this.addUiButton(16, 700, () => this.buildStaffOverlay(), nav, 6);
+    this.upgradeButton = this.addUiButton(16, 760, () => this.buildBuildOverlay(), nav, 6);
+    this.genderButton = this.addUiButton(16, 820, () => this.toggleGender(), nav, 6);
+    this.bankButton = this.addUiButton(16, 880, () => this.buildBankOverlay(), nav, 6);
+    this.cultivationButton = this.addUiButton(16, 940, () => this.buildCultivationOverlay(), nav, 6);
+    this.helpButton = this.addUiButton(16, 1000, () => this.showHelp(), nav, 6);
+    this.recordButton = this.addUiButton(16, 1060, () => this.buildRecordOverlay(), nav, 6);
+    this.saveButton = this.addUiButton(16, 1120, () => this.openSaveDialog("export"), nav, 6);
 
     this.buildBoothVisuals();
     this.positionUi(false);
@@ -983,11 +1020,21 @@ class TavernScene extends Phaser.Scene {
     return t;
   }
 
+  /** 给手写的文本按钮加一圈可点余量，避免只点中文字本身。 */
+  private expandHitArea(t: Phaser.GameObjects.Text, expand = 10) {
+    t.setInteractive(
+      new Phaser.Geom.Rectangle(-expand, -expand, t.width + expand * 2, t.height + expand * 2),
+      Phaser.Geom.Rectangle.Contains,
+    );
+    if (t.input) t.input.cursor = "pointer";
+  }
+
   private addUiButton(
     x: number,
     y: number,
     onClick: () => void,
     padding: { x: number; y: number } = { x: 10, y: 8 },
+    expand = 6,
   ): TapText {
     let sx = 0;
     let sy = 0;
@@ -999,19 +1046,38 @@ class TavernScene extends Phaser.Scene {
         padding,
       })
       .setDepth(31)
-      .setScrollFactor(0)
-      .setInteractive({ useHandCursor: true })
-      .on("pointerdown", (p: Phaser.Input.Pointer) => {
-        sx = p.x;
-        sy = p.y;
-      })
-      .on("pointerup", (p: Phaser.Input.Pointer) => {
-        if (Math.hypot(p.x - sx, p.y - sy) < 12) {
-          playSfx("click");
-          t.onTap();
-        }
-      }) as TapText;
+      .setScrollFactor(0) as TapText;
+    // 关键：创建时文字还是空的，必须在每次 setText 后重算可点区域；
+    // 否则视觉背景很大、实际只能点中最初那几个像素。
+    const syncHit = () => {
+      if (!t.input) return;
+      t.input.hitArea.setTo(-expand, -expand, t.width + expand * 2, t.height + expand * 2);
+    };
+    t.setInteractive(new Phaser.Geom.Rectangle(-expand, -expand, 1, 1), Phaser.Geom.Rectangle.Contains);
+    if (t.input) t.input.cursor = "pointer";
+    const setText = t.setText.bind(t);
+    t.setText = ((value: string | string[]) => {
+      setText(value);
+      syncHit();
+      return t;
+    }) as typeof t.setText;
+    const setVisible = t.setVisible.bind(t);
+    t.setVisible = ((visible: boolean) => {
+      setVisible(visible);
+      if (t.input) t.input.enabled = visible;
+      return t;
+    }) as typeof t.setVisible;
+    t.on("pointerdown", (p: Phaser.Input.Pointer) => {
+      sx = p.x;
+      sy = p.y;
+    }).on("pointerup", (p: Phaser.Input.Pointer) => {
+      if (Math.hypot(p.x - sx, p.y - sy) < 12) {
+        playSfx("click");
+        t.onTap();
+      }
+    });
     t.onTap = onClick;
+    syncHit();
     return t;
   }
 
@@ -1026,11 +1092,18 @@ class TavernScene extends Phaser.Scene {
       this.add.rectangle(0, 0, 7, 32, 0x4a3420).setDepth(1),
     ];
     const label = this.add
-      .text(0, 0, "", { fontSize: "10px", color: "#ffffff" })
+      .text(0, 0, "", {
+        fontSize: "12px",
+        color: "#ffffff",
+        backgroundColor: "#1b2440",
+        padding: { x: 5, y: 3 },
+        align: "center",
+        lineSpacing: 2,
+      })
       .setOrigin(0.5, 1)
       .setDepth(3);
-    const barBg = this.add.rectangle(0, 0, 80, 6, 0x1a1a1a).setOrigin(0, 0.5).setDepth(3);
-    const barFill = this.add.rectangle(0, 0, 0, 6, COLOR_PLAYER).setOrigin(0, 0.5).setDepth(4);
+    const barBg = this.add.rectangle(0, 0, 80, 8, 0x1a1a1a).setOrigin(0, 0.5).setDepth(3);
+    const barFill = this.add.rectangle(0, 0, 0, 8, COLOR_PLAYER).setOrigin(0, 0.5).setDepth(4);
     const visible = this.gameState === "open";
     [bg, label, ...legs, barBg, barFill].forEach((o) => o.setVisible(visible));
     this.boothVisuals.push({ bg, label, legs, barBg, barFill });
@@ -1050,7 +1123,7 @@ class TavernScene extends Phaser.Scene {
       const stagger = total > 6 ? (i % 2) * 24 : 0;
       v.label.setPosition(x, FLOOR_Y - 86 - stagger);
       const barW = Math.max(36, width - 8);
-      v.barBg.setPosition(x - barW / 2, FLOOR_Y - 70).setSize(barW, 6);
+      v.barBg.setPosition(x - barW / 2, FLOOR_Y - 70).setSize(barW, 8);
       v.barFill.setPosition(x - barW / 2, FLOOR_Y - 70);
     });
   }
@@ -1146,9 +1219,10 @@ class TavernScene extends Phaser.Scene {
       } else if (booth.state === "dining" && time >= booth.departAt) {
         const dish = booth.currentDish;
         const matched = dish !== null && booth.patronWish === dish.id;
+        const hasWish = booth.patronWish !== null;
         const priceFactor = booth.patronKind?.priceFactor ?? 1;
         const price = dish
-          ? getWishPrice(Math.round(this.dishPrice(dish) * priceFactor), matched)
+          ? getWishPrice(Math.round(this.dishPrice(dish) * priceFactor), matched, hasWish)
           : 0;
         const dishName = dish?.name ?? "菜";
         const guest = booth.patronKind?.name ?? "食客";
@@ -1158,6 +1232,7 @@ class TavernScene extends Phaser.Scene {
         booth.currentDish = null;
         booth.patronKind = null;
         booth.patronWish = null;
+        booth.awaitingSince = 0;
         const leaver = booth.patronChar;
         booth.patronChar = undefined;
         leaver?.walkTo(440, ACTOR_Y, 500, () => leaver.destroy());
@@ -1172,15 +1247,20 @@ class TavernScene extends Phaser.Scene {
         this.log(
           matched
             ? `${guest}吃到了想吃的${dishName}，满意离店，收入 +${price} 灵石`
-            : `${guest}用罢${dishName}离店，收入 +${price} 灵石`,
+            : hasWish
+              ? `${guest}没吃到想吃的${dishName}，只付半价，收入 +${price} 灵石`
+              : `${guest}用罢${dishName}离店，收入 +${price} 灵石`,
         );
-        this.gainCultivation(getCultivationGain(personal) + (matched ? 1 : 0));
+        this.gainCultivation(getCultivationGain(personal) + (personal && matched ? 1 : 0));
       }
     });
 
-    if (this.staffLevel.server > 0 && !this.staffSeat) this.startSeat("staff");
-    if (this.staffLevel.cook > 0 && this.staffCookingBooth === null) {
-      const index = this.booths.findIndex((booth) => booth.state === "awaitingCook");
+    if (this.auto.server && this.staffLevel.server > 0 && !this.staffSeat) this.startSeat("staff");
+    if (this.auto.cook && this.staffLevel.cook > 0 && this.staffCookingBooth === null) {
+      // 给玩家 1.5 秒优先窗口：想亲自出菜就拿走，伙计再接剩下的
+      const index = this.booths.findIndex(
+        (booth) => booth.state === "awaitingCook" && time - booth.awaitingSince >= COOK_PRIORITY_MS,
+      );
       if (index !== -1) this.startCook(this.booths[index], index, "staff");
     }
   }
@@ -1195,7 +1275,7 @@ class TavernScene extends Phaser.Scene {
   }
 
   private tickClosedProcurement() {
-    if (this.staffLevel.buyer === 0) return;
+    if (this.staffLevel.buyer === 0 || !this.auto.buyer) return;
     // 酒楼越大，备货目标越高，避免高等级时 10 份存货撑不过一局
     const target = PURCHASE_TARGET_STOCK + this.level * 2;
     if (this.inventory >= target) return;
@@ -1303,10 +1383,12 @@ class TavernScene extends Phaser.Scene {
     );
     const goal = this.currentDayGoal();
     layer.add(
-      this.add.text(40, 148, `今日目标：${goal.label} · 奖励 ${goal.rewardCoins} 灵石 / ${goal.rewardCultivation} 修为`, {
-        fontSize: "16px",
-        color: "#e0c060",
-      }),
+      this.add.text(
+        40,
+        148,
+        `今日目标：${goal.label} · 库存 ${this.inventory} · 奖励 ${goal.rewardCoins} 灵石 + 收入 15% / ${goal.rewardCultivation} 修为`,
+        { fontSize: "15px", color: "#e0c060", wordWrap: { width: 640 } },
+      ),
     );
 
     const available = DISHES.filter((d) => d.unlockLevel <= this.level);
@@ -1334,6 +1416,23 @@ class TavernScene extends Phaser.Scene {
       );
     });
 
+    const buyPrice = getPurchasePrice(this.staffLevel.buyer, false);
+    layer.add(
+      this.add
+        .text(40, 1056, `备货 +${PURCHASE_AMOUNT}（${buyPrice} 灵石）`, {
+          fontSize: "18px",
+          color: "#ffffff",
+          backgroundColor: "#3a4a5a",
+          padding: { x: 14, y: 8 },
+        })
+        .setInteractive({ useHandCursor: true })
+        .on("pointerup", () => {
+          playSfx("click");
+          this.startPurchase();
+          this.buildMenuOverlay();
+        }),
+    );
+
     const count = this.getMenuDishes().length;
     const canStart = count > 0;
     const start = this.add.text(40, 1120, canStart ? `开张大吉（已选 ${count} 道）` : "至少选一道菜", {
@@ -1342,7 +1441,13 @@ class TavernScene extends Phaser.Scene {
       backgroundColor: canStart ? "#3f7a3f" : "#333333",
       padding: { x: 16, y: 12 },
     });
-    if (canStart) start.setInteractive({ useHandCursor: true }).on("pointerdown", () => this.startSession());
+    if (canStart) {
+      start.setInteractive({ useHandCursor: true }).on("pointerdown", () => {
+        playSfx("click");
+        this.startSession();
+      });
+      this.expandHitArea(start);
+    }
     layer.add(start);
 
     const cancel = this.add
@@ -1354,10 +1459,12 @@ class TavernScene extends Phaser.Scene {
       })
       .setInteractive({ useHandCursor: true })
       .on("pointerdown", () => {
+        playSfx("click");
         this.gameState = "closed";
         this.destroyOverlay();
       });
     layer.add(cancel);
+    this.expandHitArea(cancel);
 
     this.overlay = layer;
   }
@@ -1388,6 +1495,7 @@ class TavernScene extends Phaser.Scene {
         booth.departAt = 0;
         booth.patronKind = null;
         booth.patronWish = null;
+        booth.awaitingSince = 0;
       });
       this.playerSeat = null;
       this.playerCookingBooth = null;
@@ -1414,14 +1522,14 @@ class TavernScene extends Phaser.Scene {
       this.goalAnnounced = false;
       this.sessionGoal = this.currentDayGoal();
       this.sessionEndsAt = this.time.now + SESSION_DURATION_MS;
-      this.nextArrivalAt =
-        this.time.now +
-        getArrivalInterval(
-          this.level,
-          this.staffLevel.hawker,
-          Phaser.Math.Between(4000, 7000),
-          getRealmArrivalFactor(this.realmIndex()) * getSignArrivalFactor(this.signLevel),
-        );
+      const firstArrival = getArrivalInterval(
+        this.level,
+        this.staffLevel.hawker,
+        Phaser.Math.Between(4000, 7000),
+        getRealmArrivalFactor(this.realmIndex()) * getSignArrivalFactor(this.signLevel),
+      );
+      // 第一天第一位客人很快就到，减少开局干等
+      this.nextArrivalAt = this.time.now + (this.day === 1 ? 1600 : firstArrival);
       this.lastCallTriggered = false;
       this.eventsThisSession = 0;
       this.nextEventAt = this.time.now + Phaser.Math.Between(9000, 16000);
@@ -1431,6 +1539,9 @@ class TavernScene extends Phaser.Scene {
 
       this.cameras.main.fadeIn(450, 0, 0, 0);
       this.transitioning = false;
+      if (this.day === 1) {
+        this.time.delayedCall(500, () => this.showEventToast("点「招待入座」→ 入座后点下方菜名", true));
+      }
     });
   }
 
@@ -1446,9 +1557,29 @@ class TavernScene extends Phaser.Scene {
     this.playerCookingBooth = null;
     this.staffSeat = null;
     this.staffCookingBooth = null;
+    this.sessionLost += this.queue.length;
     this.queue.forEach((p) => p.char.destroy());
     this.queue = [];
+    // 打烊结算：已经在用膳的照常收钱；已下锅但没出餐的退回灵材，避免白白损失
     this.booths.forEach((booth) => {
+      const dish = booth.currentDish;
+      if (dish && booth.state === "dining") {
+        const matched = booth.patronWish === dish.id;
+        const hasWish = booth.patronWish !== null;
+        const factor = booth.patronKind?.priceFactor ?? 1;
+        const price = getWishPrice(Math.round(this.dishPrice(dish) * factor), matched, hasWish);
+        this.coins += price;
+        this.sessionServed += 1;
+        this.sessionRevenue += price;
+        if (matched) this.sessionWishes += 1;
+        const personal = booth.cookingDriver === "player";
+        this.gainCultivation(getCultivationGain(personal) + (personal && matched ? 1 : 0));
+        this.log(`打烊前最后一桌用罢${dish.name}${matched ? "" : "（口味不合半价）"}，收入 +${price}`);
+      } else if (dish && booth.state === "cooking") {
+        this.inventory += 1;
+        this.sessionLost += 1;
+        this.log(`打烊，${dish.name}未及出餐，灵材退回`);
+      }
       booth.patronChar?.destroy();
       booth.patronChar = undefined;
       booth.state = "empty";
@@ -1456,7 +1587,9 @@ class TavernScene extends Phaser.Scene {
       booth.currentDish = null;
       booth.patronKind = null;
       booth.patronWish = null;
+      booth.awaitingSince = 0;
     });
+    this.displayedCoins = this.coins;
     playSfx("close");
     this.log("打烊，今日营业结束");
     this.gainStaffExperience();
@@ -1518,6 +1651,9 @@ class TavernScene extends Phaser.Scene {
     if (!hasServer && !hasCook) return "当前瓶颈：缺跑堂与灶上，全靠你亲力亲为";
     if (!hasServer) return "当前瓶颈：缺跑堂，只能手动招待";
     if (!hasCook) return "当前瓶颈：缺灶上，只能手动烹饪";
+    if (!this.auto.server && !this.auto.cook) return "当前瓶颈：跑堂与灶上自动都已暂停，全靠你亲力亲为";
+    if (!this.auto.server) return "跑堂自动已暂停，只能手动招待";
+    if (!this.auto.cook) return "灶上自动已暂停，只能手动烹饪（亲自下厨才得修为）";
     const menu = this.getMenuDishes();
     const avgCookMs = menu.length ? menu.reduce((sum, dish) => sum + dish.cookMs, 0) / menu.length : 2000;
     const factor = getRealmStaffSpeedFactor(this.realmIndex());
@@ -1649,17 +1785,37 @@ class TavernScene extends Phaser.Scene {
 
     defs.forEach((d, i) => {
       const y = 160 + i * 110;
-      const level = this.staffLevel[d.role];
+      const role = d.role;
+      const level = this.staffLevel[role];
       if (level > 0) {
         layer.add(this.add.text(50, y, `${d.name} Lv${level}`, { fontSize: "22px", color: "#ffffff" }));
         layer.add(
           this.add.text(
             50,
             y + 36,
-            `熟练 ${this.staffExp[d.role] % EXP_PER_LEVEL}/${EXP_PER_LEVEL} · 日薪 ${getStaffWage(d.role, level)} 灵石`,
+            `熟练 ${this.staffExp[role] % EXP_PER_LEVEL}/${EXP_PER_LEVEL} · 日薪 ${getStaffWage(role, level)} 灵石`,
             { fontSize: "16px", color: "#bbbbbb" },
           ),
         );
+        if (role !== "hawker") {
+          const enabled = this.auto[role];
+          layer.add(
+            this.add
+              .text(480, y + 2, `自动：${enabled ? "开" : "关"}`, {
+                fontSize: "16px",
+                color: enabled ? "#ffffff" : "#888888",
+                backgroundColor: enabled ? "#3f6a3f" : "#3a3a3a",
+                padding: { x: 12, y: 8 },
+              })
+              .setInteractive({ useHandCursor: true })
+              .on("pointerup", () => {
+                playSfx("click");
+                this.auto[role] = !enabled;
+                this.save();
+                this.buildStaffOverlay();
+              }),
+          );
+        }
       } else {
         layer.add(this.add.text(50, y, `${d.name}（未雇佣）`, { fontSize: "22px", color: "#888888" }));
         layer.add(this.add.text(50, y + 36, d.desc, { fontSize: "16px", color: "#bbbbbb" }));
@@ -1860,7 +2016,9 @@ class TavernScene extends Phaser.Scene {
     LOANS.forEach((def, i) => {
       const y = 170 + i * 120;
       const borrowed = this.borrowedIds.has(def.id);
-      const locked = this.level < def.unlockLevel;
+      const levelLocked = this.level < def.unlockLevel;
+      const dayLocked = this.day < def.minDay;
+      const locked = levelLocked || dayLocked;
       layer.add(
         this.add.text(50, y, `${def.name} · 借 ${def.principal} 灵石`, {
           fontSize: "22px",
@@ -1877,7 +2035,12 @@ class TavernScene extends Phaser.Scene {
       if (borrowed) {
         layer.add(this.add.text(430, y + 6, "已借", { fontSize: "18px", color: "#666666" }));
       } else if (locked) {
-        layer.add(this.add.text(400, y + 6, `需酒楼 ${def.unlockLevel} 级`, { fontSize: "16px", color: "#888888" }));
+        layer.add(
+          this.add.text(400, y + 6, dayLocked ? `需第 ${def.minDay} 日` : `需酒楼 ${def.unlockLevel} 级`, {
+            fontSize: "16px",
+            color: "#888888",
+          }),
+        );
       } else {
         const btn = this.add
           .text(400, y + 4, "立据借贷", {
@@ -2091,7 +2254,7 @@ class TavernScene extends Phaser.Scene {
     }
 
     if (this.lastGoalResult) {
-      const { goal, met, progress } = this.lastGoalResult;
+      const { goal, met, progress, rewardCoins } = this.lastGoalResult;
       panel.add(this.add.text(left, y, `今日目标 · ${goal.label}`, { fontSize: "17px", color: "#aaaaaa" }));
       y += 26;
       panel.add(
@@ -2099,7 +2262,7 @@ class TavernScene extends Phaser.Scene {
           left + 16,
           y,
           met
-            ? `达成！+${goal.rewardCoins} 灵石、+${goal.rewardCultivation} 修为`
+            ? `达成！+${rewardCoins} 灵石、+${goal.rewardCultivation} 修为`
             : `未达成（${progress}/${goal.target}）`,
           { fontSize: "18px", color: met ? "#9fdf6a" : "#999999" },
         ),
@@ -2160,11 +2323,11 @@ class TavernScene extends Phaser.Scene {
       "营业前：采购灵材、雇伙计、营造升级、选菜单，然后「开始营业」。",
       "营业中：门口排队 → 招待入座 → 出菜行点菜 → 用膳结账。",
       "营业中可左右拖动画面，查看门外排队与空地。",
-      "亲自下厨得双倍修为；端上食客想吃的菜，售价 +50%。",
+      "只有亲自下厨得修为；端对口味 +50%，有想吃的却上错只付半价。",
       "修为推动境界突破，境界提高售价、操作速度与客流。",
       "修到大乘可飞升：重置本局，仙缘永久提高售价与开局资源。",
       "每天一个目标，达成有额外灵石与修为；连亏 5 日破产。",
-      "「账簿」记录跨周目成绩与成就；「存档」可导出/导入进度。",
+      "「账簿」看成绩、「存档」备份；缺灵石可去灵石商行借小借。",
     ];
     lines.forEach((line, i) => {
       layer.add(
@@ -2363,6 +2526,7 @@ class TavernScene extends Phaser.Scene {
       cookStartedAt: 0,
       cookDoneAt: 0,
       departAt: 0,
+      awaitingSince: 0,
       patronKind: null,
       patronWish: null,
     };
@@ -2612,7 +2776,8 @@ class TavernScene extends Phaser.Scene {
     }
 
     char.walkTo(slotX, ACTOR_Y, 700);
-    this.queue.push({ expiresAt: time + QUEUE_PATIENCE_MS * kind.patienceFactor, char, kind, wish });
+    const patience = QUEUE_PATIENCE_MS * kind.patienceFactor * (this.day === 1 ? 1.8 : 1);
+    this.queue.push({ expiresAt: time + patience, char, kind, wish });
     this.staffChars.hawker?.pulse();
     playSfx(rare ? "event" : "arrival");
     const wishName = DISHES.find((d) => d.id === wish)?.name;
@@ -2705,12 +2870,21 @@ class TavernScene extends Phaser.Scene {
 
   private startSeat(driver: Driver) {
     if (this.settling) return;
-    if (driver === "player" && this.isPlayerBusy()) return;
+    if (driver === "player" && this.isPlayerBusy()) {
+      this.showHint("你正忙着，稍等一下");
+      return;
+    }
     if (driver === "staff" && this.staffSeat) return;
-    if (this.queue.length === 0) return;
+    if (this.queue.length === 0) {
+      if (driver === "player") this.showHint("门外还没有客人，稍等");
+      return;
+    }
 
     const boothIndex = this.booths.findIndex((booth) => booth.state === "empty");
-    if (boothIndex === -1) return;
+    if (boothIndex === -1) {
+      if (driver === "player") this.showHint("雅座满了，先出菜");
+      return;
+    }
 
     const patron = this.queue.shift()!;
     const booth = this.booths[boothIndex];
@@ -2755,27 +2929,73 @@ class TavernScene extends Phaser.Scene {
     if (booth) {
       playSfx("seat");
       booth.state = "awaitingCook";
+      booth.awaitingSince = time;
       this.log(driver === "player" ? "你领食客入座雅座，等候烹饪" : "跑堂伙计领食客入座雅座");
+      this.showBoothOrder(progress.boothIndex);
     }
     this.moveActorHome(driver, "seat");
     return null;
   }
 
+  /** 入座时在桌上方飘出这一桌的订单，避免玩家只看到队列数字变化。 */
+  private showBoothOrder(index: number) {
+    const booth = this.booths[index];
+    const table = this.tablePosition(index);
+    const wish = DISHES.find((dish) => dish.id === booth.patronWish)?.name;
+    const guest = booth.patronKind?.name ?? "食客";
+    const cam = this.cameras.main;
+    const toastX = Phaser.Math.Clamp(table.x, cam.scrollX + 150, cam.scrollX + 570);
+    const toast = this.add
+      .text(toastX, FLOOR_Y - 150, wish ? `${guest}入座：想吃${wish}` : `${guest}入座`, {
+        fontSize: "16px",
+        color: "#ffe8a0",
+        backgroundColor: "#1b2440",
+        padding: { x: 8, y: 5 },
+      })
+      .setOrigin(0.5)
+      .setDepth(30);
+    this.tweens.add({
+      targets: toast,
+      y: FLOOR_Y - 186,
+      alpha: 0,
+      duration: 1300,
+      ease: "Sine.easeOut",
+      onComplete: () => toast.destroy(),
+    });
+  }
+
   private manualCook() {
     if (this.settling) return;
-    if (this.isPlayerBusy()) return;
+    if (this.isPlayerBusy()) {
+      this.showHint("你正忙着，稍等一下");
+      return;
+    }
     const index = this.booths.findIndex((booth) => booth.state === "awaitingCook");
-    if (index === -1) return;
+    if (index === -1) {
+      this.showHint(
+        this.booths.some((booth) => booth.state === "seating") ? "食客还在入座，稍等片刻" : "还没有待烹饪的客人",
+      );
+      return;
+    }
     this.startCook(this.booths[index], index, "player");
   }
 
   /** 指定菜品出餐：优先端给正想吃这道菜的那一桌。 */
   private manualCookDish(dish: Dish) {
-    if (this.settling || this.isPlayerBusy()) return;
+    if (this.settling) return;
+    if (this.isPlayerBusy()) {
+      this.showHint("你正忙着，稍等一下");
+      return;
+    }
     const awaiting = this.booths
       .map((booth, index) => ({ booth, index }))
       .filter(({ booth }) => booth.state === "awaitingCook");
-    if (awaiting.length === 0) return;
+    if (awaiting.length === 0) {
+      this.showHint(
+        this.booths.some((booth) => booth.state === "seating") ? "食客还在入座，稍等片刻" : "先点「招待入座」把客人领进来",
+      );
+      return;
+    }
     const target = awaiting.find(({ booth }) => booth.patronWish === dish.id) ?? awaiting[0];
     this.startCook(target.booth, target.index, "player", dish);
   }
@@ -2789,13 +3009,14 @@ class TavernScene extends Phaser.Scene {
       booth.patronChar = undefined;
       booth.patronKind = null;
       booth.patronWish = null;
+      booth.awaitingSince = 0;
       leaver?.walkTo(440, ACTOR_Y, 400, () => leaver.destroy());
       this.sessionLost += 1;
       this.log(`灵材不足，${guest}没吃上菜便离开了`);
+      this.showHint("灵材不足，客人走了——赶紧备货");
       return;
     }
 
-    this.inventory -= 1;
     const duration =
       driver === "player"
         ? getPlayerDuration(
@@ -2814,6 +3035,12 @@ class TavernScene extends Phaser.Scene {
             this.staffLevel.cook,
             getRealmStaffSpeedFactor(this.realmIndex()) * getStoveSpeedFactor(this.stoveLevel),
           );
+    // 打烊前做不完的菜不启动，避免白白消耗灵材和食客
+    if (this.sessionEndsAt > 0 && this.time.now + duration > this.sessionEndsAt) {
+      if (driver === "player") this.showHint("这道菜来不及了，换道快菜");
+      return;
+    }
+    this.inventory -= 1;
     booth.state = "cooking";
     booth.cookingDriver = driver;
     booth.currentDish = dish;
@@ -2951,7 +3178,7 @@ class TavernScene extends Phaser.Scene {
 
   /** 灵石商行借贷：到账即加灵石，之后每回合还一期。 */
   private takeLoan(def: LoanDef) {
-    if (this.borrowedIds.has(def.id) || this.level < def.unlockLevel) return;
+    if (this.borrowedIds.has(def.id) || this.level < def.unlockLevel || this.day < def.minDay) return;
     this.borrowedIds.add(def.id);
     this.coins += def.principal;
     this.displayedCoins = this.coins;
@@ -2985,14 +3212,15 @@ class TavernScene extends Phaser.Scene {
     if (!goal) return;
     const stats = { served: this.sessionServed, revenue: this.sessionRevenue, wishes: this.sessionWishes };
     const met = isGoalMet(goal, stats);
-    this.lastGoalResult = { goal, met, progress: getGoalProgress(goal, stats) };
+    const rewardCoins = getGoalCoinReward(goal, this.sessionRevenue);
+    this.lastGoalResult = { goal, met, progress: getGoalProgress(goal, stats), rewardCoins };
     if (!met) {
       this.log(`今日目标未达成：${goal.label}`);
       return;
     }
-    this.coins += goal.rewardCoins;
+    this.coins += rewardCoins;
     this.displayedCoins = this.coins;
-    this.log(`今日目标达成：${goal.label}，赏 ${goal.rewardCoins} 灵石、${goal.rewardCultivation} 修为`);
+    this.log(`今日目标达成：${goal.label}，赏 ${rewardCoins} 灵石、${goal.rewardCultivation} 修为`);
     this.gainCultivation(goal.rewardCultivation);
   }
 
@@ -3012,6 +3240,13 @@ class TavernScene extends Phaser.Scene {
   private log(text: string) {
     this.chronicleLines.push(text);
     if (this.chronicleLines.length > CHRONICLE_MAX_LINES) this.chronicleLines.shift();
+  }
+
+  /** 对无效操作给出一次可见提示，避免“点了没反应”的错觉。 */
+  private showHint(message: string) {
+    if (this.time.now - this.lastHintAt < 1500) return;
+    this.lastHintAt = this.time.now;
+    this.showEventToast(message, true);
   }
 
   private boothLabel(booth: Booth): string {
@@ -3156,7 +3391,13 @@ class TavernScene extends Phaser.Scene {
     this.coinsText.setText(`灵石：${this.displayedCoins}`);
     this.inventoryText.setText(`灵材：${this.inventory}`);
     this.levelText.setText(`酒楼等级：${this.level}`);
-    this.queueText.setText(`排队：${this.queue.length}/${getBoothCount(this.level)}`);
+    const queueCap = getBoothCount(this.level);
+    if (open && !this.settling && !this.lastCallTriggered) {
+      const nextIn = Math.max(0, Math.ceil((this.nextArrivalAt - this.time.now) / 1000));
+      this.queueText.setText(`排队 ${this.queue.length}/${queueCap} · ${nextIn}s`);
+    } else {
+      this.queueText.setText(`排队：${this.queue.length}/${queueCap}`);
+    }
     const next = getNextRealm(this.cultivation);
     this.realmText.setText(`境界：${REALMS[this.realmIndex()].name}`);
     this.cultivationText.setText(
@@ -3190,7 +3431,7 @@ class TavernScene extends Phaser.Scene {
     } else {
       const goal = this.currentDayGoal();
       this.sessionText.setText(
-        `第 ${this.day} 日 · 今日目标：${goal.label}（+${goal.rewardCoins} 灵石 / +${goal.rewardCultivation} 修为）`,
+        `第 ${this.day} 日 · 目标：${goal.label} · +${goal.rewardCoins}灵石+收入15% · +${goal.rewardCultivation}修为`,
       );
       this.goalText.setText("");
     }
@@ -3210,17 +3451,28 @@ class TavernScene extends Phaser.Scene {
       const guest = kind ? `${kind.name}${kind.priceFactor >= 1.8 ? "★" : ""}` : undefined;
       const wishName =
         booth.state === "awaitingCook" ? DISHES.find((d) => d.id === booth.patronWish)?.name : undefined;
-      const detail = guest ? `${guest}${wishName ? `·想吃${wishName}` : ""}` : "";
-      visual.label
-        .setColor(kind && kind.priceFactor >= 1.8 ? "#ffd98a" : "#ffffff")
-        .setText(booth.state === "empty" ? "" : `${this.boothLabel(booth)}${detail ? `\n${detail}` : ""}`);
+      const detail = guest
+        ? `${guest}${wishName ? `·想吃${wishName}` : ""}${booth.state === "awaitingCook" ? " ↓出菜" : ""}`
+        : "";
+      const stateText =
+        booth.state === "cooking" && booth.currentDish
+          ? `烹饪中·${booth.currentDish.name} ${Math.max(0, Math.ceil((booth.cookDoneAt - this.time.now) / 1000))}s`
+          : booth.state === "seating"
+            ? "领客入座…"
+            : this.boothLabel(booth);
+      const showLabel = open && booth.state !== "empty";
+      visual.label.setVisible(showLabel);
+      visual.label.setColor(kind && kind.priceFactor >= 1.8 ? "#ffd98a" : "#ffffff");
+      visual.label.setText(showLabel ? `${stateText}${detail ? `\n${detail}` : ""}` : "");
     });
 
+    const busy = this.isPlayerBusy();
     const showChips = open && !this.settling;
     this.dishChipLabel.setVisible(showChips);
     this.dishChips.forEach((chip, i) => {
       const dish = menu[i];
       chip.setVisible(showChips && dish !== undefined);
+      chip.setAlpha(showChips ? (busy ? 0.5 : 1) : 1);
       if (!dish) return;
       const wanted = wished.has(dish.id);
       chip.setText(`${wanted ? "★" : ""}${dish.name} ${this.dishPrice(dish)}`);
@@ -3229,8 +3481,8 @@ class TavernScene extends Phaser.Scene {
 
     this.startButton.setText(open ? "提前打烊" : "开始营业");
 
-    const actionAlpha = this.settling ? 0.4 : 1;
-    this.startButton.setAlpha(actionAlpha);
+    const actionAlpha = this.settling ? 0.4 : busy ? 0.5 : 1;
+    this.startButton.setAlpha(this.settling ? 0.4 : 1);
     this.serveButton.setAlpha(actionAlpha);
     this.cookButton.setAlpha(actionAlpha);
 

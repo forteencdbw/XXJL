@@ -10,7 +10,7 @@ export const ARRIVAL_TAVERN_SHRINK_MS = 150;
 export const ARRIVAL_HAWKER_SHRINK = 0.08;
 export const ARRIVAL_FLOOR_MS = 1500;
 export const STARTING_COINS = 20;
-export const STARTING_INVENTORY = 5;
+export const STARTING_INVENTORY = 8;
 export const PURCHASE_COST = 5;
 export const PURCHASE_TIME_MS = 15000;
 export const PURCHASE_EMERGENCY_MULTIPLIER = 2;
@@ -39,14 +39,16 @@ export interface Dish {
   unlockLevel: number;
 }
 
+// 价格越高、单位时间收益越低：高价菜靠口味/稀客加成才值得，走量菜靠翻台。
+// price / cookMs（每秒收益）从 4.0 逐级降到 2.95，避免“只挂最贵一道菜”成为唯一解。
 export const DISHES: Dish[] = [
   { id: "stirfry", name: "清炒灵蔬", price: 6, cookMs: 1500, unlockLevel: 1 },
-  { id: "porridge", name: "灵米粥", price: 8, cookMs: 2000, unlockLevel: 2 },
-  { id: "jelly", name: "玉露羹", price: 12, cookMs: 2800, unlockLevel: 3 },
-  { id: "fish", name: "龙涎鱼脍", price: 18, cookMs: 4000, unlockLevel: 4 },
-  { id: "ginseng", name: "九转灵参", price: 26, cookMs: 5200, unlockLevel: 6 },
-  { id: "phoenix", name: "凤凰涅槃羹", price: 38, cookMs: 6500, unlockLevel: 8 },
-  { id: "voidfruit", name: "太虚道果", price: 55, cookMs: 8000, unlockLevel: 10 },
+  { id: "porridge", name: "灵米粥", price: 9, cookMs: 2500, unlockLevel: 2 },
+  { id: "jelly", name: "玉露羹", price: 14, cookMs: 4000, unlockLevel: 3 },
+  { id: "fish", name: "龙涎鱼脍", price: 22, cookMs: 6500, unlockLevel: 4 },
+  { id: "ginseng", name: "九转灵参", price: 32, cookMs: 10000, unlockLevel: 6 },
+  { id: "phoenix", name: "凤凰涅槃羹", price: 46, cookMs: 15000, unlockLevel: 8 },
+  { id: "voidfruit", name: "太虚道果", price: 65, cookMs: 22000, unlockLevel: 10 },
 ];
 
 export interface LoanDef {
@@ -55,12 +57,14 @@ export interface LoanDef {
   principal: number;
   totalRepay: number;
   unlockLevel: number;
+  /** 最早可借的第几天：小借要求先亲手经营两天。 */
+  minDay: number;
 }
 
 export const LOANS: LoanDef[] = [
-  { id: "small", name: "小借", principal: 200, totalRepay: 240, unlockLevel: 1 },
-  { id: "medium", name: "中借", principal: 500, totalRepay: 650, unlockLevel: 3 },
-  { id: "large", name: "大借", principal: 1200, totalRepay: 1680, unlockLevel: 5 },
+  { id: "small", name: "小借", principal: 200, totalRepay: 240, unlockLevel: 1, minDay: 3 },
+  { id: "medium", name: "中借", principal: 500, totalRepay: 650, unlockLevel: 3, minDay: 1 },
+  { id: "large", name: "大借", principal: 1200, totalRepay: 1680, unlockLevel: 5, minDay: 1 },
 ];
 
 export const SKY_STOPS = [
@@ -193,10 +197,13 @@ export function pickPatronWish(kind: PatronKind, menuDishIds: string[], roll: nu
 }
 
 export const WISH_PRICE_BONUS = 0.5;
+export const WISH_MISS_MULTIPLIER = 0.5;
 
-/** 端上食客想吃的菜，售价加成。 */
-export function getWishPrice(base: number, matched: boolean): number {
-  return matched ? Math.round(base * (1 + WISH_PRICE_BONUS)) : base;
+/** 端上想吃的菜加价；有想吃的却上错，食客只付半价。 */
+export function getWishPrice(base: number, matched: boolean, hasWish = false): number {
+  if (matched) return Math.round(base * (1 + WISH_PRICE_BONUS));
+  if (hasWish) return Math.round(base * WISH_MISS_MULTIPLIER);
+  return base;
 }
 
 // ===== 随机事件 =====
@@ -298,6 +305,13 @@ export function isGoalMet(goal: DailyGoal, stats: SessionStats): boolean {
   return getGoalProgress(goal, stats) >= goal.target;
 }
 
+/** 目标奖励 = 基础灵石 + 当日菜品收入的 15%，让高流水的一天也值得为目标调整打法。 */
+export const GOAL_REVENUE_BONUS = 0.15;
+
+export function getGoalCoinReward(goal: DailyGoal, revenue: number): number {
+  return goal.rewardCoins + Math.round(Math.max(0, revenue) * GOAL_REVENUE_BONUS);
+}
+
 // ===== 修为与境界 =====
 /** 境界越高，酒楼的仙缘越盛：售价、操作速度、客流依次获得加成。 */
 export interface RealmDef {
@@ -329,9 +343,9 @@ export function getNextRealm(cultivation: number): RealmDef | null {
   return REALMS[getRealmIndex(cultivation) + 1] ?? null;
 }
 
-/** 亲自下厨比让伙计代劳多一倍悟性：修行与赚钱是一组取舍。 */
+/** 只有亲自下厨才得修为：伙计出菜换灵石，玩家下厨换修行，两者不可兼得。 */
 export function getCultivationGain(personal: boolean): number {
-  return personal ? 2 : 1;
+  return personal ? 2 : 0;
 }
 
 export function getRealmPriceMultiplier(realmIndex: number): number {

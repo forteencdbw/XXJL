@@ -20,6 +20,7 @@ import {
   getBoothCount,
   getCultivationGain,
   getDailyGoal,
+  getGoalCoinReward,
   getGoalProgress,
   getLoanDue,
   isGoalMet,
@@ -118,6 +119,7 @@ describe("采购", () => {
 describe("灵石商行", () => {
   it("三档贷款按等级逐档解锁", () => {
     expect(LOANS.map((l) => l.unlockLevel)).toEqual([1, 3, 5]);
+    expect(LOANS[0].minDay).toBe(3);
     expect(LOANS[0].totalRepay).toBeGreaterThan(LOANS[0].principal);
     expect(LOANS[2].totalRepay - LOANS[2].principal).toBeGreaterThan(
       LOANS[0].totalRepay - LOANS[0].principal,
@@ -190,6 +192,12 @@ describe("菜品与昼夜", () => {
       }
     }
     expect(DISHES[DISHES.length - 1].cookMs).toBeGreaterThan(DISHES[0].cookMs);
+    // 高价菜每秒收益必须低于走量菜，菜单才有取舍
+    for (let i = 1; i < DISHES.length; i++) {
+      expect(DISHES[i].price / DISHES[i].cookMs).toBeLessThan(
+        DISHES[i - 1].price / DISHES[i - 1].cookMs,
+      );
+    }
   });
 
   it("昼夜色带两端不同，夜晚等于末端颜色", () => {
@@ -239,10 +247,12 @@ describe("食客类型与口味", () => {
     for (const wish of wishes) expect(menu).toContain(wish);
   });
 
-  it("命中口味加价 50%，未命中保持原价", () => {
+  it("命中口味加价 50%；有想吃的却上错只付半价", () => {
     expect(getWishPrice(6, true)).toBe(9);
     expect(getWishPrice(6, false)).toBe(6);
-    expect(getWishPrice(6, true)).toBeGreaterThan(getWishPrice(6, false));
+    expect(getWishPrice(6, false, true)).toBe(3);
+    expect(getWishPrice(6, true, true)).toBe(9);
+    expect(getWishPrice(6, true)).toBeGreaterThan(getWishPrice(6, false, true));
   });
 });
 
@@ -314,6 +324,13 @@ describe("每日目标", () => {
     expect(isGoalMet(goal, { served: goal.target - 1, revenue: 0, wishes: 0 })).toBe(false);
     expect(isGoalMet(goal, { served: goal.target, revenue: 0, wishes: 0 })).toBe(true);
   });
+
+  it("达成奖励随当日收入增加，负收入不扣奖励", () => {
+    const goal = getDailyGoal(1, 1);
+    expect(getGoalCoinReward(goal, 0)).toBe(goal.rewardCoins);
+    expect(getGoalCoinReward(goal, 100)).toBe(goal.rewardCoins + 15);
+    expect(getGoalCoinReward(goal, -5)).toBe(goal.rewardCoins);
+  });
 });
 
 describe("修为与境界", () => {
@@ -347,8 +364,9 @@ describe("修为与境界", () => {
     expect(getRealmArrivalFactor(3)).toBeLessThan(1);
   });
 
-  it("亲自下厨悟性翻倍", () => {
-    expect(getCultivationGain(true)).toBe(getCultivationGain(false) * 2);
+  it("只有亲自下厨得修为，伙计出菜不得修为", () => {
+    expect(getCultivationGain(true)).toBe(2);
+    expect(getCultivationGain(false)).toBe(0);
   });
 
   it("每次飞升留一重仙缘，售价永久提高且无负数副作用", () => {
@@ -371,11 +389,11 @@ describe("飞升开局与跨周目账簿", () => {
     expect(getAscensionStartCoins(0)).toBe(20);
     expect(getAscensionStartCoins(1)).toBe(40);
     expect(getAscensionStartCoins(5)).toBe(120);
-    expect(getAscensionStartInventory(0)).toBe(5);
-    expect(getAscensionStartInventory(1)).toBe(7);
-    expect(getAscensionStartInventory(5)).toBe(15);
+    expect(getAscensionStartInventory(0)).toBe(8);
+    expect(getAscensionStartInventory(1)).toBe(10);
+    expect(getAscensionStartInventory(5)).toBe(18);
     expect(getAscensionStartCoins(-3)).toBe(20);
-    expect(getAscensionStartInventory(-3)).toBe(5);
+    expect(getAscensionStartInventory(-3)).toBe(8);
   });
 
   it("每 3 重仙缘提高新周目开局酒楼等级", () => {
