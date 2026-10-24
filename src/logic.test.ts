@@ -23,8 +23,10 @@ import {
   getDailyGoalOptions,
   getDailyRent,
   getDailySpecial,
+  getFestivalGoalMultiplier,
   getStreakBonus,
   GOAL_STREAK_TARGET,
+  isFestivalDay,
   getDishFans,
   getGoalCoinReward,
   getGoalPayout,
@@ -285,6 +287,14 @@ describe("食客类型与口味", () => {
     expect(level1.cultivation).toBeGreaterThan(0);
     expect(level4.coins).toBeGreaterThan(level1.coins);
     expect(level4.cultivation).toBeGreaterThanOrEqual(level1.cultivation);
+  });
+
+  it("每七天一次灯会，目标赏 ×1.5", () => {
+    expect(isFestivalDay(1)).toBe(false);
+    expect(isFestivalDay(7)).toBe(true);
+    expect(isFestivalDay(14)).toBe(true);
+    expect(getFestivalGoalMultiplier(7)).toBe(1.5);
+    expect(getFestivalGoalMultiplier(8)).toBe(1);
   });
 
   it("今日招牌按天轮换，只有一道菜时不设招牌", () => {

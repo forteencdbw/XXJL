@@ -24,8 +24,10 @@ import {
   getDailyGoalOptions,
   getDailyRent,
   getDailySpecial,
+  getFestivalGoalMultiplier,
   getStreakBonus,
   GOAL_STREAK_TARGET,
+  isFestivalDay,
   getDishFans,
   getGoalPayout,
   getGoalProgress,
@@ -3240,7 +3242,8 @@ class TavernScene extends Phaser.Scene {
           Phaser.Math.Between(4000, 7000),
           getRealmArrivalFactor(this.realmIndex()) * getSignArrivalFactor(this.signLevel),
         ) *
-          (this.day === 1 ? 1.35 : 1);
+          (this.day === 1 ? 1.35 : 1) *
+          (isFestivalDay(this.day) ? 0.68 : 1);
     }
 
     if (this.eventsThisSession < MAX_EVENTS_PER_SESSION && time >= this.nextEventAt && remaining > LAST_CALL_MS) {
@@ -3507,10 +3510,14 @@ class TavernScene extends Phaser.Scene {
       goalOptions.find((o) => o.kind === this.dailyGoal?.kind) ?? goalOptions[(this.day - 1) % 3];
     const goal = this.dailyGoal;
     layer.add(
-      this.add.text(40, 142, `今日目标三选一 · 库存 ${this.inventory} · 日租 ${getDailyRent(this.level)} 灵石`, {
-        fontSize: "17px",
-        color: "#e0c060",
-      }),
+      this.add.text(
+        40,
+        142,
+        `今日目标三选一 · 库存 ${this.inventory} · 日租 ${getDailyRent(this.level)} 灵石${
+          isFestivalDay(this.day) ? " · 灯会赏 ×1.5" : ""
+        }`,
+        { fontSize: "17px", color: "#e0c060" },
+      ),
     );
     // 三选一的目标卡：大数字 + 奖励，先让人一眼看懂今天在赌什么
     goalOptions.forEach((option, i) => {
@@ -3754,7 +3761,7 @@ class TavernScene extends Phaser.Scene {
         this.staffLevel.hawker,
         Phaser.Math.Between(4000, 7000),
         getRealmArrivalFactor(this.realmIndex()) * getSignArrivalFactor(this.signLevel),
-      );
+      ) * (isFestivalDay(this.day) ? 0.68 : 1);
       // 每天开门后第一位客人都在 2.2 秒内到，避免开局长时间空等
       this.nextArrivalAt = this.time.now + Math.min(firstArrival, 2200);
       this.lastCallTriggered = false;
@@ -4458,7 +4465,9 @@ class TavernScene extends Phaser.Scene {
     );
     const nextWeather = ["晴", "灵雾", "落英"][(this.day - 1) % 3];
     summary.push(
-      `明日：${nextWeather} · ${nextSpecial ? `招牌 ${nextSpecial.name}` : "暂无招牌"} · 目标可自选`,
+      isFestivalDay(this.day)
+        ? "明日：灯会 · 客流更旺 · 目标赏 ×1.5（别错过）"
+        : `明日：${nextWeather} · ${nextSpecial ? `招牌 ${nextSpecial.name}` : "暂无招牌"} · 目标可自选`,
     );
     const nextCost = getUpgradeCost(this.level);
     summary.push(`下一阶：${nextCost} 灵石 → Lv${this.level + 1}，店内会添新陈设`);
@@ -5023,7 +5032,9 @@ class TavernScene extends Phaser.Scene {
 
   /** 每日开张的题头：日期 + 天气，给每一局一个开场仪式。 */
   private showDayBanner() {
-    const weather = ["晴", "灵雾", "落英"][(this.day - 1) % 3];
+    const weather = isFestivalDay(this.day)
+      ? "灯会开市 · 客流更旺"
+      : ["晴", "灵雾", "落英"][(this.day - 1) % 3];
     const layer = this.add.container(0, 0).setScrollFactor(0).setDepth(29);
     const wrap = this.add.container(0, 0);
     wrap.add(
@@ -5051,6 +5062,27 @@ class TavernScene extends Phaser.Scene {
     );
     wrap.setAlpha(0);
     layer.add(wrap);
+    // 灯会开市的小金花：只在第 7/14/… 日出现
+    if (isFestivalDay(this.day)) {
+      for (let i = 0; i < 18; i++) {
+        const angle = (Math.PI * 2 * i) / 18 + Phaser.Math.FloatBetween(-0.2, 0.2);
+        const dist = Phaser.Math.Between(70, 190);
+        const spark = this.add
+          .circle(360, 200, Phaser.Math.FloatBetween(1.5, 3.5), i % 3 === 0 ? 0xff6a4a : 0xffd98a, 1)
+          .setScrollFactor(0);
+        layer.add(spark);
+        this.tweens.add({
+          targets: spark,
+          x: 360 + Math.cos(angle) * dist,
+          y: 200 + Math.sin(angle) * dist + 30,
+          alpha: 0,
+          duration: Phaser.Math.Between(900, 1500),
+          delay: Phaser.Math.Between(0, 350),
+          ease: "Sine.easeOut",
+          onComplete: () => spark.destroy(),
+        });
+      }
+    }
     // 日题头落在牌匾位置，暂时让出牌匾，避免两层大字叠在一起
     this.interiorSign?.setAlpha(0);
     this.tweens.add({ targets: wrap, alpha: 1, y: 8, duration: 500, ease: "Sine.easeOut" });
@@ -6167,6 +6199,7 @@ class TavernScene extends Phaser.Scene {
   /** 打烊时结算今日目标，发了奖励再翻到第二天。 */
   private settleDailyGoal() {
     const goal = this.sessionGoal;
+    const sessionDay = this.day;
     this.day += 1;
     // 换日时保留玩家刚选的目标类型，只把目标值/奖励更新到新等级与天数
     const nextOptions = getDailyGoalOptions(this.day, this.level);
@@ -6174,6 +6207,10 @@ class TavernScene extends Phaser.Scene {
     if (!goal) return;
     const stats = { served: this.sessionServed, revenue: this.sessionRevenue, wishes: this.sessionWishes };
     const payout = getGoalPayout(goal, stats);
+    if (isFestivalDay(sessionDay)) {
+      payout.coins = Math.round(payout.coins * getFestivalGoalMultiplier(sessionDay));
+      payout.cultivation += 1;
+    }
     const streakBonus = getStreakBonus(this.level);
     const qualified = payout.met || payout.partial;
     this.goalStreak = qualified ? this.goalStreak + 1 : 0;

@@ -364,6 +364,18 @@ export function getDailyRent(level: number): number {
   return 8 + Math.max(1, level) * 4;
 }
 
+/** 每七天一次灯会：客流更旺、目标赏更高，给长局一个周节奏。 */
+export const FESTIVAL_INTERVAL = 7;
+
+export function isFestivalDay(day: number): boolean {
+  return Math.max(1, day) % FESTIVAL_INTERVAL === 0;
+}
+
+/** 灯会日目标赏金倍率；修为另 +1。 */
+export function getFestivalGoalMultiplier(day: number): number {
+  return isFestivalDay(day) ? 1.5 : 1;
+}
+
 /** 连续三天达成（或拿到半赏）目标的三日之约奖励。 */
 export const GOAL_STREAK_TARGET = 3;
 
