@@ -933,7 +933,7 @@ class Character extends Phaser.GameObjects.Container {
   setSeated(on: boolean) {
     if (this.seated === on || !this.scene || !this.visual?.active) return;
     this.seated = on;
-    this.setDepth(on ? 1.8 : 20);
+    this.setDepth(on ? 6.2 : 20);
     this.draw();
   }
 
@@ -943,7 +943,7 @@ class Character extends Phaser.GameObjects.Container {
     this.dining = on;
     if (on && !this.seated) {
       this.seated = true;
-      this.setDepth(1.8);
+      this.setDepth(6.2);
     }
     this.mood = on ? "dining" : "idle";
     this.draw();
@@ -1366,6 +1366,7 @@ class TavernScene extends Phaser.Scene {
     this.ensureDishTexture();
     this.ensureInkTitleTexture();
     this.ensureClosedInkTexture();
+    this.ensureInkInteriorTexture();
     this.booths = Array.from({ length: getBoothCount(this.level) }, () => this.makeBooth());
     if (this.selectedDishIds.size === 0) {
       this.selectedDishIds = new Set(DISHES.filter((d) => d.unlockLevel <= this.level).map((d) => d.id));
@@ -1811,6 +1812,154 @@ class TavernScene extends Phaser.Scene {
       px(cx + 2, cy + 1, 3, 1, "#0a1018");
       px(cx - 2, cy, 1, 1, "#0a1018");
       px(cx + 1, cy, 1, 1, "#0a1018");
+    }
+    tex.refresh();
+    tex.setFilter(Phaser.Textures.FilterMode.NEAREST);
+  }
+
+  /** 营业内景的像素底：墙、窗、挂画、后柜、灶台、门与地面。 */
+  private ensureInkInteriorTexture() {
+    if (this.textures.exists("ink-interior")) return;
+    const W = 395;
+    const H = 640;
+    const tex = this.textures.createCanvas("ink-interior", W, H);
+    if (!tex) return;
+    const c = tex.getContext();
+    const px = (x: number, y: number, w: number, h: number, col: string) => {
+      c.fillStyle = col;
+      c.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h));
+    };
+    const dab = (x: number, y: number, w: number, col: string) => {
+      for (let i = 0; i < w; i++) px(x + Math.random() * w, y + Math.random() * 3, 1, 1, col);
+    };
+    // 墙
+    px(0, 0, W, 505, "#3a2a20");
+    px(0, 0, W, 9, "#5a4330");
+    px(0, 496, W, 9, "#241a12");
+    for (let y = 55; y < 496; y += 55) px(0, y, W, 1, "#2e2118");
+    for (const x of [25, 90, 152, 208, 270, 335, 390]) px(x, 0, 3, 505, "#2a1c14");
+    // 墙面墨点
+    for (let i = 0; i < 900; i++) {
+      px(Math.random() * W, Math.random() * 500, 1, 1, Math.random() > 0.5 ? "#302218" : "#422f22");
+    }
+    // 山水挂画
+    px(101, 205, 158, 82, "#1a120c");
+    px(105, 209, 150, 74, "#c8b89a");
+    px(108, 212, 144, 68, "#d8c8a8");
+    for (let i = 0; i < 5; i++) {
+      const bx = 120 + i * 24;
+      const bh = 18 + Math.random() * 20;
+      for (let y = 0; y < bh; y++) px(bx + y * 0.4, 270 - y, 22 - y * 0.3, 1, i % 2 ? "#5a6a5a" : "#4a5a50");
+    }
+    px(236, 266, 7, 8, "#8a2a22");
+    // 匾额
+    px(127, 87, 106, 38, "#1a120c");
+    px(131, 91, 98, 30, "#3a2416");
+    px(131, 91, 98, 1, "#d9b45a");
+    px(131, 120, 98, 1, "#d9b45a");
+    px(220, 100, 8, 10, "#8a2a22");
+    // 窗
+    for (const wx of [102, 212]) {
+      px(wx - 3, 134, 51, 61, "#2a1a10");
+      px(wx, 137, 45, 55, "#1a2638");
+      px(wx + 2, 139, 41, 51, "#d99a4a");
+      px(wx + 2, 139, 41, 2, "#f4c878");
+      px(wx + 22, 139, 2, 51, "#2a1a10");
+      px(wx + 2, 162, 41, 2, "#2a1a10");
+      // 窗中山与云
+      for (let i = 0; i < 6; i++) px(wx + 6 + i * 5, 182 - i * 3, 8, 1, "#3a4a3a");
+      dab(wx + 2, 176, 40, "#5a4a32");
+      // 暖光
+      for (let i = 0; i < 18; i++) px(wx + 4 + Math.random() * 37, 142 + Math.random() * 44, 1, 1, "#ffd08a");
+      dab(wx - 2, 196, 48, "#5a3a24");
+    }
+    // 左侧货架酒坛
+    px(15, 250, 65, 8, "#3a2a1a");
+    px(15, 310, 65, 8, "#3a2a1a");
+    px(15, 370, 65, 8, "#3a2a1a");
+    px(17, 250, 3, 128, "#241810");
+    px(76, 250, 3, 128, "#241810");
+    for (const [row, y] of [232, 292, 352].entries()) {
+      for (let j = 0; j < 3; j++) {
+        const jx = 24 + j * 19;
+        const col = ["#5a7a6a", "#b8742a", "#d8c8a8"][j];
+        px(jx, y + 10, 11, 18, col);
+        px(jx + 2, y + 6, 7, 5, col);
+        px(jx + 4, y + 7, 3, 2, "#2a1a10");
+        if (row === 1 && j === 0) px(jx + 4, y + 16, 3, 5, "#d9b45a");
+      }
+    }
+    // 后柜
+    px(80, 415, 200, 7, "#1a120c");
+    px(80, 422, 200, 48, "#2a1c12");
+    px(80, 422, 200, 2, "#5a3a22");
+    for (let x = 100; x < 280; x += 30) px(x, 428, 1, 38, "#1a120c");
+    for (const [jx, col] of [
+      [90, "#5a7a6a"],
+      [112, "#b8742a"],
+      [134, "#d8c8a8"],
+      [230, "#6a7a9a"],
+      [252, "#b8742a"],
+    ] as const) {
+      px(jx, 397, 11, 18, col);
+      px(jx + 2, 393, 7, 5, col);
+      px(jx + 4, 394, 3, 2, "#2a1a10");
+    }
+    // 茶壶与算盘
+    px(160, 400, 14, 14, "#6a4a2a");
+    px(166, 396, 3, 6, "#6a4a2a");
+    px(178, 414, 18, 4, "#8a5a32");
+    for (let i = 0; i < 5; i++) px(180 + i * 3, 415, 1, 2, "#d9b45a");
+    // 小黑猫
+    px(246, 408, 10, 6, "#2a2a30");
+    px(254, 401, 6, 6, "#2a2a30");
+    px(254, 399, 2, 3, "#2a2a30");
+    px(259, 399, 2, 3, "#2a2a30");
+    px(256, 403, 1, 1, "#ffd98a");
+    px(259, 403, 1, 1, "#ffd98a");
+    // 挂着的木牌菜单
+    for (const bx of [160, 200, 240]) {
+      px(bx, 300, 1, 20, "#6a4a2a");
+      px(bx - 12, 320, 25, 34, "#1a120c");
+      px(bx - 10, 323, 21, 28, "#3a2818");
+      px(bx - 10, 323, 21, 1, "#d9b45a");
+      for (let i = 0; i < 3; i++) px(bx - 5, 330 + i * 6, 11, 1, "#c8b89a");
+    }
+    // 灶台
+    px(7, 440, 75, 65, "#7a7268");
+    px(7, 432, 75, 12, "#5f5850");
+    px(20, 418, 38, 16, "#4a4a4a");
+    px(22, 414, 34, 8, "#8a827a");
+    for (let i = 0; i < 8; i++) {
+      px(28 + Math.random() * 24, 414 + Math.random() * 8, 2, 2, i % 2 ? "#ff7a3a" : "#ffd06a");
+    }
+    for (let i = 0; i < 5; i++) px(8 + i * 14, 496, 11, 4, "#8a8276");
+    // 门口与红帘
+    px(296, 410, 88, 95, "#2a1a10");
+    px(302, 416, 76, 89, "#1a120c");
+    px(330, 416, 8, 89, "#5a3a22");
+    for (let i = 0; i < 4; i++) px(305 + i * 17, 416, 13, 20, i % 2 ? "#8b2f22" : "#a03a2a");
+    px(298, 505, 84, 6, "#4a3420");
+    dab(310, 505, 60, "#ffb060");
+    // 地面
+    px(0, 505, W, 135, "#6a5238");
+    for (let y = 512; y < 640; y += 14) px(0, y, W, 1, "#4a3826");
+    for (let x = 8; x < W; x += 26) px(x, 505, 1, 135, "#5a442e");
+    for (let i = 0; i < 700; i++) px(Math.random() * W, 505 + Math.random() * 135, 1, 1, "#57422c");
+    // 灯笼
+    for (const lx of [40, 320]) {
+      px(lx - 1, 184, 2, 6, "#1a120a");
+      px(lx - 4, 190, 9, 12, "#a02a20");
+      px(lx - 2, 192, 5, 7, "#ff6a3a");
+      px(lx - 1, 202, 2, 4, "#d9b45a");
+      dab(lx - 8, 190, 18, "#6a3a24");
+      dab(lx - 12, 198, 26, "#5a3424");
+    }
+    // 两束斜光，抖动像素
+    for (let i = 0; i < 380; i++) {
+      const y = 195 + Math.random() * 300;
+      const x = 108 + (y - 195) * 0.45 + (Math.random() - 0.5) * 34;
+      px(x, y, 1, 1, Math.random() > 0.5 ? "#7a5a3a" : "#8a6844");
     }
     tex.refresh();
     tex.setFilter(Phaser.Textures.FilterMode.NEAREST);
@@ -2874,7 +3023,7 @@ class TavernScene extends Phaser.Scene {
         fontFamily: XIAN_FONT,
       })
       .setOrigin(0.5)
-      .setDepth(2)
+      .setDepth(6.9)
       .setLetterSpacing(6);
     this.createSwayLantern(-280, 400);
     this.createSwayLantern(280, 400);
@@ -3628,6 +3777,11 @@ class TavernScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setDepth(0.2)
       .setVisible(false);
+    this.add
+      .image(-360, 0, "ink-interior")
+      .setOrigin(0, 0)
+      .setDisplaySize(790, 1280)
+      .setDepth(6);
 
     // 顶部 HUD 悬浮条
     this.hudBar = this.add
@@ -3947,8 +4101,8 @@ class TavernScene extends Phaser.Scene {
   }
 
   private addBoothVisual(i: number) {
-    const bg = this.add.rectangle(0, 0, 80, 16, 0x6a4a2a).setDepth(2).setStrokeStyle(2, 0x8a6a4a);
-    const runner = this.add.rectangle(0, 0, 60, 6, 0x8a2a22).setDepth(2.5).setStrokeStyle(1, 0xd9b45a, 0.7);
+    const bg = this.add.rectangle(0, 0, 80, 16, 0x6a4a2a).setDepth(6.5).setStrokeStyle(2, 0x8a6a4a);
+    const runner = this.add.rectangle(0, 0, 60, 6, 0x8a2a22).setDepth(6.6).setStrokeStyle(1, 0xd9b45a, 0.7);
     const number = this.add
       .text(0, 0, "", {
         fontSize: "15px",
@@ -3958,10 +4112,10 @@ class TavernScene extends Phaser.Scene {
         fontFamily: XIAN_FONT,
       })
       .setOrigin(0.5)
-      .setDepth(3);
+      .setDepth(6.8);
     const legs = [
-      this.add.rectangle(0, 0, 7, 32, 0x4a3420).setDepth(1),
-      this.add.rectangle(0, 0, 7, 32, 0x4a3420).setDepth(1),
+      this.add.rectangle(0, 0, 7, 32, 0x4a3420).setDepth(6.4),
+      this.add.rectangle(0, 0, 7, 32, 0x4a3420).setDepth(6.4),
     ];
     const label = this.add
       .text(0, 0, "", {
@@ -3976,9 +4130,9 @@ class TavernScene extends Phaser.Scene {
         fontFamily: XIAN_FONT,
       })
       .setOrigin(0.5, 1)
-      .setDepth(3);
-    const barBg = this.add.rectangle(0, 0, 80, 8, 0x1a1a1a).setOrigin(0, 0.5).setDepth(3);
-    const barFill = this.add.rectangle(0, 0, 0, 8, COLOR_PLAYER).setOrigin(0, 0.5).setDepth(4);
+      .setDepth(6.8);
+    const barBg = this.add.rectangle(0, 0, 80, 8, 0x1a1a1a).setOrigin(0, 0.5).setDepth(6.9);
+    const barFill = this.add.rectangle(0, 0, 0, 8, COLOR_PLAYER).setOrigin(0, 0.5).setDepth(6.95);
     // 每桌一支小烛：给人物和桌面一点暖光，而不是只有顶灯
     const candleGlow = this.add
       .image(0, 0, "soft-glow")
@@ -3986,9 +4140,9 @@ class TavernScene extends Phaser.Scene {
       .setAlpha(0.16)
       .setScale(0.6)
       .setBlendMode(Phaser.BlendModes.ADD)
-      .setDepth(1.9);
-    const candleBody = this.add.rectangle(0, 0, 7, 13, 0xf0e2c8).setDepth(2.7);
-    const candleFlame = this.add.ellipse(0, 0, 7, 11, 0xffd98a).setDepth(2.8);
+      .setDepth(7);
+    const candleBody = this.add.rectangle(0, 0, 7, 13, 0xf0e2c8).setDepth(7.1);
+    const candleFlame = this.add.ellipse(0, 0, 7, 11, 0xffd98a).setDepth(7.2);
     this.tweens.add({
       targets: candleGlow,
       alpha: { from: 0.12, to: 0.2 },
@@ -4009,7 +4163,7 @@ class TavernScene extends Phaser.Scene {
       ease: "Sine.easeInOut",
     });
     // 整张桌子都是「看这位客人」的点击区，别让玩家去点米粒大的人
-    const zone = this.add.zone(0, 0, 80, 150).setOrigin(0.5, 0).setDepth(5);
+    const zone = this.add.zone(0, 0, 80, 150).setOrigin(0.5, 0).setDepth(7.3);
     let zx = 0;
     let zy = 0;
     zone
