@@ -1395,6 +1395,39 @@ class TavernScene extends Phaser.Scene {
     });
   }
 
+  /** 产线是串联的，提示当前最慢的一环（或缺失的岗位）。 */
+  private staffBottleneckHint(): string {
+    const hasServer = this.staffLevel.server > 0;
+    const hasCook = this.staffLevel.cook > 0;
+    if (!hasServer && !hasCook) return "当前瓶颈：缺跑堂与灶上，全靠你亲力亲为";
+    if (!hasServer) return "当前瓶颈：缺跑堂，只能手动招待";
+    if (!hasCook) return "当前瓶颈：缺灶上，只能手动烹饪";
+    const menu = this.getMenuDishes();
+    const avgCookMs = menu.length ? menu.reduce((sum, dish) => sum + dish.cookMs, 0) / menu.length : 2000;
+    const factor = getRealmStaffSpeedFactor(this.realmIndex());
+    const seat = getStaffDuration(
+      "server",
+      SEAT_BASE_MS,
+      SEAT_TAVERN_SHRINK_PER_LEVEL_MS,
+      SEAT_FLOOR_MS,
+      this.level,
+      this.staffLevel.server,
+      factor,
+    );
+    const cook = getStaffDuration(
+      "cook",
+      avgCookMs,
+      COOK_TAVERN_SHRINK_PER_LEVEL_MS,
+      COOK_FLOOR_MS,
+      this.level,
+      this.staffLevel.cook,
+      factor,
+    );
+    return cook >= seat
+      ? `当前瓶颈：灶上（平均每道 ${(cook / 1000).toFixed(1)}s）`
+      : `当前瓶颈：跑堂（每位 ${(seat / 1000).toFixed(1)}s）`;
+  }
+
   /** 二级页面：伙计列表，未雇佣的可在此雇佣，已雇佣的显示等级/熟练/日薪。 */
   private buildStaffOverlay() {
     this.destroyOverlay();
@@ -1402,6 +1435,9 @@ class TavernScene extends Phaser.Scene {
     const layer = this.add.container(cam.scrollX, cam.scrollY).setDepth(100);
     layer.add(this.add.rectangle(0, 0, SCREEN_W, SCREEN_H, 0x000000, 0.92).setOrigin(0, 0));
     layer.add(this.add.text(40, 70, "伙计", { fontSize: "30px", color: "#ffffff" }));
+    layer.add(
+      this.add.text(40, 116, this.staffBottleneckHint(), { fontSize: "15px", color: "#e0c060" }),
+    );
 
     const defs: { role: StaffRole; name: string; cost: number; desc: string }[] = [
       { role: "hawker", name: "迎客", cost: HIRE_COST_HAWKER, desc: "加速顾客到店" },
