@@ -22,11 +22,13 @@ import {
   getDailyGoal,
   getDishFans,
   getGoalCoinReward,
+  getGoalPayout,
   getGoalProgress,
   getLoanDue,
   isGoalMet,
   getNextRealm,
   pickPatronKind,
+  pickPatronName,
   pickRandomEvent,
   getPlayerDuration,
   getPurchaseDiscount,
@@ -240,6 +242,15 @@ describe("食客类型与口味", () => {
     expect(pickPatronWish(PATRON_KINDS.find((k) => k.id === "mortal")!, ["fish"], 0)).toBeNull();
   });
 
+  it("每类食客都有姓名池，抽取结果稳定且不越界", () => {
+    for (const kind of PATRON_KINDS) {
+      expect(kind.names.length).toBeGreaterThanOrEqual(2);
+      expect(kind.names).toContain(pickPatronName(kind, 0));
+      expect(kind.names).toContain(pickPatronName(kind, 0.999));
+      expect(new Set([0, 0.5, 0.999].map((roll) => pickPatronName(kind, roll))).size).toBeGreaterThan(1);
+    }
+  });
+
   it("菜单页能看出每道菜被哪些食客偏爱", () => {
     expect(getDishFans("stirfry")).toEqual(expect.arrayContaining(["散修", "妖修"]));
     expect(getDishFans("porridge")).toEqual(expect.arrayContaining(["丹修"]));
@@ -337,6 +348,21 @@ describe("每日目标", () => {
     expect(getGoalCoinReward(goal, 0)).toBe(goal.rewardCoins);
     expect(getGoalCoinReward(goal, 100)).toBe(goal.rewardCoins + 15);
     expect(getGoalCoinReward(goal, -5)).toBe(goal.rewardCoins);
+  });
+
+  it("差一点给半赏，太远则没有", () => {
+    const goal = getDailyGoal(1, 1);
+    const near = getGoalPayout(goal, { served: goal.target - 1, revenue: 0, wishes: 0 });
+    expect(near.met).toBe(false);
+    expect(near.partial).toBe(true);
+    expect(near.coins).toBeGreaterThan(0);
+    expect(near.cultivation).toBeGreaterThan(0);
+    const far = getGoalPayout(goal, { served: 0, revenue: 0, wishes: 0 });
+    expect(far.partial).toBe(false);
+    expect(far.coins).toBe(0);
+    const met = getGoalPayout(goal, { served: goal.target, revenue: 100, wishes: 0 });
+    expect(met.met).toBe(true);
+    expect(met.coins).toBe(getGoalCoinReward(goal, 100));
   });
 });
 

@@ -166,17 +166,24 @@ export interface PatronKind {
   weight: number;
   /** 客单价倍率：身份越特殊越舍得掏灵石。 */
   priceFactor: number;
+  /** 每个来客都有名字，坐进店里才像个人。 */
+  names: string[];
 }
 
 export const PATRON_KINDS: PatronKind[] = [
-  { id: "rogue", name: "散修", bodyColor: 0x7a8a6a, hairColor: 0x2b2b2b, patienceFactor: 1, favorites: ["stirfry", "ginseng"], weight: 8, priceFactor: 1 },
-  { id: "sword", name: "剑修", bodyColor: 0x5a7a9a, hairColor: 0x1b1b2b, patienceFactor: 0.8, favorites: ["fish", "jelly", "voidfruit"], weight: 8, priceFactor: 1.1 },
-  { id: "alchemist", name: "丹修", bodyColor: 0x8a6a9a, hairColor: 0x3b2b3b, patienceFactor: 1.1, favorites: ["porridge", "jelly", "ginseng"], weight: 8, priceFactor: 1.05 },
-  { id: "demon", name: "妖修", bodyColor: 0x9a5a3a, hairColor: 0x4a2b1b, patienceFactor: 1.2, favorites: ["fish", "stirfry", "phoenix"], weight: 8, priceFactor: 1.2 },
-  { id: "mortal", name: "凡人", bodyColor: 0xb0a090, hairColor: 0x3b3b3b, patienceFactor: 1.3, favorites: [], weight: 8, priceFactor: 0.9 },
-  { id: "elder", name: "仙门长老", bodyColor: 0xe8e0c8, hairColor: 0xdfe6ff, patienceFactor: 1.5, favorites: ["ginseng", "phoenix", "voidfruit"], weight: 1, priceFactor: 2.5 },
-  { id: "demonlord", name: "魔道散人", bodyColor: 0x6a2a3a, hairColor: 0x1a1a1a, patienceFactor: 0.7, favorites: ["fish", "phoenix"], weight: 1, priceFactor: 1.8 },
+  { id: "rogue", name: "散修", bodyColor: 0x7a8a6a, hairColor: 0x2b2b2b, patienceFactor: 1, favorites: ["stirfry", "ginseng"], weight: 8, priceFactor: 1, names: ["沈青崖", "陆行舟", "顾长风", "唐不器"] },
+  { id: "sword", name: "剑修", bodyColor: 0x5a7a9a, hairColor: 0x1b1b2b, patienceFactor: 0.8, favorites: ["fish", "jelly", "voidfruit"], weight: 8, priceFactor: 1.1, names: ["白无锋", "叶惊鸿", "江雪照", "谢孤云"] },
+  { id: "alchemist", name: "丹修", bodyColor: 0x8a6a9a, hairColor: 0x3b2b3b, patienceFactor: 1.1, favorites: ["porridge", "jelly", "ginseng"], weight: 8, priceFactor: 1.05, names: ["苏问丹", "柳含烟", "程九炉", "温岐黄"] },
+  { id: "demon", name: "妖修", bodyColor: 0x9a5a3a, hairColor: 0x4a2b1b, patienceFactor: 1.2, favorites: ["fish", "stirfry", "phoenix"], weight: 8, priceFactor: 1.2, names: ["阿椒", "青尾", "胡三娘", "花间狸"] },
+  { id: "mortal", name: "凡人", bodyColor: 0xb0a090, hairColor: 0x3b3b3b, patienceFactor: 1.3, favorites: [], weight: 8, priceFactor: 0.9, names: ["王二", "李婶", "陈货郎", "赵小满"] },
+  { id: "elder", name: "仙门长老", bodyColor: 0xe8e0c8, hairColor: 0xdfe6ff, patienceFactor: 1.5, favorites: ["ginseng", "phoenix", "voidfruit"], weight: 1, priceFactor: 2.5, names: ["玄阳真人", "清虚长老", "素心仙子", "太微道人"] },
+  { id: "demonlord", name: "魔道散人", bodyColor: 0x6a2a3a, hairColor: 0x1a1a1a, patienceFactor: 0.7, favorites: ["fish", "phoenix"], weight: 1, priceFactor: 1.8, names: ["殷无咎", "屠千山", "夜罗刹", "鬼母"] },
 ];
+
+/** roll 取 [0,1)，同一类食客也有不同姓名。 */
+export function pickPatronName(kind: PatronKind, roll: number): string {
+  return kind.names[Math.floor(Math.min(0.999999, Math.max(0, roll)) * kind.names.length)];
+}
 
 /** 按权重抽食客类型；roll 取 [0,1) 方便测试。 */
 export function pickPatronKind(roll: number): PatronKind {
@@ -290,15 +297,15 @@ export function getDailyGoal(day: number, level: number): DailyGoal {
   const base = { rewardCoins, rewardCultivation };
   switch (((Math.max(1, day) - 1) % 3)) {
     case 0: {
-      const target = 5 + level;
+      const target = 4 + level;
       return { ...base, kind: "serve", target, label: `接待 ${target} 位食客` };
     }
     case 1: {
-      const target = 40 + level * 12;
+      const target = 30 + level * 8;
       return { ...base, kind: "revenue", target, label: `本日收入 ${target} 灵石` };
     }
     default: {
-      const target = 2 + Math.floor(level / 2);
+      const target = 1 + Math.floor(level / 2);
       return { ...base, kind: "wish", target, label: `满足 ${target} 位食客的口味` };
     }
   }
@@ -312,6 +319,33 @@ export function getGoalProgress(goal: DailyGoal, stats: SessionStats): number {
 
 export function isGoalMet(goal: DailyGoal, stats: SessionStats): boolean {
   return getGoalProgress(goal, stats) >= goal.target;
+}
+
+export interface GoalPayout {
+  met: boolean;
+  partial: boolean;
+  progress: number;
+  coins: number;
+  cultivation: number;
+}
+
+/** 差一点也算数：达成给全赏，达到目标 60% 给半赏，避免 6/7、61/64 这类一整天空手。 */
+export function getGoalPayout(goal: DailyGoal, stats: SessionStats): GoalPayout {
+  const progress = getGoalProgress(goal, stats);
+  const met = progress >= goal.target;
+  const partial = !met && progress >= Math.ceil(goal.target * 0.6);
+  const fullCoins = getGoalCoinReward(goal, stats.revenue);
+  return {
+    met,
+    partial,
+    progress,
+    coins: met ? fullCoins : partial ? Math.max(1, Math.round(fullCoins * 0.5)) : 0,
+    cultivation: met
+      ? goal.rewardCultivation
+      : partial
+        ? Math.max(1, Math.ceil(goal.rewardCultivation / 2))
+        : 0,
+  };
 }
 
 /** 目标奖励 = 基础灵石 + 当日菜品收入的 15%，让高流水的一天也值得为目标调整打法。 */
