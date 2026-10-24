@@ -30,9 +30,13 @@ import {
   getRealmPlayerSpeedFactor,
   getRealmPriceMultiplier,
   getRealmStaffSpeedFactor,
+  getSignArrivalFactor,
+  getSignUpgradeCost,
   getStaffDuration,
   getStaffLevel,
   getStaffWage,
+  getStoveSpeedFactor,
+  getStoveUpgradeCost,
   getUpgradeCost,
   getWishPrice,
   pickPatronWish,
@@ -50,6 +54,19 @@ describe("雅座与升级", () => {
     for (let level = 1; level < 6; level++) {
       expect(getUpgradeCost(level + 1)).toBeGreaterThan(getUpgradeCost(level));
     }
+  });
+
+  it("灶台/门面专精：费用递增、加成递减且有下限", () => {
+    for (let level = 0; level < 6; level++) {
+      expect(getStoveUpgradeCost(level + 1)).toBeGreaterThan(getStoveUpgradeCost(level));
+      expect(getSignUpgradeCost(level + 1)).toBeGreaterThan(getSignUpgradeCost(level));
+    }
+    expect(getStoveSpeedFactor(0)).toBe(1);
+    expect(getStoveSpeedFactor(1)).toBeLessThan(1);
+    expect(getStoveSpeedFactor(999)).toBe(0.5);
+    expect(getSignArrivalFactor(0)).toBe(1);
+    expect(getSignArrivalFactor(1)).toBeLessThan(1);
+    expect(getSignArrivalFactor(999)).toBe(0.5);
   });
 });
 

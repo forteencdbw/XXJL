@@ -25,9 +25,13 @@ import {
   getRealmPlayerSpeedFactor,
   getRealmPriceMultiplier,
   getRealmStaffSpeedFactor,
+  getSignArrivalFactor,
+  getSignUpgradeCost,
   getStaffDuration,
   getStaffLevel,
   getStaffWage,
+  getStoveSpeedFactor,
+  getStoveUpgradeCost,
   getUpgradeCost,
   getWishPrice,
   isGoalMet,
@@ -146,6 +150,8 @@ interface SaveData {
   coins: number;
   inventory: number;
   level: number;
+  stoveLevel: number;
+  signLevel: number;
   staffLevel: StaffLevels;
   staffExp: StaffLevels;
   borrowedIds: string[];
@@ -316,6 +322,8 @@ class TavernScene extends Phaser.Scene {
   private coins = STARTING_COINS;
   private inventory = STARTING_INVENTORY;
   private level = 1;
+  private stoveLevel = 0;
+  private signLevel = 0;
   private booths: Booth[] = [];
   private queue: QueuedPatron[] = [];
   private staffLevel: StaffLevels = { hawker: 0, server: 0, cook: 0, buyer: 0 };
@@ -490,6 +498,8 @@ class TavernScene extends Phaser.Scene {
       coins: this.coins,
       inventory: this.inventory,
       level: this.level,
+      stoveLevel: this.stoveLevel,
+      signLevel: this.signLevel,
       staffLevel: this.staffLevel,
       staffExp: this.staffExp,
       borrowedIds: [...this.borrowedIds],
@@ -519,6 +529,8 @@ class TavernScene extends Phaser.Scene {
       coins: STARTING_COINS + ascensions * 20,
       inventory: STARTING_INVENTORY + ascensions * 2,
       level: 1,
+      stoveLevel: 0,
+      signLevel: 0,
       staffLevel: { hawker: 0, server: 0, cook: 0, buyer: 0 },
       staffExp: { hawker: 0, server: 0, cook: 0, buyer: 0 },
       borrowedIds: [],
@@ -545,6 +557,8 @@ class TavernScene extends Phaser.Scene {
       this.coins = num(data.coins, STARTING_COINS);
       this.inventory = count(data.inventory);
       this.level = Math.max(1, Math.floor(num(data.level, 1)));
+      this.stoveLevel = count(data.stoveLevel);
+      this.signLevel = count(data.signLevel);
       this.cultivation = count(data.cultivation);
       this.negativeStreak = count(data.negativeStreak);
       this.day = Math.max(1, Math.floor(num(data.day, 1)));
@@ -872,7 +886,7 @@ class TavernScene extends Phaser.Scene {
 
     // 打烊期的经营按钮（屏幕左侧竖排）
     this.staffButton = this.addUiButton(16, 700, () => this.buildStaffOverlay());
-    this.upgradeButton = this.addUiButton(16, 760, () => this.upgradeTavern());
+    this.upgradeButton = this.addUiButton(16, 760, () => this.buildBuildOverlay());
     this.genderButton = this.addUiButton(16, 820, () => this.toggleGender());
     this.bankButton = this.addUiButton(16, 880, () => this.buildBankOverlay());
     this.cultivationButton = this.addUiButton(16, 940, () => this.buildCultivationOverlay());
@@ -1010,7 +1024,7 @@ class TavernScene extends Phaser.Scene {
           this.level,
           this.staffLevel.hawker,
           Phaser.Math.Between(4000, 7000),
-          getRealmArrivalFactor(this.realmIndex()),
+          getRealmArrivalFactor(this.realmIndex()) * getSignArrivalFactor(this.signLevel),
         );
     }
 
@@ -1316,7 +1330,7 @@ class TavernScene extends Phaser.Scene {
           this.level,
           this.staffLevel.hawker,
           Phaser.Math.Between(4000, 7000),
-          getRealmArrivalFactor(this.realmIndex()),
+          getRealmArrivalFactor(this.realmIndex()) * getSignArrivalFactor(this.signLevel),
         );
       this.lastCallTriggered = false;
       this.eventsThisSession = 0;
@@ -1425,11 +1439,96 @@ class TavernScene extends Phaser.Scene {
       COOK_FLOOR_MS,
       this.level,
       this.staffLevel.cook,
-      factor,
+      factor * getStoveSpeedFactor(this.stoveLevel),
     );
     return cook >= seat
       ? `当前瓶颈：灶上（平均每道 ${(cook / 1000).toFixed(1)}s）`
       : `当前瓶颈：跑堂（每位 ${(seat / 1000).toFixed(1)}s）`;
+  }
+
+  /** 二级页面：营造。雅座扩建、灶台专精、门面招幡三条线各花各的钱。 */
+  private buildBuildOverlay() {
+    this.destroyOverlay();
+    const cam = this.cameras.main;
+    const layer = this.add.container(cam.scrollX, cam.scrollY).setDepth(100);
+    layer.add(this.add.rectangle(0, 0, SCREEN_W, SCREEN_H, 0x000000, 0.94).setOrigin(0, 0));
+    layer.add(this.add.text(40, 70, "营造", { fontSize: "30px", color: "#ffffff" }));
+    layer.add(this.add.text(40, 116, "灵石有限，先补当前的短板", { fontSize: "15px", color: "#999999" }));
+
+    const nextDish = DISHES.find((dish) => dish.unlockLevel > this.level);
+    const dishHint = nextDish ? `${nextDish.unlockLevel} 级解锁「${nextDish.name}」` : "已解锁全部菜品";
+    const stoveFactor = getStoveSpeedFactor(this.stoveLevel);
+    const signFactor = getSignArrivalFactor(this.signLevel);
+    const rows = [
+      {
+        title: `雅座扩建 · 酒楼 ${this.level} 级`,
+        desc: `雅座/排队 ${getBoothCount(this.level)} · ${dishHint}`,
+        cost: getUpgradeCost(this.level),
+        action: "扩建",
+        run: () => this.upgradeTavern(),
+      },
+      {
+        title: `灶台专精 · Lv${this.stoveLevel}`,
+        desc: `烹饪耗时 -${Math.round((1 - stoveFactor) * 100)}% → -${Math.round(
+          (1 - getStoveSpeedFactor(this.stoveLevel + 1)) * 100,
+        )}%`,
+        cost: getStoveUpgradeCost(this.stoveLevel),
+        action: "精修",
+        run: () => this.upgradeStove(),
+      },
+      {
+        title: `门面招幡 · Lv${this.signLevel}`,
+        desc: `到店间隔 -${Math.round((1 - signFactor) * 100)}% → -${Math.round(
+          (1 - getSignArrivalFactor(this.signLevel + 1)) * 100,
+        )}%`,
+        cost: getSignUpgradeCost(this.signLevel),
+        action: "挂幡",
+        run: () => this.upgradeSign(),
+      },
+    ];
+
+    rows.forEach((row, i) => {
+      const y = 170 + i * 155;
+      const affordable = row.cost <= this.coins;
+      layer.add(this.add.rectangle(40, y, 640, 136, 0x2b2b2b).setOrigin(0, 0).setStrokeStyle(2, 0x555555));
+      layer.add(this.add.text(56, y + 12, row.title, { fontSize: "22px", color: "#ffffff" }));
+      layer.add(
+        this.add.text(56, y + 50, row.desc, { fontSize: "14px", color: "#bbbbbb", wordWrap: { width: 460 } }),
+      );
+      layer.add(
+        this.add.text(56, y + 88, `费用 ${row.cost} 灵石`, {
+          fontSize: "17px",
+          color: affordable ? "#9fe870" : "#ff9a8a",
+        }),
+      );
+      layer.add(
+        this.add
+          .text(560, y + 50, row.action, {
+            fontSize: "20px",
+            color: affordable ? "#ffffff" : "#777777",
+            backgroundColor: affordable ? "#3f6a3f" : "#3a3a3a",
+            padding: { x: 20, y: 14 },
+          })
+          .setInteractive({ useHandCursor: true })
+          .on("pointerup", () => {
+            row.run();
+            this.buildBuildOverlay();
+          }),
+      );
+    });
+
+    layer.add(
+      this.add
+        .text(40, 660, "关闭", {
+          fontSize: "20px",
+          color: "#ffffff",
+          backgroundColor: "#3a3a3a",
+          padding: { x: 16, y: 10 },
+        })
+        .setInteractive({ useHandCursor: true })
+        .on("pointerup", () => this.destroyOverlay()),
+    );
+    this.overlay = layer;
   }
 
   /** 二级页面：伙计列表，未雇佣的可在此雇佣，已雇佣的显示等级/熟练/日薪。 */
@@ -2427,7 +2526,7 @@ class TavernScene extends Phaser.Scene {
             COOK_TAVERN_SHRINK_PER_LEVEL_MS,
             COOK_FLOOR_MS,
             this.level,
-            getRealmPlayerSpeedFactor(this.realmIndex()),
+            getRealmPlayerSpeedFactor(this.realmIndex()) * getStoveSpeedFactor(this.stoveLevel),
           )
         : getStaffDuration(
             "cook",
@@ -2436,7 +2535,7 @@ class TavernScene extends Phaser.Scene {
             COOK_FLOOR_MS,
             this.level,
             this.staffLevel.cook,
-            getRealmStaffSpeedFactor(this.realmIndex()),
+            getRealmStaffSpeedFactor(this.realmIndex()) * getStoveSpeedFactor(this.stoveLevel),
           );
     booth.state = "cooking";
     booth.cookingDriver = driver;
@@ -2487,10 +2586,39 @@ class TavernScene extends Phaser.Scene {
     this.booths.push(this.makeBooth());
     this.addBoothVisual(this.booths.length - 1);
     this.save();
+    playSfx("upgrade");
     const unlocked = DISHES.find((d) => d.unlockLevel === this.level);
     this.log(
       unlocked ? `酒楼装潢升级到 ${this.level} 级，解锁新菜品「${unlocked.name}」` : `酒楼装潢升级到 ${this.level} 级`,
     );
+  }
+
+  private upgradeStove() {
+    const cost = getStoveUpgradeCost(this.stoveLevel);
+    if (this.coins < cost) {
+      this.log("灵石不足，无法精修灶台");
+      return;
+    }
+    this.coins -= cost;
+    this.displayedCoins = this.coins;
+    this.stoveLevel += 1;
+    this.save();
+    playSfx("upgrade");
+    this.log(`灶台精修至 Lv${this.stoveLevel}，烹饪耗时再降一成`);
+  }
+
+  private upgradeSign() {
+    const cost = getSignUpgradeCost(this.signLevel);
+    if (this.coins < cost) {
+      this.log("灵石不足，无法更换门面幡旗");
+      return;
+    }
+    this.coins -= cost;
+    this.displayedCoins = this.coins;
+    this.signLevel += 1;
+    this.save();
+    playSfx("upgrade");
+    this.log(`门面挂上新幡，到店间隔再缩短一些`);
   }
 
   private hireStaff(role: StaffRole) {
@@ -2843,12 +2971,7 @@ class TavernScene extends Phaser.Scene {
         ? `紧急采购（${purchasePriceLabel} 灵石 → +${PURCHASE_AMOUNT}）`
         : `采购灵材（${purchasePriceLabel} 灵石 → +${PURCHASE_AMOUNT}）`,
     );
-    const unlockedNext = DISHES.find((d) => d.unlockLevel === this.level + 1);
-    this.upgradeButton.setText(
-      unlockedNext
-        ? `装潢升级（${getUpgradeCost(this.level)} 灵石 → 雅座/排队+1，解锁「${unlockedNext.name}」）`
-        : `装潢升级（${getUpgradeCost(this.level)} 灵石 → 雅座/排队+1）`,
-    );
+    this.upgradeButton.setText("营造·升级");
   }
 }
 

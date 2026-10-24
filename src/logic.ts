@@ -76,6 +76,35 @@ export function getUpgradeCost(level: number): number {
   return Math.round(UPGRADE_BASE_COST * Math.pow(UPGRADE_COST_MULTIPLIER, level - 1));
 }
 
+// ===== 营造：除雅座扩建外的两条专精线 =====
+export const STOVE_BASE_COST = 24;
+export const STOVE_COST_MULTIPLIER = 1.75;
+export const STOVE_SPEEDUP = 0.9;
+export const STOVE_SPEED_FLOOR = 0.5;
+
+export function getStoveUpgradeCost(level: number): number {
+  return Math.round(STOVE_BASE_COST * Math.pow(STOVE_COST_MULTIPLIER, Math.max(0, level)));
+}
+
+/** 每级灶台专精让烹饪快 10%，乘算，最低到基础耗时的 50%。 */
+export function getStoveSpeedFactor(level: number): number {
+  return Math.max(STOVE_SPEED_FLOOR, Math.pow(STOVE_SPEEDUP, Math.max(0, level)));
+}
+
+export const SIGN_BASE_COST = 18;
+export const SIGN_COST_MULTIPLIER = 1.7;
+export const SIGN_ARRIVAL_SHRINK = 0.93;
+export const SIGN_ARRIVAL_FLOOR = 0.5;
+
+export function getSignUpgradeCost(level: number): number {
+  return Math.round(SIGN_BASE_COST * Math.pow(SIGN_COST_MULTIPLIER, Math.max(0, level)));
+}
+
+/** 每级门面招幡让到店间隔缩短 7%，乘算，最低到基础间隔的 50%。 */
+export function getSignArrivalFactor(level: number): number {
+  return Math.max(SIGN_ARRIVAL_FLOOR, Math.pow(SIGN_ARRIVAL_SHRINK, Math.max(0, level)));
+}
+
 export function getPlayerDuration(
   base: number,
   shrinkPerLevel: number,
