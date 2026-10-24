@@ -332,7 +332,7 @@ class Character extends Phaser.GameObjects.Container {
   private dining = false;
   private seated = false;
   private mood: "idle" | "waiting" | "dining" | "cold" = "idle";
-  private static readonly ART_SCALE = 1.18;
+  private static readonly ART_SCALE = 1.22;
   private bodyColor: number;
   private hairColor: number;
   private longHair: boolean;
@@ -356,6 +356,15 @@ class Character extends Phaser.GameObjects.Container {
     this.hairColor = hairColor;
     this.longHair = longHair;
     this.look = look;
+    // 很淡的暖背光，把人物从深色墙面/柜台上托起来
+    this.add(
+      scene.add
+        .image(0, -20, "soft-glow")
+        .setTint(0xffb060)
+        .setAlpha(0.07)
+        .setScale(0.55)
+        .setBlendMode(Phaser.BlendModes.ADD),
+    );
     this.visual = scene.add.container(0, 0);
     this.visual.setScale(Character.ART_SCALE);
     this.art = scene.add.graphics();
@@ -992,12 +1001,12 @@ class Character extends Phaser.GameObjects.Container {
     const bx = Phaser.Math.Clamp(this.x, view.x + margin, view.right - margin);
     const bubble = this.scene.add
       .text(bx, this.y - 200, text, {
-        fontSize: "18px",
+        fontSize: "20px",
         color: tone === "cold" ? "#d8e8ff" : "#2a1f14",
         backgroundColor: tone === "cold" ? "#2a3448" : "#f3e6cf",
-        padding: { x: 8, y: 5 },
+        padding: { x: 9, y: 6 },
         fontFamily: '"KaiTi","STKaiti",serif',
-        wordWrap: { width: 200 },
+        wordWrap: { width: 220 },
         align: "center",
       })
       .setOrigin(0.5)
