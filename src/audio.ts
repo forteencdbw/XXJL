@@ -15,9 +15,32 @@ const SFX_DEFS: Record<SfxName, { notes: number[]; dur: number; type: Oscillator
   close: { notes: [523, 392, 294], dur: 0.16, type: "sine", gain: 0.08 },
 };
 
-// 缓慢的五声音阶循环，作为氛围底噪
-const BGM_NOTES = [261.63, 293.66, 329.63, 392.0, 440.0, 392.0, 329.63, 293.66];
-const BGM_INTERVAL_MS = 1400;
+// 五声音阶的氛围乐句：长短音 + 休止 + 低音持续音，避免机械的单音循环。
+// 仍是程序合成占位，正式美术/音频资产可整段替换。
+export interface BgmStep {
+  note: number | null;
+  beats: number;
+  bass?: number;
+}
+export const BGM_BEAT_MS = 380;
+export const BGM_PATTERN: BgmStep[] = [
+  { note: 392.0, beats: 1 },
+  { note: 440.0, beats: 1 },
+  { note: 523.25, beats: 2, bass: 130.81 },
+  { note: null, beats: 1 },
+  { note: 493.88, beats: 1 },
+  { note: 440.0, beats: 1, bass: 146.83 },
+  { note: 392.0, beats: 2 },
+  { note: 329.63, beats: 1 },
+  { note: 293.66, beats: 1 },
+  { note: 261.63, beats: 2, bass: 130.81 },
+  { note: null, beats: 1 },
+  { note: 329.63, beats: 1 },
+  { note: 392.0, beats: 2 },
+  { note: 440.0, beats: 1 },
+  { note: 523.25, beats: 2, bass: 196.0 },
+  { note: null, beats: 1 },
+];
 
 let ctx: AudioContext | null = null;
 let sfxGain: GainNode | null = null;
@@ -58,27 +81,35 @@ export function playSfx(name: SfxName) {
   });
 }
 
+function playBgmNote(audio: AudioContext, freq: number, durationMs: number, gainValue: number) {
+  const seconds = Math.max(0.2, durationMs / 1000);
+  const t0 = audio.currentTime;
+  const osc = audio.createOscillator();
+  const gain = audio.createGain();
+  osc.type = "sine";
+  osc.frequency.value = freq;
+  gain.gain.setValueAtTime(0, t0);
+  gain.gain.linearRampToValueAtTime(gainValue, t0 + 0.12);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t0 + seconds);
+  osc.connect(gain).connect(bgmGain!);
+  osc.start(t0);
+  osc.stop(t0 + seconds + 0.05);
+}
+
 export function startBgm() {
   if (bgmTimer !== null) return;
   const audio = ensure();
-  let i = 0;
-  const playNote = () => {
-    const freq = BGM_NOTES[i % BGM_NOTES.length];
-    i += 1;
-    const t0 = audio.currentTime;
-    const osc = audio.createOscillator();
-    const gain = audio.createGain();
-    osc.type = "sine";
-    osc.frequency.value = freq;
-    gain.gain.setValueAtTime(0, t0);
-    gain.gain.linearRampToValueAtTime(0.018, t0 + 0.15);
-    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 1.25);
-    osc.connect(gain).connect(bgmGain!);
-    osc.start(t0);
-    osc.stop(t0 + 1.3);
+  let stepIndex = 0;
+  const tick = () => {
+    if (bgmTimer === null) return;
+    const step = BGM_PATTERN[stepIndex % BGM_PATTERN.length];
+    stepIndex += 1;
+    const durationMs = step.beats * BGM_BEAT_MS;
+    if (step.note !== null) playBgmNote(audio, step.note, durationMs * 0.95, 0.016);
+    if (step.bass !== undefined) playBgmNote(audio, step.bass, durationMs * 2.5, 0.007);
+    bgmTimer = window.setTimeout(tick, durationMs);
   };
-  playNote();
-  bgmTimer = window.setInterval(playNote, BGM_INTERVAL_MS);
+  bgmTimer = window.setTimeout(tick, 0);
 }
 
 export function setSfxMuted(muted: boolean) {
