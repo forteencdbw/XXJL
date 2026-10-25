@@ -78,6 +78,49 @@ export function getBoothCount(level: number): number {
   return TABLE_COUNT_BASE + (level - 1);
 }
 
+// ===== 楼层：一层散座 / 二层雅座 / 三层仙门包间 =====
+export const MAX_FLOORS = 3;
+export const FLOOR_CAP = 4;
+export const FLOOR_UNLOCKS = [
+  { floor: 1, level: 3, cost: 120, name: "二楼 · 雅座" },
+  { floor: 2, level: 6, cost: 450, name: "三楼 · 仙门包间" },
+] as const;
+
+export type FloorIndex = 0 | 1 | 2;
+
+/** floor 0/1/2 = 1F/2F/3F；未建成的楼层返回 0。 */
+export function getFloorBoothCount(level: number, floorsBuilt: number, floor: number): number {
+  if (floor < 0 || floor >= MAX_FLOORS || floor > floorsBuilt) return 0;
+  const lvl = Math.max(1, level);
+  if (floor === 0) return Math.min(FLOOR_CAP, TABLE_COUNT_BASE + Math.min(1, lvl - 1));
+  if (floor === 1) return Math.min(FLOOR_CAP, 2 + Math.max(0, lvl - 3));
+  return Math.min(FLOOR_CAP, 2 + Math.max(0, lvl - 6));
+}
+
+export function getTotalBoothCount(level: number, floorsBuilt: number): number {
+  let total = 0;
+  for (let floor = 0; floor < MAX_FLOORS; floor++) total += getFloorBoothCount(level, floorsBuilt, floor);
+  return total;
+}
+
+export function getFloorPriceMultiplier(floor: number): number {
+  return floor <= 0 ? 1 : floor === 1 ? 1.15 : 1.25;
+}
+
+export function getFloorPatienceMultiplier(floor: number): number {
+  return floor <= 0 ? 1 : floor === 1 ? 1.1 : 1.1;
+}
+
+/** 每多一层，日租 +6。 */
+export function getFloorRent(floorsBuilt: number): number {
+  return Math.max(0, floorsBuilt) * 6;
+}
+
+/** 12 桌后的等级只给很小的全局售价成长。 */
+export function getPostCapPriceBonus(level: number): number {
+  return 1 + Math.max(0, level - 8) * 0.01;
+}
+
 export function getUpgradeCost(level: number): number {
   return Math.round(UPGRADE_BASE_COST * Math.pow(UPGRADE_COST_MULTIPLIER, level - 1));
 }

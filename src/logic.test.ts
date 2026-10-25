@@ -17,8 +17,15 @@ import {
   getAscensionStartCoins,
   getAscensionStartInventory,
   getAscensionStartLevel,
+  FLOOR_UNLOCKS,
+  MAX_FLOORS,
   getBoothCount,
   getCultivationGain,
+  getFloorBoothCount,
+  getFloorPriceMultiplier,
+  getFloorRent,
+  getPostCapPriceBonus,
+  getTotalBoothCount,
   getDailyGoal,
   getDailyGoalOptions,
   getDailyRent,
@@ -66,6 +73,30 @@ describe("雅座与升级", () => {
     expect(getBoothCount(1)).toBe(3);
     expect(getBoothCount(2)).toBe(4);
     expect(getBoothCount(10)).toBe(12);
+  });
+
+  it("三层楼：每层上限 4，起楼后按等级补桌，Lv8 满 12", () => {
+    expect(MAX_FLOORS).toBe(3);
+    expect(FLOOR_UNLOCKS.map((f) => [f.floor, f.level, f.cost])).toEqual([
+      [1, 3, 120],
+      [2, 6, 450],
+    ]);
+    expect([0, 1, 2].map((f) => getFloorBoothCount(1, 0, f))).toEqual([3, 0, 0]);
+    expect([0, 1, 2].map((f) => getFloorBoothCount(2, 0, f))).toEqual([4, 0, 0]);
+    expect([0, 1, 2].map((f) => getFloorBoothCount(3, 1, f))).toEqual([4, 2, 0]);
+    expect([0, 1, 2].map((f) => getFloorBoothCount(5, 1, f))).toEqual([4, 4, 0]);
+    expect([0, 1, 2].map((f) => getFloorBoothCount(6, 2, f))).toEqual([4, 4, 2]);
+    expect([0, 1, 2].map((f) => getFloorBoothCount(8, 2, f))).toEqual([4, 4, 4]);
+    expect(getTotalBoothCount(3, 0)).toBe(4);
+    expect(getTotalBoothCount(3, 1)).toBe(6);
+    expect(getTotalBoothCount(6, 1)).toBe(8);
+    expect(getTotalBoothCount(6, 2)).toBe(10);
+    expect(getTotalBoothCount(8, 2)).toBe(12);
+    expect(getTotalBoothCount(10, 2)).toBe(12);
+    expect([0, 1, 2].map(getFloorPriceMultiplier)).toEqual([1, 1.15, 1.25]);
+    expect([0, 1, 2].map(getFloorRent)).toEqual([0, 6, 12]);
+    expect(getPostCapPriceBonus(8)).toBe(1);
+    expect(getPostCapPriceBonus(10)).toBeCloseTo(1.02);
   });
 
   it("装潢升级费用逐级递增", () => {
