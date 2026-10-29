@@ -7,7 +7,6 @@ export const TABLE_COUNT_BASE = 3;
 export const ARRIVAL_MIN_MS = 4000;
 export const ARRIVAL_MAX_MS = 7000;
 export const ARRIVAL_TAVERN_SHRINK_MS = 150;
-export const ARRIVAL_HAWKER_SHRINK = 0.08;
 export const ARRIVAL_FLOOR_MS = 1500;
 export const STARTING_COINS = 20;
 export const STARTING_INVENTORY = 8;
@@ -142,16 +141,9 @@ export function getStoveSpeedFactor(level: number): number {
 
 export const SIGN_BASE_COST = 26;
 export const SIGN_COST_MULTIPLIER = 1.7;
-export const SIGN_ARRIVAL_SHRINK = 0.93;
-export const SIGN_ARRIVAL_FLOOR = 0.5;
 
 export function getSignUpgradeCost(level: number): number {
   return Math.round(SIGN_BASE_COST * Math.pow(SIGN_COST_MULTIPLIER, Math.max(0, level)));
-}
-
-/** 每级门面招幡让到店间隔缩短 7%，乘算，最低到基础间隔的 50%。 */
-export function getSignArrivalFactor(level: number): number {
-  return Math.max(SIGN_ARRIVAL_FLOOR, Math.pow(SIGN_ARRIVAL_SHRINK, Math.max(0, level)));
 }
 
 export function getPlayerDuration(
@@ -183,17 +175,8 @@ export function getStaffDuration(
 }
 
 /** 到店间隔。base 由调用方传入随机值，保持函数纯净可测。 */
-export function getArrivalInterval(
-  tavernLevel: number,
-  hawkerLevel: number,
-  base: number,
-  speedFactor = 1,
-): number {
-  const hawkerFactor = Math.max(0.35, 1 - ARRIVAL_HAWKER_SHRINK * hawkerLevel);
-  return Math.max(
-    ARRIVAL_FLOOR_MS,
-    base * hawkerFactor * speedFactor - (tavernLevel - 1) * ARRIVAL_TAVERN_SHRINK_MS,
-  );
+export function getArrivalInterval(tavernLevel: number, base: number): number {
+  return Math.max(ARRIVAL_FLOOR_MS, base - (tavernLevel - 1) * ARRIVAL_TAVERN_SHRINK_MS);
 }
 
 // ===== 食客类型与口味 =====
@@ -228,12 +211,17 @@ export function pickPatronName(kind: PatronKind, roll: number): string {
   return kind.names[Math.floor(Math.min(0.999999, Math.max(0, roll)) * kind.names.length)];
 }
 
-/** 按权重抽食客类型；roll 取 [0,1) 方便测试。 */
-export function pickPatronKind(roll: number): PatronKind {
-  const total = PATRON_KINDS.reduce((sum, kind) => sum + kind.weight, 0);
+/**
+ * 按权重抽食客类型；roll 取 [0,1) 方便测试。
+ * rareWeightFactor 只放大稀客（priceFactor ≥ 1.8）的权重，供「灵雾」天时使用。
+ */
+export function pickPatronKind(roll: number, rareWeightFactor = 1): PatronKind {
+  const factor = Math.max(0, rareWeightFactor);
+  const weightOf = (kind: PatronKind) => kind.weight * (kind.priceFactor >= 1.8 ? factor : 1);
+  const total = PATRON_KINDS.reduce((sum, kind) => sum + weightOf(kind), 0);
   let cursor = Math.min(0.999999, Math.max(0, roll)) * total;
   for (const kind of PATRON_KINDS) {
-    cursor -= kind.weight;
+    cursor -= weightOf(kind);
     if (cursor < 0) return kind;
   }
   return PATRON_KINDS[PATRON_KINDS.length - 1];
@@ -253,6 +241,81 @@ export function pickPatronWish(kind: PatronKind, availableDishIds: string[], rol
 /** 菜单页提示：哪些食客类型会偏爱这道菜。 */
 export function getDishFans(dishId: string): string[] {
   return PATRON_KINDS.filter((kind) => kind.favorites.includes(dishId)).map((kind) => kind.name);
+}
+
+// ===== 声望 =====
+/**
+ * 声望是修仙界对这家酒楼的长期印象：服务客人累积，客人流失回退。
+ * 等级决定当天到店人数与稀客比例，是长线成长的主轴。
+ */
+export const REP_GAIN_SERVED = 10;
+export const REP_GAIN_RARE = 25;
+export const REP_LOSS = 20;
+
+export interface RepLevelDef {
+  title: string;
+  /** 达到本级所需的累计声望。 */
+  threshold: number;
+  /** 本级当天到店客人数。 */
+  patrons: number;
+}
+
+export const REP_LEVELS: RepLevelDef[] = [
+  { title: "无名小馆", threshold: 0, patrons: 5 },
+  { title: "初露锋芒", threshold: 60, patrons: 6 },
+  { title: "小有名气", threshold: 180, patrons: 7 },
+  { title: "声名鹊起", threshold: 400, patrons: 9 },
+  { title: "名动一方", threshold: 750, patrons: 10 },
+  { title: "声名远扬", threshold: 1250, patrons: 12 },
+  { title: "名震天下", threshold: 1900, patrons: 13 },
+  { title: "名动九霄", threshold: 2700, patrons: 15 },
+  { title: "仙凡共仰", threshold: 3700, patrons: 16 },
+];
+
+/** 当前声望所在等级下标（0 = 无名小馆）。 */
+export function getRepTier(reputation: number): number {
+  let tier = 0;
+  for (let i = 0; i < REP_LEVELS.length; i++) {
+    if (reputation >= REP_LEVELS[i].threshold) tier = i;
+  }
+  return tier;
+}
+
+/** 声望等级 1–9，同时用作稀客权重倍率。 */
+export function getRepLevel(reputation: number): number {
+  return getRepTier(reputation) + 1;
+}
+
+export function getRepLevelInfo(reputation: number): RepLevelDef {
+  return REP_LEVELS[getRepTier(reputation)];
+}
+
+/** 下一级门槛；满级返回 null。 */
+export function getNextRepThreshold(reputation: number): number | null {
+  return REP_LEVELS[getRepTier(reputation) + 1]?.threshold ?? null;
+}
+
+/** 服务完一位客人：稀客登门，名声传得更远。 */
+export function getRepGain(kind: PatronKind): number {
+  return kind.priceFactor >= 1.8 ? REP_GAIN_RARE : REP_GAIN_SERVED;
+}
+
+/** 声望封顶在最高一级门槛，避免无限累积后掉级失去意义。 */
+export function gainReputation(reputation: number, amount: number): number {
+  const cap = REP_LEVELS[REP_LEVELS.length - 1].threshold;
+  return Math.min(cap, Math.max(0, reputation + Math.max(0, amount)));
+}
+
+/**
+ * 一批流失最多掉一级：即使一次走了很多人（提前打烊清场、缺料连锁），
+ * 也只回退到上一级门槛，防止一次失误清空一周进度。
+ */
+export function loseReputation(reputation: number, lostCount: number): number {
+  if (lostCount <= 0) return reputation;
+  const tier = getRepTier(reputation);
+  const raw = Math.max(0, reputation - lostCount * REP_LOSS);
+  if (tier === 0) return raw;
+  return Math.max(REP_LEVELS[tier - 1].threshold, raw);
 }
 
 export const WISH_PRICE_BONUS = 0.5;
@@ -275,9 +338,9 @@ export function getSpecialPrice(base: number, isSpecial: boolean): number {
   return isSpecial ? Math.round(base * (1 + DAILY_SPECIAL_BONUS)) : base;
 }
 
-/** 端上想吃的菜加价；有想吃的却上错，食客只付半价。 */
-export function getWishPrice(base: number, matched: boolean, hasWish = false): number {
-  if (matched) return Math.round(base * (1 + WISH_PRICE_BONUS));
+/** 端上想吃的菜加价；有想吃的却上错，食客只付半价。bonus 供天时叠加。 */
+export function getWishPrice(base: number, matched: boolean, hasWish = false, bonus = 0): number {
+  if (matched) return Math.round(base * (1 + WISH_PRICE_BONUS + Math.max(0, bonus)));
   if (hasWish) return Math.round(base * WISH_MISS_MULTIPLIER);
   return base;
 }
@@ -334,7 +397,7 @@ export function applyEvent(event: RandomEventDef, state: EventState): EventState
 }
 
 // ===== 每日目标 =====
-export type DailyGoalKind = "serve" | "revenue" | "wish";
+export type DailyGoalKind = "revenue" | "wish";
 
 export interface DailyGoal {
   kind: DailyGoalKind;
@@ -352,12 +415,11 @@ export interface SessionStats {
 
 /** 每日目标按天轮换，难度随酒楼等级成长；奖励跟着等级走。 */
 export function getDailyGoal(day: number, level: number): DailyGoal {
-  return getDailyGoalOptions(day, level)[(Math.max(1, day) - 1) % 3];
+  return getDailyGoalOptions(day, level)[(Math.max(1, day) - 1) % 2];
 }
 
 export function getGoalProgress(goal: DailyGoal, stats: SessionStats): number {
-  const value =
-    goal.kind === "serve" ? stats.served : goal.kind === "revenue" ? stats.revenue : stats.wishes;
+  const value = goal.kind === "revenue" ? stats.revenue : stats.wishes;
   return Math.min(goal.target, Math.max(0, value));
 }
 
@@ -373,18 +435,11 @@ export interface GoalPayout {
   cultivation: number;
 }
 
-/** 每天三选一的目标：接待/收入/口味，奖励略有差异，让玩家按今日菜单做选择。 */
+/** 每天二选一的目标：收入/口味，奖励略有差异，让玩家按今日菜单做选择。 */
 export function getDailyGoalOptions(_day: number, level: number): DailyGoal[] {
   const rewardCoins = 8 + level * 3;
   const rewardCultivation = 1 + Math.floor(level / 3);
   return [
-    {
-      kind: "serve",
-      label: `接待 ${4 + level} 位食客`,
-      target: 4 + level,
-      rewardCoins: rewardCoins + 2,
-      rewardCultivation,
-    },
     {
       kind: "revenue",
       label: `本日收入 ${30 + level * 8} 灵石`,
@@ -455,6 +510,161 @@ export function getGoalCoinReward(goal: DailyGoal, revenue: number): number {
   return goal.rewardCoins + Math.round(Math.max(0, revenue) * GOAL_REVENUE_BONUS);
 }
 
+// ===== 天时：按本机日期轮换的当日环境，让每天开门有不同打法 =====
+/**
+ * 天时每天（本机公历日期）固定一条，影响客流 / 稀客 / 口味 / 采购 / 修为。
+ * 同一台设备同一天里玩多少回合都是同一条；跨天自动换。
+ */
+export interface OmenDef {
+  id: string;
+  name: string;
+  /** 状态栏与题意用的短说明，控制在 8 字内。 */
+  short: string;
+  desc: string;
+  /** 天气粒子：0=晴（金尘）1=灵雾 2=落英 3=夜雨。 */
+  visual: 0 | 1 | 2 | 3;
+  /** <1 客流变多；>1 客流变少。 */
+  arrivalFactor: number;
+  priceFactor: number;
+  /** 口味命中额外加价，叠加在 +50% 之上。 */
+  wishBonus: number;
+  /** <1 采购更便宜。 */
+  purchaseFactor: number;
+  rareWeightFactor: number;
+  /** 亲自下厨每道菜额外修为。 */
+  cultivationBonus: number;
+}
+
+export const OMENS: OmenDef[] = [
+  {
+    id: "clear",
+    name: "晴",
+    short: "客流 +12%",
+    desc: "风和日丽，来往食客多了些",
+    visual: 0,
+    arrivalFactor: 0.88,
+    priceFactor: 1,
+    wishBonus: 0,
+    purchaseFactor: 1,
+    rareWeightFactor: 1,
+    cultivationBonus: 0,
+  },
+  {
+    id: "mist",
+    name: "灵雾",
+    short: "稀客 ×3",
+    desc: "仙雾缭绕，仙门中人更愿登门",
+    visual: 1,
+    arrivalFactor: 1,
+    priceFactor: 1,
+    wishBonus: 0,
+    purchaseFactor: 1,
+    rareWeightFactor: 3,
+    cultivationBonus: 0,
+  },
+  {
+    id: "petals",
+    name: "落英",
+    short: "口味赏 +20%",
+    desc: "落英缤纷，懂吃的人更舍得掏钱",
+    visual: 2,
+    arrivalFactor: 1,
+    priceFactor: 1,
+    wishBonus: 0.2,
+    purchaseFactor: 1,
+    rareWeightFactor: 1,
+    cultivationBonus: 0,
+  },
+  {
+    id: "market",
+    name: "集市",
+    short: "灵材 6 折",
+    desc: "山下开市，灵材便宜了四成",
+    visual: 0,
+    arrivalFactor: 1,
+    priceFactor: 1,
+    wishBonus: 0,
+    purchaseFactor: 0.6,
+    rareWeightFactor: 1,
+    cultivationBonus: 0,
+  },
+  {
+    id: "rain",
+    name: "夜雨",
+    short: "客少价高",
+    desc: "雨夜客稀，来的都是肯花灵石的人",
+    visual: 3,
+    arrivalFactor: 1.12,
+    priceFactor: 1.15,
+    wishBonus: 0,
+    purchaseFactor: 1,
+    rareWeightFactor: 1,
+    cultivationBonus: 0,
+  },
+  {
+    id: "moon",
+    name: "月满",
+    short: "下厨多悟",
+    desc: "月华入灶，亲自下厨多悟一分",
+    visual: 0,
+    arrivalFactor: 1,
+    priceFactor: 1,
+    wishBonus: 0,
+    purchaseFactor: 1,
+    rareWeightFactor: 1,
+    cultivationBonus: 1,
+  },
+];
+
+/** 本机公历日期键，YYYY-MM-DD。 */
+// shortcut: 天时与开市利是信任本机时钟，改系统日期可刷；接入服务端或需要防作弊时换成服务器日期
+export function localDateKey(date = new Date()): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+/** 同一天永远是同一道天时；用日期字符串做稳定散列，读档/重开一致。 */
+export function getDailyOmen(dateKey: string): OmenDef {
+  let hash = 0;
+  for (let i = 0; i < dateKey.length; i++) hash = (hash * 31 + dateKey.charCodeAt(i)) >>> 0;
+  return OMENS[hash % OMENS.length];
+}
+
+// ===== 开市利是：本机每天第一次开店的一次性奖励 =====
+export const GIFT_STREAK_CAP = 7;
+
+function dateDayNumber(key: string): number | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(key);
+  if (!match) return null;
+  return Math.floor(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])) / 86400000);
+}
+
+/** 连续开店天数：同一天保持，隔一天 +1，断一天从 1 重来。 */
+export function getGiftStreak(
+  lastDate: string | null | undefined,
+  today: string,
+  streak: number,
+): number {
+  const todayNo = dateDayNumber(today);
+  const lastNo = lastDate ? dateDayNumber(lastDate) : null;
+  if (todayNo === null) return Math.max(1, streak);
+  if (lastNo === null || todayNo < lastNo) return 1;
+  if (todayNo === lastNo) return Math.max(1, streak);
+  return todayNo === lastNo + 1 ? Math.max(1, streak) + 1 : 1;
+}
+
+/** 连续越久赏越多，封顶 7 天；按酒楼等级小幅增长，不让它变成主要收入。 */
+export function getDailyGift(
+  streak: number,
+  level: number,
+): { coins: number; cultivation: number; ingredients: number } {
+  const s = Math.min(GIFT_STREAK_CAP, Math.max(1, Math.floor(streak)));
+  return {
+    coins: 15 + s * 5 + Math.max(1, level) * 2,
+    cultivation: 1 + Math.floor(s / 3),
+    ingredients: s >= 3 ? 2 : 0,
+  };
+}
+
 // ===== 修为与境界 =====
 /** 境界越高，酒楼的仙缘越盛：售价、操作速度、客流依次获得加成。 */
 export interface RealmDef {
@@ -467,7 +677,7 @@ export const REALMS: RealmDef[] = [
   { name: "炼气", cultivation: 0, perk: "初入仙途" },
   { name: "筑基", cultivation: 30, perk: "菜品售价 +10%" },
   { name: "金丹", cultivation: 80, perk: "玩家操作速度 +10%" },
-  { name: "元婴", cultivation: 160, perk: "顾客到店间隔 -15%" },
+  { name: "元婴", cultivation: 160, perk: "心境空明（加成待重做）" },
   { name: "化神", cultivation: 280, perk: "打烊时自动领悟 3 灵材" },
   { name: "炼虚", cultivation: 450, perk: "伙计操作速度 +10%" },
   { name: "合体", cultivation: 700, perk: "菜品售价 +20%" },
@@ -504,10 +714,6 @@ export function getRealmPlayerSpeedFactor(realmIndex: number): number {
 
 export function getRealmStaffSpeedFactor(realmIndex: number): number {
   return realmIndex >= 5 ? 0.9 : 1;
-}
-
-export function getRealmArrivalFactor(realmIndex: number): number {
-  return realmIndex >= 3 ? 0.85 : 1;
 }
 
 /** 飞升一次留一重仙缘，跨周目永久提高售价。 */

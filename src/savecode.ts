@@ -1,7 +1,7 @@
 // 导出码：把存档 JSON 编码成可复制的纯文本，换设备/重装时手动恢复。
 // 前缀带版本，未来格式变化时旧码可以被明确拒绝而不是误解。
 
-const CODE_PREFIX = "LS1.";
+const CODE_PREFIX = "LS2.";
 
 function toBase64(text: string): string {
   const bytes = new TextEncoder().encode(text);

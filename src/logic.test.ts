@@ -3,10 +3,12 @@ import {
   BANKRUPT_STREAK,
   DISHES,
   EMPTY_META,
+  GIFT_STREAK_CAP,
   LOANS,
   LOAN_PERIODS,
   MAX_STAFF_LEVEL,
   NIGHT_COLOR,
+  OMENS,
   PATRON_KINDS,
   RANDOM_EVENTS,
   REALMS,
@@ -28,9 +30,12 @@ import {
   getTotalBoothCount,
   getDailyGoal,
   getDailyGoalOptions,
+  getDailyGift,
+  getDailyOmen,
   getDailyRent,
   getDailySpecial,
   getFestivalGoalMultiplier,
+  getGiftStreak,
   getStreakBonus,
   GOAL_STREAK_TARGET,
   isFestivalDay,
@@ -48,13 +53,21 @@ import {
   getPurchaseDiscount,
   getPurchaseDuration,
   getPurchasePrice,
-  getRealmArrivalFactor,
   getRealmIndex,
   getRealmPlayerSpeedFactor,
   getRealmPriceMultiplier,
   getRealmStaffSpeedFactor,
-  getSignArrivalFactor,
   getSignUpgradeCost,
+  getRepGain,
+  getRepLevel,
+  getRepLevelInfo,
+  getNextRepThreshold,
+  gainReputation,
+  loseReputation,
+  REP_GAIN_RARE,
+  REP_GAIN_SERVED,
+  REP_LEVELS,
+  REP_LOSS,
   getSpecialPrice,
   getStaffDuration,
   getStaffLevel,
@@ -63,6 +76,7 @@ import {
   getStoveUpgradeCost,
   getUpgradeCost,
   getWishPrice,
+  localDateKey,
   pickPatronWish,
   skyColorAt,
   updateMeta,
@@ -113,9 +127,6 @@ describe("雅座与升级", () => {
     expect(getStoveSpeedFactor(0)).toBe(1);
     expect(getStoveSpeedFactor(1)).toBeLessThan(1);
     expect(getStoveSpeedFactor(999)).toBe(0.5);
-    expect(getSignArrivalFactor(0)).toBe(1);
-    expect(getSignArrivalFactor(1)).toBeLessThan(1);
-    expect(getSignArrivalFactor(999)).toBe(0.5);
   });
 });
 
@@ -190,15 +201,14 @@ describe("灵石商行", () => {
 });
 
 describe("顾客到店与破产阈值", () => {
-  it("装潢和迎客等级都会缩短到店间隔", () => {
+  it("酒楼等级会小幅缩短到店间隔", () => {
     const base = 5000;
-    expect(getArrivalInterval(1, 0, base)).toBe(base);
-    expect(getArrivalInterval(3, 0, base)).toBeLessThan(base);
-    expect(getArrivalInterval(1, 3, base)).toBeLessThan(base);
+    expect(getArrivalInterval(1, base)).toBe(base);
+    expect(getArrivalInterval(3, base)).toBeLessThan(base);
   });
 
   it("到店间隔有下限", () => {
-    expect(getArrivalInterval(999, 999, 7000)).toBeGreaterThanOrEqual(1500);
+    expect(getArrivalInterval(999, 7000)).toBeGreaterThanOrEqual(1500);
   });
 
   it("破产阈值为连续 5 回合", () => {
@@ -296,10 +306,10 @@ describe("食客类型与口味", () => {
     expect(getDishFans("not-a-dish")).toEqual([]);
   });
 
-  it("每日目标三选一，奖励与目标随等级增长；租金随等级上涨", () => {
+  it("每日目标二选一，奖励与目标随等级增长；租金随等级上涨", () => {
     const options = getDailyGoalOptions(1, 1);
-    expect(options).toHaveLength(3);
-    expect(new Set(options.map((o) => o.kind)).size).toBe(3);
+    expect(options).toHaveLength(2);
+    expect(new Set(options.map((o) => o.kind)).size).toBe(2);
     for (const o of options) {
       expect(o.target).toBeGreaterThan(0);
       expect(o.rewardCoins).toBeGreaterThan(0);
@@ -395,10 +405,10 @@ describe("随机事件", () => {
 });
 
 describe("每日目标", () => {
-  it("三天一轮换，目标与奖励随等级成长", () => {
-    const goals = [1, 2, 3].map((day) => getDailyGoal(day, 1));
-    expect(new Set(goals.map((g) => g.kind)).size).toBe(3);
-    expect(getDailyGoal(4, 1).kind).toBe(goals[0].kind);
+  it("两天一轮换，目标与奖励随等级成长", () => {
+    const goals = [1, 2].map((day) => getDailyGoal(day, 1));
+    expect(new Set(goals.map((g) => g.kind)).size).toBe(2);
+    expect(getDailyGoal(3, 1).kind).toBe(goals[0].kind);
     for (const goal of goals) {
       expect(goal.target).toBeGreaterThan(0);
       expect(goal.rewardCoins).toBeGreaterThan(0);
@@ -409,21 +419,21 @@ describe("每日目标", () => {
   });
 
   it("进度按目标类型取对应统计，封顶不溢出", () => {
-    const serve = getDailyGoal(1, 1);
-    expect(getGoalProgress(serve, { served: 2, revenue: 999, wishes: 0 })).toBe(2);
-    expect(getGoalProgress(serve, { served: 999, revenue: 0, wishes: 0 })).toBe(serve.target);
-    const revenue = getDailyGoal(2, 1);
-    expect(getGoalProgress(revenue, { served: 99, revenue: revenue.target - 1, wishes: 0 })).toBe(
+    const revenue = getDailyGoal(1, 1);
+    expect(revenue.kind).toBe("revenue");
+    expect(getGoalProgress(revenue, { served: 9, revenue: revenue.target - 1, wishes: 0 })).toBe(
       revenue.target - 1,
     );
-    const wish = getDailyGoal(3, 1);
+    expect(getGoalProgress(revenue, { served: 0, revenue: 999, wishes: 0 })).toBe(revenue.target);
+    const wish = getDailyGoal(2, 1);
+    expect(wish.kind).toBe("wish");
     expect(getGoalProgress(wish, { served: 0, revenue: 0, wishes: wish.target })).toBe(wish.target);
   });
 
   it("达到目标才算完成", () => {
     const goal = getDailyGoal(1, 1);
-    expect(isGoalMet(goal, { served: goal.target - 1, revenue: 0, wishes: 0 })).toBe(false);
-    expect(isGoalMet(goal, { served: goal.target, revenue: 0, wishes: 0 })).toBe(true);
+    expect(isGoalMet(goal, { served: 0, revenue: goal.target - 1, wishes: 0 })).toBe(false);
+    expect(isGoalMet(goal, { served: 0, revenue: goal.target, wishes: 0 })).toBe(true);
   });
 
   it("达成奖励随当日收入增加，负收入不扣奖励", () => {
@@ -435,7 +445,7 @@ describe("每日目标", () => {
 
   it("差一点给半赏，太远则没有", () => {
     const goal = getDailyGoal(1, 1);
-    const near = getGoalPayout(goal, { served: goal.target - 1, revenue: 0, wishes: 0 });
+    const near = getGoalPayout(goal, { served: 0, revenue: goal.target - 1, wishes: 0 });
     expect(near.met).toBe(false);
     expect(near.partial).toBe(true);
     expect(near.coins).toBeGreaterThan(0);
@@ -443,9 +453,118 @@ describe("每日目标", () => {
     const far = getGoalPayout(goal, { served: 0, revenue: 0, wishes: 0 });
     expect(far.partial).toBe(false);
     expect(far.coins).toBe(0);
-    const met = getGoalPayout(goal, { served: goal.target, revenue: 100, wishes: 0 });
+    const met = getGoalPayout(goal, { served: 0, revenue: goal.target, wishes: 0 });
     expect(met.met).toBe(true);
-    expect(met.coins).toBe(getGoalCoinReward(goal, 100));
+    expect(met.coins).toBe(getGoalCoinReward(goal, goal.target));
+  });
+});
+
+describe("声望", () => {
+  it("九级称号门槛递增，人数随等级提高", () => {
+    expect(REP_LEVELS).toHaveLength(9);
+    for (let i = 0; i < REP_LEVELS.length; i++) {
+      expect(getRepLevel(REP_LEVELS[i].threshold)).toBe(i + 1);
+      expect(getRepLevelInfo(REP_LEVELS[i].threshold).title).toBe(REP_LEVELS[i].title);
+      if (i > 0) {
+        expect(REP_LEVELS[i].threshold).toBeGreaterThan(REP_LEVELS[i - 1].threshold);
+        expect(REP_LEVELS[i].patrons).toBeGreaterThanOrEqual(REP_LEVELS[i - 1].patrons);
+      }
+    }
+    expect(getRepLevel(-50)).toBe(1);
+  });
+
+  it("稀客给更多声望", () => {
+    const rogue = PATRON_KINDS.find((k) => k.id === "rogue")!;
+    const elder = PATRON_KINDS.find((k) => k.id === "elder")!;
+    expect(getRepGain(rogue)).toBe(REP_GAIN_SERVED);
+    expect(getRepGain(elder)).toBe(REP_GAIN_RARE);
+  });
+
+  it("累积声望升级，封顶在最高门槛", () => {
+    expect(gainReputation(55, REP_GAIN_SERVED)).toBe(65);
+    expect(getRepLevel(65)).toBe(2);
+    const cap = REP_LEVELS[REP_LEVELS.length - 1].threshold;
+    expect(gainReputation(cap, 999)).toBe(cap);
+    expect(getRepLevel(cap)).toBe(9);
+  });
+
+  it("流失一次最多掉一级，批量流失也只掉一级", () => {
+    expect(loseReputation(760, 1)).toBe(760 - REP_LOSS);
+    expect(loseReputation(760, 10)).toBe(560);
+    // 一次走很多人也只回退到上一级门槛
+    expect(loseReputation(760, 100)).toBe(REP_LEVELS[3].threshold);
+    // 最低停留在一级 0 点
+    expect(loseReputation(30, 99)).toBe(0);
+    expect(loseReputation(760, 0)).toBe(760);
+  });
+
+  it("下一级门槛在满级时为 null", () => {
+    expect(getNextRepThreshold(0)).toBe(REP_LEVELS[1].threshold);
+    expect(getNextRepThreshold(REP_LEVELS[8].threshold)).toBeNull();
+  });
+});
+
+describe("天时与开市利是", () => {
+  it("同一天是同一道天时，连续 60 天覆盖全部六道", () => {
+    expect(getDailyOmen("2026-10-26")).toBe(getDailyOmen("2026-10-26"));
+    const seen = new Set<string>();
+    for (let i = 0; i < 60; i++) {
+      seen.add(getDailyOmen(localDateKey(new Date(2026, 0, 1 + i))).id);
+    }
+    expect(seen.size).toBe(OMENS.length);
+    expect(new Set(OMENS.map((o) => o.id)).size).toBe(OMENS.length);
+  });
+
+  it("天时数值都在合理范围，短说明不超长", () => {
+    for (const omen of OMENS) {
+      expect(omen.arrivalFactor).toBeGreaterThan(0);
+      expect(omen.priceFactor).toBeGreaterThan(0);
+      expect(omen.purchaseFactor).toBeGreaterThan(0);
+      expect(omen.rareWeightFactor).toBeGreaterThan(0);
+      expect(omen.wishBonus).toBeGreaterThanOrEqual(0);
+      expect(omen.cultivationBonus).toBeGreaterThanOrEqual(0);
+      expect(omen.short.length).toBeLessThanOrEqual(8);
+      expect(omen.desc.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("灵雾天时抽到稀客的比例明显变高", () => {
+    const countRare = (factor: number) => {
+      let rare = 0;
+      for (let i = 0; i < 5000; i++) {
+        if (pickPatronKind(i / 5000, factor).priceFactor >= 1.8) rare += 1;
+      }
+      return rare;
+    };
+    expect(countRare(3)).toBeGreaterThan(countRare(1) * 2);
+  });
+
+  it("口味赏可以叠加天时加成，上错仍只付半价", () => {
+    expect(getWishPrice(100, true)).toBe(150);
+    expect(getWishPrice(100, true, true, 0.2)).toBe(170);
+    expect(getWishPrice(100, false, true, 0.2)).toBe(50);
+    expect(getWishPrice(100, false, false, 0.2)).toBe(100);
+  });
+
+  it("连续开店：同日不变、隔日 +1、断一天归 1", () => {
+    expect(getGiftStreak("2026-10-26", "2026-10-26", 4)).toBe(4);
+    expect(getGiftStreak("2026-10-25", "2026-10-26", 4)).toBe(5);
+    expect(getGiftStreak("2026-10-24", "2026-10-26", 4)).toBe(1);
+    expect(getGiftStreak(undefined, "2026-10-26", 0)).toBe(1);
+    expect(getGiftStreak("2026-02-28", "2026-03-01", 2)).toBe(3);
+    expect(getGiftStreak("bogus", "2026-10-26", 2)).toBe(1);
+  });
+
+  it("开市利是随连续天数与酒楼等级增长，赏额封顶", () => {
+    const day1 = getDailyGift(1, 1);
+    const week = getDailyGift(GIFT_STREAK_CAP, 1);
+    expect(day1.coins).toBeGreaterThan(0);
+    expect(day1.cultivation).toBeGreaterThan(0);
+    expect(week.coins).toBeGreaterThan(day1.coins);
+    expect(week.cultivation).toBeGreaterThan(day1.cultivation);
+    expect(week.ingredients).toBeGreaterThan(0);
+    expect(getDailyGift(99, 1).coins).toBe(week.coins);
+    expect(getDailyGift(3, 5).coins).toBeGreaterThan(getDailyGift(3, 1).coins);
   });
 });
 
@@ -476,8 +595,6 @@ describe("修为与境界", () => {
     expect(getRealmPlayerSpeedFactor(2)).toBeLessThan(1);
     expect(getRealmStaffSpeedFactor(0)).toBe(1);
     expect(getRealmStaffSpeedFactor(5)).toBeLessThan(1);
-    expect(getRealmArrivalFactor(0)).toBe(1);
-    expect(getRealmArrivalFactor(3)).toBeLessThan(1);
   });
 
   it("只有亲自下厨得修为，伙计出菜不得修为", () => {
