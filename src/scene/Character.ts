@@ -788,17 +788,13 @@ export class Character extends Phaser.GameObjects.Container {
     this.patienceFill!.setFillStyle(p > 0.35 ? 0xffd98a : 0xff7a6a);
   }
 
-  /** 小人说话：气泡挂在世界坐标上，避免被朝向翻转镜像。 */
+  /** 小人说话：气泡挂在世界坐标上（避免被朝向翻转镜像），每帧跟着人走。 */
   say(text: string, tone: "warm" | "cold" = "warm") {
-    this.bubble?.destroy();
-    this.bubbleTail?.destroy();
+    this.clearBubble();
     this.lastLine = text;
-    const cam = this.scene.cameras.main;
-    const view = cam.worldView;
-    const margin = Math.min(120, view.width * 0.22);
-    const bx = Phaser.Math.Clamp(this.x, view.x + margin, view.right - margin);
-    const bubble = this.scene.add
-      .text(bx, this.y - 200, text, {
+    const scene = this.scene;
+    const bubble = scene.add
+      .text(this.x, this.y - 200, text, {
         fontSize: "20px",
         color: tone === "cold" ? "#d8e8ff" : "#2a1f14",
         backgroundColor: tone === "cold" ? "#2a3448" : "#f3e6cf",
@@ -810,19 +806,31 @@ export class Character extends Phaser.GameObjects.Container {
       .setOrigin(0.5)
       .setDepth(27);
     const bg = tone === "cold" ? 0x2a3448 : 0xf3e6cf;
-    const tail = this.scene.add
-      .triangle(bx, bubble.y + bubble.height / 2 - 2, -7, 0, 7, 0, 0, 8, bg)
-      .setDepth(27);
+    const tail = scene.add.triangle(this.x, 0, -7, 0, 7, 0, 0, 8, bg).setDepth(27);
     this.bubble = bubble;
     this.bubbleTail = tail;
+    const rise = { y: 0 };
+    const follow = () => {
+      // 人被移除了，气泡跟着消失
+      if (!this.active || !bubble.active) {
+        scene.events.off("postupdate", follow);
+        if (bubble.active) {
+          bubble.destroy();
+          tail.destroy();
+        }
+        return;
+      }
+      const view = scene.cameras.main.worldView;
+      const margin = Math.min(120, view.width * 0.22);
+      const bx = Phaser.Math.Clamp(this.x, view.x + margin, view.right - margin);
+      bubble.setPosition(bx, this.y - 200 + rise.y).setVisible(this.visible);
+      tail.setPosition(bx, bubble.y + bubble.height / 2 - 2).setVisible(this.visible);
+    };
+    follow();
+    scene.events.on("postupdate", follow);
     // 先完整显示 1.7 秒，再淡出，避免“刚冒出来就透明”
-    this.scene.tweens.add({
-      targets: [bubble, tail],
-      y: "-=12",
-      duration: 2400,
-      ease: "Sine.easeOut",
-    });
-    this.scene.tweens.add({
+    scene.tweens.add({ targets: rise, y: -12, duration: 2400, ease: "Sine.easeOut" });
+    scene.tweens.add({
       targets: [bubble, tail],
       alpha: 0,
       delay: 1700,
