@@ -194,29 +194,50 @@ export const GAME = {
     emergencyPriceMultiplier: 2,
   },
 
-  /** 伙计（固定岗位制，员工系统改造时会替换） */
+  /**
+   * 员工。每人有三项属性（1–10 星），对应三项工作：
+   *   身法 → 招待速度；厨艺 → 烹饪速度与质量；精明 → 采买折扣。
+   * 谁都能做任何工作，属性低只是慢、做得差。
+   */
   staff: {
-    /** 雇佣费用（灵石） */
-    hireCost: { hawker: 30, server: 40, cook: 50, buyer: 35 },
-    /** 1 级伙计耗时 = 玩家耗时 × 这个倍率 */
-    speedPenalty: 1.6,
-    /** 每升一级耗时乘以这个值 */
-    levelSpeedup: { hawker: 0.82, server: 0.85, cook: 0.84 },
-    /** 每几点熟练度升一级（每天 +1 熟练度） */
-    expPerLevel: 3,
-    /** 伙计最高等级 */
-    maxLevel: 4,
-    /** 1 级日薪 */
-    baseWage: { hawker: 5, server: 8, cook: 10, buyer: 6 },
-    /** 每升一级日薪乘以这个值 */
-    wageGrowthPerLevel: 1.3,
-    /** 采买每级采购折扣（0.08 = 8%） */
-    buyerDiscountPerLevel: 0.08,
-    /** 采购折扣上限 */
-    buyerDiscountCap: 0.5,
+    /** 可雇人数上限 = capBase + ⌊酒楼等级 / capLevelsPerSlot⌋ */
+    capBase: 2,
+    capLevelsPerSlot: 2,
+    /** 可雇人数硬上限（伙计页一屏放得下的人数） */
+    capMax: 7,
+    /** 属性上限（星） */
+    maxStars: 10,
+    /** 招聘时三项属性总星数（每项至少 1 星，其余随机分配） */
+    candidateTotalStars: 12,
+    /** 每天刷出几名候选人 */
+    candidatesPerDay: 3,
+    /** 当场再刷新一次候选人的费用（灵石） */
+    refreshCost: 5,
+    /** 雇佣费用 = hireCostBase + hireCostPerStar × 总星数 */
+    hireCostBase: 10,
+    hireCostPerStar: 2,
+    /** 日薪 = wageBase + wagePerStar × 总星数（四舍五入），属性成长后自动涨薪 */
+    wageBase: 5,
+    wagePerStar: 0.6,
+    /** 耗时倍率 = speedAtOneStar × speedPerStar^(属性 − 1)；1 星 1.6 倍玩家耗时，10 星约 0.62 倍 */
+    speedAtOneStar: 1.6,
+    speedPerStar: 0.9,
+    /** 烹饪质量（售价倍率）= qualityBase + qualityPerStar × 厨艺；1 星 ×0.885，10 星 ×1.2 */
+    qualityBase: 0.85,
+    qualityPerStar: 0.035,
+    /** 采购折扣 = 精明 × buyDiscountPerStar，最多 buyDiscountCap（多人勾采买时取精明最高者） */
+    buyDiscountPerStar: 0.05,
+    buyDiscountCap: 0.5,
+    /** 每完成几次某项工作，对应属性 +1 星（采买每补一次货算一次） */
+    workPerStar: 20,
     /** 采买自动补货目标 = base + perLevel × 酒楼等级 */
     buyerTargetStockBase: 10,
     buyerTargetStockPerLevel: 2,
+    /** 旧存档迁移：原岗位对口属性 = 原等级 + migrateStarOffset，其余两项为 migrateOtherStars */
+    migrateStarOffset: 2,
+    migrateOtherStars: 2,
+    /** 员工姓名池 */
+    names: ["阿福", "小满", "石头", "春桃", "二柱", "秋菱", "长庚", "杏儿", "大勇", "青禾", "铁牛", "莲生", "冬瓜", "小鱼", "阿蛮", "柳芽"],
   },
 
   /** 每日目标 */
@@ -410,10 +431,17 @@ export function validateConfig(cfg: GameConfig): string[] {
   for (const [path, v] of [
     ["regulars.returnChance", cfg.regulars.returnChance],
     ["dailyGoal.partialThreshold", cfg.dailyGoal.partialThreshold],
-    ["staff.buyerDiscountCap", cfg.staff.buyerDiscountCap],
+    ["staff.buyDiscountCap", cfg.staff.buyDiscountCap],
   ] as const) {
     if (v > 1) errors.push(`${path} 是比例，不能大于 1（现在是 ${v}）`);
   }
+  const st = cfg.staff;
+  if (st.candidateTotalStars < 3 || st.candidateTotalStars > st.maxStars * 3)
+    errors.push(`staff.candidateTotalStars 要在 3 到 ${st.maxStars * 3} 之间`);
+  if (st.capMax < 1 || st.capMax > 7) errors.push("staff.capMax 要在 1 到 7 之间（伙计页一屏最多放 7 人）");
+  if (st.workPerStar < 1) errors.push("staff.workPerStar 至少为 1");
+  if (st.candidatesPerDay < 1) errors.push("staff.candidatesPerDay 至少为 1");
+  if (st.migrateStarOffset + 4 > st.maxStars) errors.push("staff.migrateStarOffset 太大：4 级伙计迁移后会超过 maxStars");
   if (cfg.tavern.floorPriceMultipliers.length < 3) errors.push("tavern.floorPriceMultipliers 需要 3 项（1F/2F/3F）");
   if (cfg.tavern.floorPatienceMultipliers.length < 3) errors.push("tavern.floorPatienceMultipliers 需要 3 项（1F/2F/3F）");
   return errors;

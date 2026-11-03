@@ -1,8 +1,11 @@
 // 纯数值逻辑：不依赖 Phaser / DOM，便于单元测试。数值本身都在 config.ts。
 import { GAME } from "./config";
 
-export type ProductionRole = "hawker" | "server" | "cook";
-export type StaffRole = ProductionRole | "buyer";
+/** 员工可勾选的三项工作：招待入座 / 烹饪 / 采买。 */
+export type Job = "seat" | "cook" | "buy";
+export const JOBS: Job[] = ["seat", "cook", "buy"];
+export const JOB_NAMES: Record<Job, string> = { seat: "招待", cook: "烹饪", buy: "采买" };
+export const STAT_NAMES: Record<Job, string> = { seat: "身法", cook: "厨艺", buy: "精明" };
 
 const C = GAME;
 export const TABLE_COUNT_BASE = C.tavern.groundFloorBaseBooths;
@@ -17,16 +20,8 @@ export const PURCHASE_TIME_MS = C.purchase.emergencyTimeMs;
 export const PURCHASE_EMERGENCY_MULTIPLIER = C.purchase.emergencyPriceMultiplier;
 export const PURCHASE_TAVERN_SHRINK_PER_LEVEL_MS = C.purchase.emergencyShrinkPerLevelMs;
 export const PURCHASE_FLOOR_MS = C.purchase.emergencyFloorMs;
-export const PURCHASE_DISCOUNT_PER_LEVEL = C.staff.buyerDiscountPerLevel;
-export const PURCHASE_DISCOUNT_CAP = C.staff.buyerDiscountCap;
 export const UPGRADE_BASE_COST = C.tavern.upgradeBaseCost;
 export const UPGRADE_COST_MULTIPLIER = C.tavern.upgradeCostMultiplier;
-export const STAFF_SPEED_PENALTY = C.staff.speedPenalty;
-export const STAFF_LEVEL_SPEEDUP = C.staff.levelSpeedup;
-export const EXP_PER_LEVEL = C.staff.expPerLevel;
-export const MAX_STAFF_LEVEL = C.staff.maxLevel;
-export const STAFF_BASE_WAGE = C.staff.baseWage;
-export const WAGE_PER_LEVEL = C.staff.wageGrowthPerLevel;
 export const LOAN_PERIODS = C.bank.periods;
 export const BANKRUPT_STREAK = C.bank.bankruptStreak;
 export const NIGHT_COLOR = 0x1b2440;
@@ -142,21 +137,16 @@ export function getPlayerDuration(
   return Math.max(floor, base * speedFactor - (tavernLevel - 1) * shrinkPerLevel);
 }
 
+/** 员工耗时：对口属性越高越快；stars 是这项工作对应的属性星数。 */
 export function getStaffDuration(
-  role: ProductionRole,
+  stars: number,
   base: number,
   shrinkPerLevel: number,
   floor: number,
   tavernLevel: number,
-  staffLevel: number,
   speedFactor = 1,
 ): number {
-  const raw =
-    base *
-      STAFF_SPEED_PENALTY *
-      Math.pow(STAFF_LEVEL_SPEEDUP[role], Math.max(staffLevel, 1) - 1) *
-      speedFactor -
-    (tavernLevel - 1) * shrinkPerLevel;
+  const raw = base * getStarSpeedFactor(stars) * speedFactor - (tavernLevel - 1) * shrinkPerLevel;
   return Math.max(floor, raw);
 }
 
@@ -715,21 +705,135 @@ export function getAchievements(meta: MetaStats, ascensions: number): Achievemen
   return ACHIEVEMENT_DEFS.map(({ test, ...view }) => ({ ...view, unlocked: test(meta, ascensions) }));
 }
 
-export function getStaffLevel(exp: number): number {
-  return Math.min(MAX_STAFF_LEVEL, 1 + Math.floor(exp / EXP_PER_LEVEL));
+// ===== 员工 =====
+export interface Employee {
+  id: number;
+  name: string;
+  /** 三项属性（星），按工作对应：seat 身法 / cook 厨艺 / buy 精明。 */
+  stars: Record<Job, number>;
+  /** 每项工作累计完成次数，满 workPerStar 次对应属性 +1 星。 */
+  work: Record<Job, number>;
+  /** 工作优先级：从上往下，空闲时取第一件能做的；on=false 表示不做这项。 */
+  jobs: { job: Job; on: boolean }[];
 }
 
-export function getStaffWage(role: StaffRole, level: number): number {
-  return Math.round(STAFF_BASE_WAGE[role] * Math.pow(WAGE_PER_LEVEL, Math.max(level, 1) - 1));
+const S = C.staff;
+
+export function getStaffCap(tavernLevel: number): number {
+  return Math.min(S.capMax, S.capBase + Math.floor(Math.max(1, tavernLevel) / S.capLevelsPerSlot));
 }
 
-export function getPurchaseDiscount(buyerLevel: number): number {
-  return Math.min(PURCHASE_DISCOUNT_CAP, PURCHASE_DISCOUNT_PER_LEVEL * Math.max(buyerLevel, 0));
+export function getTotalStars(e: Pick<Employee, "stars">): number {
+  return e.stars.seat + e.stars.cook + e.stars.buy;
 }
 
-export function getPurchasePrice(buyerLevel: number, emergency: boolean): number {
+export function getStaffWage(e: Pick<Employee, "stars">): number {
+  return Math.round(S.wageBase + S.wagePerStar * getTotalStars(e));
+}
+
+export function getHireCost(e: Pick<Employee, "stars">): number {
+  return Math.round(S.hireCostBase + S.hireCostPerStar * getTotalStars(e));
+}
+
+/** 耗时倍率：1 星 1.6 倍玩家耗时，每多 1 星 ×0.9。 */
+export function getStarSpeedFactor(stars: number): number {
+  return S.speedAtOneStar * Math.pow(S.speedPerStar, Math.max(1, stars) - 1);
+}
+
+/** 烹饪质量 = 售价倍率，厨艺越高售价越高。 */
+export function getCookQuality(stars: number): number {
+  return S.qualityBase + S.qualityPerStar * Math.max(1, stars);
+}
+
+/** 采购折扣：精明每星 5%，封顶 50%；没有人勾采买时传 0。 */
+export function getPurchaseDiscount(buyStars: number): number {
+  return Math.min(S.buyDiscountCap, S.buyDiscountPerStar * Math.max(buyStars, 0));
+}
+
+export function getPurchasePrice(buyStars: number, emergency: boolean): number {
   const base = PURCHASE_COST * (emergency ? PURCHASE_EMERGENCY_MULTIPLIER : 1);
-  return Math.max(1, Math.round(base * (1 - getPurchaseDiscount(buyerLevel))));
+  return Math.max(1, Math.round(base * (1 - getPurchaseDiscount(buyStars))));
+}
+
+/** 新员工默认勾选全部工作，按属性从高到低排序（同分按 招待/烹饪/采买）。 */
+export function defaultJobs(stars: Record<Job, number>): Employee["jobs"] {
+  return [...JOBS].sort((a, b) => stars[b] - stars[a]).map((job) => ({ job, on: true }));
+}
+
+/** 随机生成候选人：每项至少 1 星，其余星数逐颗随机分配；rand 返回 [0,1)。 */
+export function rollCandidate(id: number, rand: () => number): Employee {
+  const stars: Record<Job, number> = { seat: 1, cook: 1, buy: 1 };
+  for (let left = S.candidateTotalStars - 3; left > 0; left--) {
+    const open = JOBS.filter((job) => stars[job] < S.maxStars);
+    if (open.length === 0) break;
+    stars[open[Math.floor(rand() * open.length) % open.length]] += 1;
+  }
+  const name = S.names[Math.floor(rand() * S.names.length) % S.names.length];
+  return { id, name, stars, work: { seat: 0, cook: 0, buy: 0 }, jobs: defaultJobs(stars) };
+}
+
+/** 记一次工作；攒满次数就涨一星。返回是否涨星。 */
+export function recordWork(e: Employee, job: Job): boolean {
+  e.work[job] += 1;
+  if (e.work[job] < S.workPerStar || e.stars[job] >= S.maxStars) return false;
+  e.work[job] = 0;
+  e.stars[job] += 1;
+  return true;
+}
+
+/** 列表里上移一项工作。 */
+export function moveJobUp(e: Employee, index: number): void {
+  if (index <= 0 || index >= e.jobs.length) return;
+  [e.jobs[index - 1], e.jobs[index]] = [e.jobs[index], e.jobs[index - 1]];
+}
+
+const LEGACY_JOB = { hawker: "seat", server: "seat", cook: "cook", buyer: "buy" } as const;
+const LEGACY_NAME = { hawker: "迎客", server: "跑堂", cook: "灶上", buyer: "采买" } as const;
+
+/**
+ * 旧存档（固定岗位制）迁移：每个已雇岗位转成一名员工，只勾原岗位，
+ * 对口属性按原等级折算。迎客的招客效果已拆，按招待处理。
+ */
+export function migrateLegacyStaff(levels: Partial<Record<keyof typeof LEGACY_JOB, number>> | undefined): Employee[] {
+  const out: Employee[] = [];
+  for (const role of ["hawker", "server", "cook", "buyer"] as const) {
+    const level = Math.max(0, Math.floor(Number(levels?.[role]) || 0));
+    if (level <= 0) continue;
+    const job = LEGACY_JOB[role];
+    const stars: Record<Job, number> = { seat: S.migrateOtherStars, cook: S.migrateOtherStars, buy: S.migrateOtherStars };
+    stars[job] = Math.min(S.maxStars, level + S.migrateStarOffset);
+    out.push({
+      id: out.length + 1,
+      name: `${LEGACY_NAME[role]}伙计`,
+      stars,
+      work: { seat: 0, cook: 0, buy: 0 },
+      jobs: [job, ...JOBS.filter((j) => j !== job)].map((j) => ({ job: j, on: j === job })),
+    });
+  }
+  return out;
+}
+
+/** 读档清洗：丢掉字段缺失的，数值夹到合法范围。 */
+export function sanitizeEmployees(raw: unknown): Employee[] {
+  if (!Array.isArray(raw)) return [];
+  const clampStar = (v: unknown) => Math.min(S.maxStars, Math.max(1, Math.floor(Number(v) || 1)));
+  const count = (v: unknown) => Math.max(0, Math.floor(Number(v) || 0));
+  return raw
+    .filter((e) => e && typeof e.name === "string" && e.stars && Array.isArray(e.jobs))
+    .map((e, i) => {
+      const seen = new Set<Job>();
+      const jobs = (e.jobs as { job: Job; on: unknown }[])
+        .filter((j) => j && JOBS.includes(j.job) && !seen.has(j.job) && seen.add(j.job))
+        .map((j) => ({ job: j.job, on: j.on !== false }));
+      for (const job of JOBS) if (!seen.has(job)) jobs.push({ job, on: false });
+      return {
+        id: Number.isFinite(e.id) ? Math.floor(e.id) : i + 1,
+        name: e.name,
+        stars: { seat: clampStar(e.stars.seat), cook: clampStar(e.stars.cook), buy: clampStar(e.stars.buy) },
+        work: { seat: count(e.work?.seat), cook: count(e.work?.cook), buy: count(e.work?.buy) },
+        jobs,
+      };
+    });
 }
 
 export function getPurchaseDuration(tavernLevel: number): number {

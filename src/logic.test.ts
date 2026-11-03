@@ -6,7 +6,6 @@ import {
   GIFT_STREAK_CAP,
   LOANS,
   LOAN_PERIODS,
-  MAX_STAFF_LEVEL,
   NIGHT_COLOR,
   OMENS,
   PATRON_KINDS,
@@ -70,7 +69,15 @@ import {
   REP_LOSS,
   getSpecialPrice,
   getStaffDuration,
-  getStaffLevel,
+  getCookQuality,
+  getHireCost,
+  getStaffCap,
+  getTotalStars,
+  migrateLegacyStaff,
+  moveJobUp,
+  recordWork,
+  rollCandidate,
+  sanitizeEmployees,
   getStaffWage,
   getStoveSpeedFactor,
   getStoveUpgradeCost,
@@ -130,30 +137,94 @@ describe("雅座与升级", () => {
   });
 });
 
-describe("伙计熟练度与工资", () => {
-  it("每 3 点熟练度升一级，封顶 4 级", () => {
-    expect(getStaffLevel(0)).toBe(1);
-    expect(getStaffLevel(2)).toBe(1);
-    expect(getStaffLevel(3)).toBe(2);
-    expect(getStaffLevel(6)).toBe(3);
-    expect(getStaffLevel(9)).toBe(MAX_STAFF_LEVEL);
-    expect(getStaffLevel(999)).toBe(MAX_STAFF_LEVEL);
+describe("员工", () => {
+  const seq = (...values: number[]) => {
+    let i = 0;
+    return () => values[i++ % values.length];
+  };
+
+  it("候选人每项至少 1 星，总星数固定", () => {
+    for (const r of [0, 0.34, 0.67, 0.99]) {
+      const e = rollCandidate(1, seq(r, 0.5, 0.1));
+      expect(getTotalStars(e)).toBe(12);
+      expect(Math.min(e.stars.seat, e.stars.cook, e.stars.buy)).toBeGreaterThanOrEqual(1);
+      expect(Math.max(e.stars.seat, e.stars.cook, e.stars.buy)).toBeLessThanOrEqual(10);
+    }
   });
 
-  it("日薪按等级 1.3 倍递增", () => {
-    expect(getStaffWage("hawker", 1)).toBe(5);
-    expect(getStaffWage("hawker", 2)).toBe(7); // 5 * 1.3 = 6.5 → 7
-    expect(getStaffWage("cook", 1)).toBe(10);
-    expect(getStaffWage("cook", 2)).toBeGreaterThan(getStaffWage("cook", 1));
+  it("默认勾选全部工作，属性高的排前面", () => {
+    const e = rollCandidate(1, () => 0.4); // 全部星落在 cook
+    expect(e.stars.cook).toBe(10);
+    expect(e.jobs[0]).toEqual({ job: "cook", on: true });
+    expect(e.jobs.every((j) => j.on)).toBe(true);
+  });
+
+  it("工资与雇佣费随总星数涨", () => {
+    const e = rollCandidate(1, () => 0);
+    expect(getStaffWage(e)).toBe(Math.round(5 + 0.6 * 12));
+    expect(getHireCost(e)).toBe(10 + 2 * 12);
+  });
+
+  it("可雇人数随酒楼等级增长", () => {
+    expect(getStaffCap(1)).toBe(2);
+    expect(getStaffCap(2)).toBe(3);
+    expect(getStaffCap(10)).toBe(7);
+  });
+
+  it("干满 20 次对口属性 +1 星，封顶 10 星", () => {
+    const e = rollCandidate(1, () => 0);
+    const before = e.stars.cook;
+    for (let i = 0; i < 19; i++) expect(recordWork(e, "cook")).toBe(false);
+    expect(recordWork(e, "cook")).toBe(true);
+    expect(e.stars.cook).toBe(before + 1);
+    e.stars.seat = 10;
+    for (let i = 0; i < 25; i++) recordWork(e, "seat");
+    expect(e.stars.seat).toBe(10);
+  });
+
+  it("上移工作顺序", () => {
+    const e = rollCandidate(1, () => 0);
+    const order = e.jobs.map((j) => j.job);
+    moveJobUp(e, 2);
+    expect(e.jobs.map((j) => j.job)).toEqual([order[0], order[2], order[1]]);
+    moveJobUp(e, 0);
+    expect(e.jobs.map((j) => j.job)).toEqual([order[0], order[2], order[1]]);
+  });
+
+  it("属性越高越快、做得越好", () => {
+    const player = getPlayerDuration(2000, 0, 0, 1);
+    expect(getStaffDuration(1, 2000, 0, 0, 1)).toBeCloseTo(3200);
+    expect(getStaffDuration(10, 2000, 0, 0, 1)).toBeLessThan(player);
+    expect(getCookQuality(1)).toBeCloseTo(0.885);
+    expect(getCookQuality(10)).toBeCloseTo(1.2);
+  });
+
+  it("旧存档按岗位迁移，只勾原岗位", () => {
+    const staff = migrateLegacyStaff({ hawker: 0, server: 2, cook: 4, buyer: 1 });
+    expect(staff.map((e) => e.name)).toEqual(["跑堂伙计", "灶上伙计", "采买伙计"]);
+    expect(staff[1].stars).toEqual({ seat: 2, cook: 6, buy: 2 });
+    expect(staff[1].jobs[0]).toEqual({ job: "cook", on: true });
+    expect(staff[1].jobs.filter((j) => j.on)).toHaveLength(1);
+    expect(migrateLegacyStaff(undefined)).toEqual([]);
+  });
+
+  it("读档清洗坏数据", () => {
+    const [e] = sanitizeEmployees([
+      { id: 3, name: "阿福", stars: { seat: 99, cook: -1, buy: "x" }, jobs: [{ job: "cook", on: true }, { job: "bad" }] },
+      { name: 5 },
+    ]);
+    expect(e.stars).toEqual({ seat: 10, cook: 1, buy: 1 });
+    expect(e.jobs.map((j) => j.job)).toEqual(["cook", "seat", "buy"]);
+    expect(e.jobs.map((j) => j.on)).toEqual([true, false, false]);
   });
 });
 
 describe("采购", () => {
-  it("营业中紧急采购翻倍，采买等级提供折扣", () => {
+  it("营业中紧急采购翻倍，精明提供折扣", () => {
     expect(getPurchasePrice(0, false)).toBe(5);
     expect(getPurchasePrice(0, true)).toBe(10);
-    expect(getPurchasePrice(1, false)).toBe(5); // 5 * 0.92 = 4.6 → 5
-    expect(getPurchasePrice(2, false)).toBeLessThan(getPurchasePrice(0, false));
+    expect(getPurchasePrice(1, false)).toBe(5); // 5 * 0.95 = 4.75 → 5
+    expect(getPurchasePrice(4, false)).toBeLessThan(getPurchasePrice(0, false));
   });
 
   it("折扣有上限，价格不低于 1", () => {
@@ -223,11 +294,6 @@ describe("操作耗时", () => {
     expect(getPlayerDuration(1200, 120, 300, 999)).toBe(300);
   });
 
-  it("伙计 1 级比玩家慢，升级后追平以上", () => {
-    const player = getPlayerDuration(2000, 0, 0, 1);
-    expect(getStaffDuration("cook", 2000, 0, 0, 1, 1)).toBeGreaterThan(player);
-    expect(getStaffDuration("cook", 2000, 0, 0, 1, MAX_STAFF_LEVEL)).toBeLessThan(player);
-  });
 });
 
 describe("菜品与昼夜", () => {
