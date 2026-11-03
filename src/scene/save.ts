@@ -1,0 +1,214 @@
+// 存档：序列化、新周目存档、读档清洗与旧档迁移。
+import { DISHES, EMPTY_META, STARTING_COINS, getAscensionStartCoins, getAscensionStartInventory, getAscensionStartLevel, getRealmIndex, migrateLegacyStaff, sanitizeEmployees } from "../logic";
+import { SAVE_KEY } from "./constants";
+import type { SaveData } from "./types";
+import type { TavernScene } from "./TavernScene";
+
+export class SaveMethods {
+  // ===== 存档 =====
+  /** 只存经营进度与选择；营业中不落盘——中途刷新等于放弃本局，避免带着收益跳过工资与还账。 */
+  buildSaveData(this: TavernScene): SaveData {
+    return {
+      v: 2,
+      coins: this.coins,
+      inventory: this.inventory,
+      level: this.level,
+      stoveLevel: this.stoveLevel,
+      signLevel: this.signLevel,
+      reputation: this.reputation,
+      employees: this.employees,
+      candidates: this.candidates,
+      candidatesDay: this.candidatesDay,
+      nextStaffId: this.nextStaffId,
+      borrowedIds: [...this.borrowedIds],
+      activeLoans: this.activeLoans,
+      negativeStreak: this.negativeStreak,
+      cultivation: this.cultivation,
+      day: this.day,
+      ascensions: this.ascensions,
+      selectedDishIds: [...this.selectedDishIds],
+      playerGender: this.playerGender,
+      meta: this.meta,
+      dailyGoal: this.dailyGoal,
+      regulars: this.regulars,
+      goalStreak: this.goalStreak,
+      lastGiftDate: this.lastGiftDate,
+      giftStreak: this.giftStreak,
+      floorsBuilt: this.floorsBuilt,
+    };
+  }
+
+  save(this: TavernScene) {
+    if (this.ascending || this.suppressSave || this.gameState === "bankrupt") return;
+    if (this.gameState === "open" && !this.settling) return;
+    this.writeSave(this.buildSaveData());
+  }
+
+  writeSave(this: TavernScene, data: SaveData) {
+    try {
+      localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+    } catch {
+      // 隐私模式或存储已满：放弃本次存档，不影响当前对局
+    }
+  }
+
+  /** 新周目存档：飞升后保留仙缘与形象，其余归零。 */
+  freshSave(this: TavernScene, ascensions: number): SaveData {
+    const startLevel = getAscensionStartLevel(ascensions);
+    return {
+      v: 2,
+      coins: getAscensionStartCoins(ascensions),
+      inventory: getAscensionStartInventory(ascensions),
+      level: startLevel,
+      stoveLevel: 0,
+      signLevel: 0,
+      reputation: 0,
+      employees: [],
+      candidates: [],
+      candidatesDay: 0,
+      nextStaffId: 1,
+      borrowedIds: [],
+      activeLoans: [],
+      negativeStreak: 0,
+      cultivation: 0,
+      day: 1,
+      ascensions,
+      selectedDishIds: DISHES.filter((d) => d.unlockLevel <= startLevel).map((d) => d.id),
+      playerGender: this.playerGender,
+      meta: this.meta,
+      goalStreak: 0,
+      lastGiftDate: this.lastGiftDate,
+      giftStreak: this.giftStreak,
+      floorsBuilt: 0,
+    };
+  }
+
+  /** 读档，返回是否读到有效存档；损坏或版本不符时按新档处理。 */
+  loadSave(this: TavernScene): boolean {
+    try {
+      const raw = localStorage.getItem(SAVE_KEY);
+      if (!raw) return false;
+      const data = JSON.parse(raw) as Partial<SaveData>;
+      if (data.v !== 2) return false;
+      const num = (value: unknown, fallback: number) =>
+        typeof value === "number" && Number.isFinite(value) ? value : fallback;
+      const count = (value: unknown) => Math.max(0, Math.floor(num(value, 0)));
+      this.coins = num(data.coins, STARTING_COINS);
+      this.inventory = count(data.inventory);
+      this.level = Math.max(1, Math.floor(num(data.level, 1)));
+      this.stoveLevel = count(data.stoveLevel);
+      this.signLevel = count(data.signLevel);
+      this.reputation = count(data.reputation);
+      this.cultivation = count(data.cultivation);
+      this.negativeStreak = count(data.negativeStreak);
+      this.goalStreak = Math.max(0, Math.floor(num(data.goalStreak, 0)));
+      this.lastGiftDate =
+        typeof data.lastGiftDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(data.lastGiftDate)
+          ? data.lastGiftDate
+          : undefined;
+      this.giftStreak = count(data.giftStreak);
+      // 旧存档没有 floorsBuilt：按等级免费补楼；新存档以实际建成为准
+      const autoFloors = this.level >= 6 ? 2 : this.level >= 3 ? 1 : 0;
+      this.floorsBuilt =
+        data.floorsBuilt === undefined
+          ? autoFloors
+          : Math.max(0, Math.min(autoFloors, Math.floor(num(data.floorsBuilt, 0))));
+      this.day = Math.max(1, Math.floor(num(data.day, 1)));
+      this.ascensions = Math.max(0, Math.floor(num(data.ascensions, 0)));
+      this.playerGender = data.playerGender === "female" ? "female" : "male";
+      // 旧固定岗位制存档没有 employees：按原岗位等级迁移成员工
+      this.employees =
+        data.employees === undefined ? migrateLegacyStaff(data.staffLevel) : sanitizeEmployees(data.employees);
+      this.candidates = sanitizeEmployees(data.candidates);
+      this.candidatesDay = count(data.candidatesDay);
+      const maxId = Math.max(0, ...[...this.employees, ...this.candidates].map((e) => e.id));
+      this.nextStaffId = Math.max(maxId + 1, count(data.nextStaffId));
+      this.borrowedIds = new Set(
+        (Array.isArray(data.borrowedIds) ? data.borrowedIds : []).filter(
+          (id): id is string => typeof id === "string",
+        ),
+      );
+      this.activeLoans = (Array.isArray(data.activeLoans) ? data.activeLoans : [])
+        .filter(
+          (loan) =>
+            loan &&
+            typeof loan.name === "string" &&
+            Number.isFinite(loan.remaining) &&
+            Number.isFinite(loan.periodsLeft),
+        )
+        .map((loan) => ({
+          name: loan.name,
+          remaining: Math.max(0, loan.remaining),
+          periodsLeft: Math.max(0, Math.floor(loan.periodsLeft)),
+        }));
+      this.selectedDishIds = new Set(
+        (Array.isArray(data.selectedDishIds) ? data.selectedDishIds : []).filter(
+          (id): id is string => typeof id === "string",
+        ),
+      );
+      const goal = data.dailyGoal;
+      this.dailyGoal =
+        goal &&
+        (goal.kind === "revenue" || goal.kind === "wish") &&
+        typeof goal.label === "string" &&
+        goal.label.length > 0
+          ? {
+              kind: goal.kind,
+              label: goal.label,
+              target: Math.max(1, Math.floor(num(goal.target, 1))),
+              rewardCoins: count(goal.rewardCoins),
+              rewardCultivation: count(goal.rewardCultivation),
+            }
+          : null;
+      this.regulars = (Array.isArray(data.regulars) ? data.regulars : [])
+        .filter(
+          (r) =>
+            r &&
+            typeof r.name === "string" &&
+            typeof r.kindId === "string" &&
+            typeof r.wish === "string",
+        )
+        .slice(0, 6)
+        .map((r) => ({
+          name: r.name,
+          kindId: r.kindId,
+          wish: r.wish,
+          visits: Math.max(1, count(r.visits)),
+        }));
+      this.displayedCoins = this.coins;
+      const meta = data.meta;
+      this.meta = meta
+        ? {
+            days: count(meta.days),
+            served: count(meta.served),
+            revenue: count(meta.revenue),
+            bestRevenue: count(meta.bestRevenue),
+            bestServed: count(meta.bestServed),
+            goalsMet: count(meta.goalsMet),
+            maxRealm: count(meta.maxRealm),
+            topDays: (Array.isArray(meta.topDays) ? meta.topDays : [])
+              .filter(
+                (record) =>
+                  record &&
+                  Number.isFinite(record.day) &&
+                  Number.isFinite(record.level) &&
+                  Number.isFinite(record.served) &&
+                  Number.isFinite(record.revenue),
+              )
+              .map((record) => ({
+                day: Math.max(1, Math.floor(record.day)),
+                level: Math.max(1, Math.floor(record.level)),
+                served: Math.max(0, Math.floor(record.served)),
+                revenue: Math.max(0, Math.floor(record.revenue)),
+              }))
+              .sort((a, b) => b.revenue - a.revenue)
+              .slice(0, 5),
+          }
+        : { ...EMPTY_META };
+      this.meta.maxRealm = Math.max(this.meta.maxRealm, getRealmIndex(this.cultivation));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
