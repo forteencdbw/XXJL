@@ -123,11 +123,11 @@ export class FxMethods {
     booth.diningProp = layer;
   }
 
-  /** 每日开张的题头：日期 + 今日天时，给每一局一个开场仪式。 */
+  /** 每日开张的题头：日期 + 今日天气，给每一局一个开场仪式。 */
   showDayBanner(this: TavernScene) {
     const weather = isFestivalDay(this.day)
-      ? `灯会开市 · 天时 ${this.omen.name}`
-      : `天时 · ${this.omen.name} · ${this.omen.short}`;
+      ? `灯会开市 · 天气 ${this.weather.name}`
+      : `天气 · ${this.weather.name} · ${this.weather.desc}`;
     const layer = this.add.container(0, 0).setScrollFactor(0).setDepth(29);
     const wrap = this.add.container(0, 0);
     wrap.add(

@@ -1,6 +1,6 @@
-// 经营规则的场景侧换算：境界、价格、修为、天时、开市利是、菜单。
+// 经营规则的场景侧换算：境界、价格、修为、天气、开市利是、菜单。
 import { GAME } from "../config";
-import { DISHES, REALMS, getAscensionPriceMultiplier, getCultivationGain, getDailyGift, getDailyGoal, getDailyOmen, getDailySpecial, getFloorPriceMultiplier, getGiftStreak, getPostCapPriceBonus, getPurchasePrice, getRealmIndex, getRealmPriceMultiplier, getSpecialPrice, getWishPrice, localDateKey } from "../logic";
+import { DISHES, REALMS, getAscensionPriceMultiplier, getCultivationGain, getDailyGift, getDailyGoal, getDailySpecial, getDailyWeather, getFloorPriceMultiplier, getGiftStreak, getPostCapPriceBonus, getPurchasePrice, getRealmIndex, getRealmPriceMultiplier, getSpecialPrice, getWishPrice, localDateKey } from "../logic";
 import type { DailyGoal, Dish } from "../logic";
 import type { Booth } from "./types";
 import type { TavernScene } from "./TavernScene";
@@ -30,16 +30,12 @@ export class RuleMethods {
   }
 
   dishPrice(this: TavernScene, dish: Dish): number {
-    const price = getSpecialPrice(this.baseDishPrice(dish), this.currentDailySpecial() === dish.id);
-    return Math.round(price * this.omen.priceFactor);
+    return getSpecialPrice(this.baseDishPrice(dish), this.currentDailySpecial() === dish.id);
   }
 
-  /** 采购价含天时折扣。 */
+  /** 采购价含采买员工的精明折扣。 */
   purchasePrice(this: TavernScene, emergency: boolean): number {
-    return Math.max(
-      1,
-      Math.round(getPurchasePrice(this.bestBuyer()?.stars.buy ?? 0, emergency) * this.omen.purchaseFactor),
-    );
+    return getPurchasePrice(this.bestBuyer()?.stars.buy ?? 0, emergency);
   }
 
   /** 一桌离店时的成交价：菜品价 × 身份 × 楼层 × 口味 × 连击 × 烹饪质量。 */
@@ -53,31 +49,30 @@ export class RuleMethods {
         getPostCapPriceBonus(this.level),
     );
     return Math.round(
-      getWishPrice(base, matched, hasWish, this.omen.wishBonus) * (1 + booth.comboBonus) * booth.cookQuality,
+      getWishPrice(base, matched, hasWish) * (1 + booth.comboBonus) * booth.cookQuality,
     );
   }
 
-  /** 只有玩家亲自下厨才计修为，天时可再多悟一分。 */
+  /** 只有玩家亲自下厨才计修为。 */
   cultivationGainFor(this: TavernScene, personal: boolean, matched: boolean, rare: boolean): number {
     return (
       getCultivationGain(personal) +
       (personal && matched ? GAME.cultivation.wishHitBonus : 0) +
-      (personal && rare ? GAME.cultivation.rareBonus : 0) +
-      (personal ? this.omen.cultivationBonus : 0)
+      (personal && rare ? GAME.cultivation.rareBonus : 0)
     );
   }
 
-  /** 跨过零点后换天时；同一本机日期内保持不变。 */
-  refreshTodayOmen(this: TavernScene) {
+  /** 跨过零点后换天气；同一本机日期内保持不变。 */
+  refreshTodayWeather(this: TavernScene) {
     const key = localDateKey();
     if (key === this.todayKey) return;
     this.todayKey = key;
-    this.omen = getDailyOmen(key);
+    this.weather = getDailyWeather(key);
   }
 
   /** 本机每天第一次开店才发，当天再开不重复领。 */
   grantDailyGift(this: TavernScene) {
-    this.refreshTodayOmen();
+    this.refreshTodayWeather();
     if (this.lastGiftDate === this.todayKey) return;
     this.giftStreak = getGiftStreak(this.lastGiftDate, this.todayKey, this.giftStreak);
     this.lastGiftDate = this.todayKey;

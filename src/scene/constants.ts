@@ -6,12 +6,8 @@ export const QUEUE_PATIENCE_MS = GAME.session.queuePatienceMs;
 export const DINING_MS = GAME.session.diningMs;
 /** 桌子入座后先给玩家这么久亲手出菜，伙计再接手。 */
 export const COOK_PRIORITY_MS = GAME.session.cookPriorityMs;
-/** 保底上限：名单耗尽即结算，这个只防卡死。 */
-export const SESSION_HARD_STOP_MS = 15 * 60 * 1000;
 /** 最后一位离店后停顿一下再结算，给清场留个过场。 */
 export const ROUND_END_DELAY_MS = 1200;
-/** 天色推进用的名义时长：客人越多，一局在视觉上过得越久。 */
-export const NOMINAL_MS_PER_PATRON = 20000;
 /** 顾客进场动画整体放慢，体现悠闲。 */
 export const ENTRANCE_SLOW = 1.5;
 /** 玩家连续命中口味的连击：每次 +5%，最多 5 连（+25%）。 */

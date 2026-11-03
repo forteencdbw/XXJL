@@ -2,23 +2,25 @@
 import Phaser from "phaser";
 import { playSfx } from "../audio";
 import { GAME } from "../config";
-import { ARRIVAL_MAX_MS, ARRIVAL_MIN_MS, BANKRUPT_STREAK, DISHES, GOAL_STREAK_TARGET, NIGHT_COLOR, REALMS, REP_GAIN_RARE, REP_GAIN_SERVED, gainReputation, getArrivalInterval, getDailyGoal, getDailyGoalOptions, getDailyRent, getFestivalGoalMultiplier, getFloorRent, getGoalPayout, getLoanDue, getRealmClosingIngredients, getRepLevelInfo, getStreakBonus, isFestivalDay, loseReputation, skyColorAt, updateMeta } from "../logic";
-import { ACTOR_Y, CAMERA_CLOSED_X, CAMERA_OPEN_X, DINING_MS, FLOOR_Y, MAX_EVENTS_PER_SESSION, NOMINAL_MS_PER_PATRON, PLAYER_HOME, PURCHASE_AMOUNT, PURCHASE_TARGET_STOCK, ROUND_END_DELAY_MS, SCREEN_H, SCREEN_W, SESSION_HARD_STOP_MS, SKY_TRANSITION_MS } from "./constants";
+import { BANKRUPT_STREAK, DISHES, GOAL_STREAK_TARGET, NIGHT_COLOR, REALMS, REP_GAIN_RARE, REP_GAIN_SERVED, formatClock, gainReputation, loseReputation, getArrivalSchedule, getClockMinutes, getDailyGoal, getDailyGoalOptions, getDailyRent, getEventSchedule, getFestivalGoalMultiplier, getFloorRent, getGoalPayout, getLoanDue, getRealmClosingIngredients, getRepLevelInfo, getSessionDurationMs, getShichen, getStreakBonus, isFestivalDay, skyColorAt, updateMeta } from "../logic";
+import { ACTOR_Y, CAMERA_CLOSED_X, CAMERA_OPEN_X, DINING_MS, FLOOR_Y, MAX_EVENTS_PER_SESSION, PLAYER_HOME, PURCHASE_AMOUNT, PURCHASE_TARGET_STOCK, ROUND_END_DELAY_MS, SCREEN_H, SCREEN_W, SKY_TRANSITION_MS } from "./constants";
 import type { TavernScene } from "./TavernScene";
 
 export class SessionMethods {
   tickOpenSession(this: TavernScene, time: number) {
-    // 名单是开市时按声望锁定的；到店间隔只决定拥挤度，不再决定人数
-    if (this.patronsSpawned < this.patronsTotal && time >= this.nextArrivalAt) {
+    const elapsed = time - this.sessionStartedAt;
+    const closing = this.isClosingTime(time);
+    // 名单是开市时按声望锁定的，到店时刻铺满全天；子初以后不再来客
+    if (!closing && this.patronsSpawned < this.patronsTotal && elapsed >= this.arrivalTimes[this.patronsSpawned]) {
       this.spawnPatron(time);
       this.patronsSpawned += 1;
-      this.nextArrivalAt = time + getArrivalInterval(this.level, Phaser.Math.Between(ARRIVAL_MIN_MS, ARRIVAL_MAX_MS));
     }
-
-    // 随机事件按当天人数缩放：约每 5 位客人 1 次，最多 4 次
-    const eventCap = Math.min(MAX_EVENTS_PER_SESSION, Math.max(1, Math.floor(this.patronsTotal / GAME.events.patronsPerEvent)));
-    if (this.eventsThisSession < eventCap && time >= this.nextEventAt) {
-      this.triggerRandomEvent(time);
+    if (closing && this.patronsSpawned < this.patronsTotal) {
+      // 只有把到店时刻配到打烊之后才会走到这里：没来的就算了，不扣声望
+      this.patronsTotal = this.patronsSpawned;
+    }
+    if (this.eventsThisSession < this.eventTimes.length && elapsed >= this.eventTimes[this.eventsThisSession]) {
+      this.triggerRandomEvent();
     }
 
     this.queue = this.queue.filter((patron) => {
@@ -138,11 +140,8 @@ export class SessionMethods {
     }
 
     this.flushRepLoss();
-    if (
-      this.patronsSpawned >= this.patronsTotal &&
-      this.queue.length === 0 &&
-      this.booths.every((booth) => booth.state === "empty")
-    ) {
+    // 营业一定跑满到子初；到点后等店里最后一位客人走完流程再打烊
+    if (closing && this.queue.length === 0 && this.booths.every((booth) => booth.state === "empty")) {
       this.finishSession();
     }
   }
@@ -183,7 +182,7 @@ export class SessionMethods {
     let lit = false;
     if (this.gameState === "open") {
       const elapsed = time - this.sessionStartedAt;
-      t = Phaser.Math.Clamp(elapsed / this.sessionNominalMs, 0, 1);
+      t = Phaser.Math.Clamp(elapsed / getSessionDurationMs(), 0, 1);
       lit = true;
     } else if (this.gameState === "selectingMenu") {
       t = 1;
@@ -251,11 +250,24 @@ export class SessionMethods {
   onStartButton(this: TavernScene) {
     if (this.settling || this.transitioning) return;
     if (this.gameState === "closed") this.openMenu();
-    else if (this.gameState === "open") this.endSession();
+  }
+
+  /** 营业时钟走到子初（打烊时刻）。 */
+  isClosingTime(this: TavernScene, time: number): boolean {
+    return time - this.sessionStartedAt >= getSessionDurationMs();
+  }
+
+  /** 状态栏最右的时辰：营业中按刻跳，收尾停在子初。 */
+  clockLabel(this: TavernScene): string {
+    if (this.gameState === "selectingMenu") return `${getShichen(GAME.session.openHour * 60)}时 · 待开张`;
+    if (this.gameState !== "open") return `${getShichen(GAME.session.closeHour * 60)}时 · 打烊`;
+    const minutes = getClockMinutes(this.time.now - this.sessionStartedAt);
+    if (this.isClosingTime(this.time.now) && !this.settling) return `${formatClock(minutes)} · 收尾`;
+    return formatClock(minutes);
   }
 
   openMenu(this: TavernScene) {
-    this.refreshTodayOmen();
+    this.refreshTodayWeather();
     this.gameState = "selectingMenu";
     this.buildMenuOverlay();
   }
@@ -268,8 +280,8 @@ export class SessionMethods {
     this.cameras.main.fadeOut(450, 0, 0, 0, () => {
       this.gameState = "open";
       this.settling = false;
-      // 跨过零点后重新取天时：同一天内始终一致
-      this.refreshTodayOmen();
+      // 跨过零点后重新取天气：同一天内始终一致
+      this.refreshTodayWeather();
       this.cameras.main.centerOn(CAMERA_OPEN_X, SCREEN_H / 2);
       this.cameras.main.setZoom(1);
       this.focusTimer?.remove();
@@ -338,25 +350,25 @@ export class SessionMethods {
         const pct = base > 0 ? Math.round((this.dishPrice(specialDish) / base - 1) * 100) : 0;
         this.log(`今日招牌：${specialDish.name}，售价 +${pct}%`);
       }
-      this.log(`今日天时：${this.omen.name}——${this.omen.desc}`);
+      this.log(`今日天气：${this.weather.name}——${this.weather.desc}`);
       // 名单在开市时按声望锁定：营业中升级/掉级次日才生效
       const baseCount = getRepLevelInfo(this.reputation).patrons;
-      // 客流类天时与灯会直接改人数；第 1 天少来一位当教学缓冲
-      const omenCount =
-        Math.round(baseCount / this.omen.arrivalFactor) + (isFestivalDay(this.day) ? GAME.festival.extraPatrons : 0);
-      this.patronsTotal = Math.max(1, omenCount - (this.day === 1 ? GAME.session.firstDayFewerPatrons : 0));
+      // 灯会多来几位；第 1 天少来一位当教学缓冲
+      const dayCount = baseCount + (isFestivalDay(this.day) ? GAME.festival.extraPatrons : 0);
+      this.patronsTotal = Math.max(1, dayCount - (this.day === 1 ? GAME.session.firstDayFewerPatrons : 0));
       this.patronsSpawned = 0;
       this.roundEnding = false;
       this.pendingRepLoss = 0;
       this.repGainedToday = 0;
       this.repLostToday = 0;
-      this.sessionNominalMs = this.patronsTotal * NOMINAL_MS_PER_PATRON;
-      this.sessionEndsAt = this.time.now + SESSION_HARD_STOP_MS;
-      const firstArrival = getArrivalInterval(this.level, Phaser.Math.Between(ARRIVAL_MIN_MS, ARRIVAL_MAX_MS));
-      // 每天开门后第一位客人都在 2.2 秒内到，避免开局长时间空等
-      this.nextArrivalAt = this.time.now + Math.min(firstArrival, 2200);
+      this.arrivalTimes = getArrivalSchedule(this.patronsTotal, Math.random);
+      // 随机事件按当天人数缩放：约每 5 位客人 1 次，最多 4 次
+      const eventCount = Math.min(
+        MAX_EVENTS_PER_SESSION,
+        Math.max(1, Math.floor(this.patronsTotal / GAME.events.patronsPerEvent)),
+      );
+      this.eventTimes = getEventSchedule(eventCount, Math.random);
       this.eventsThisSession = 0;
-      this.nextEventAt = this.time.now + Phaser.Math.Between(9000, 16000);
       this.grantDailyGift();
       playSfx("open");
       this.log("开张大吉，今日营业开始");
@@ -382,12 +394,12 @@ export class SessionMethods {
     this.pendingRepLoss = 0;
   }
 
-  /** 名单走完：停顿一下作为清场过场，再弹结算。 */
+  /** 子初已到、客人散尽：停顿一下作为清场过场，再弹结算。 */
   finishSession(this: TavernScene) {
     if (this.roundEnding || this.settling) return;
     this.roundEnding = true;
-    this.log("最后一位客人离店，开始收摊");
-    this.showEventToast("最后一位客人离店，收摊打烊", true);
+    this.log("子初已到，客人散尽，收摊打烊");
+    this.showEventToast("子初已到，收摊打烊", true);
     this.time.delayedCall(ROUND_END_DELAY_MS, () => this.endSession());
   }
 
@@ -400,7 +412,6 @@ export class SessionMethods {
     this.clearFocusCard();
     this.setFocusUiHidden(false);
     this.settling = true;
-    this.sessionEndsAt = 0;
     if (this.playerPurchasing) {
       this.inventory += this.playerPurchasing.amount;
       this.log(`打烊，采购的灵材到店 +${this.playerPurchasing.amount}`);
@@ -413,54 +424,6 @@ export class SessionMethods {
       rt.cookingBooth = null;
     });
     this.flushRepLoss();
-    // 提前打烊时，名单上还没来的与还在排队的都算流失
-    let closeLost = this.queue.length + Math.max(0, this.patronsTotal - this.patronsSpawned);
-    this.sessionLost += closeLost;
-    this.queue.forEach((p) => p.char.destroy());
-    this.queue = [];
-    // 打烊结算：已经在用膳的照常收钱；已下锅但没出餐的退回灵材，避免白白损失
-    this.booths.forEach((booth) => {
-      const dish = booth.currentDish;
-      if (dish && booth.state === "dining") {
-        const matched = booth.patronWish === dish.id;
-        const factor = booth.patronKind?.priceFactor ?? 1;
-        const price = this.boothPrice(booth, dish);
-        this.coins += price;
-        this.sessionServed += 1;
-        this.sessionRevenue += price;
-        if (matched) this.sessionWishes += 1;
-        const personal = booth.cookingDriver === "player";
-        const rare = factor >= GAME.rarePriceFactor;
-        this.gainReputationFor(rare);
-        this.gainCultivation(this.cultivationGainFor(personal, matched, rare));
-        this.log(`打烊前最后一桌用罢${dish.name}${matched ? "" : "（口味不合半价）"}，收入 +${price}`);
-      } else if (dish && booth.state === "cooking") {
-        this.inventory += 1;
-        this.sessionLost += 1;
-        closeLost += 1;
-        this.log(`打烊，${dish.name}未及出餐，灵材退回`);
-      } else if (booth.state === "seating" || booth.state === "awaitingCook") {
-        this.sessionLost += 1;
-        closeLost += 1;
-      }
-      booth.patronChar?.destroy();
-      booth.patronChar = undefined;
-      booth.state = "empty";
-      booth.cookingDriver = null;
-      booth.currentDish = null;
-      booth.comboBonus = 0;
-      booth.patronKind = null;
-      booth.patronWish = null;
-      booth.patronName = null;
-      booth.patronRegular = false;
-      booth.diningProp?.destroy();
-      booth.diningProp = undefined;
-      booth.awaitingSince = 0;
-    });
-    if (closeLost > 0) {
-      this.reputation = loseReputation(this.reputation, closeLost);
-      this.repLostToday += closeLost;
-    }
     this.displayedCoins = this.coins;
     playSfx("close");
     this.log("打烊，今日营业结束");

@@ -9,10 +9,6 @@ export const STAT_NAMES: Record<Job, string> = { seat: "身法", cook: "厨艺",
 
 const C = GAME;
 export const TABLE_COUNT_BASE = C.tavern.groundFloorBaseBooths;
-export const ARRIVAL_MIN_MS = C.session.arrivalMinMs;
-export const ARRIVAL_MAX_MS = C.session.arrivalMaxMs;
-export const ARRIVAL_TAVERN_SHRINK_MS = C.session.arrivalShrinkPerLevelMs;
-export const ARRIVAL_FLOOR_MS = C.session.arrivalFloorMs;
 export const STARTING_COINS = C.start.coins;
 export const STARTING_INVENTORY = C.start.ingredients;
 export const PURCHASE_COST = C.purchase.cost;
@@ -150,9 +146,63 @@ export function getStaffDuration(
   return Math.max(floor, raw);
 }
 
-/** 到店间隔。base 由调用方传入随机值，保持函数纯净可测。 */
-export function getArrivalInterval(tavernLevel: number, base: number): number {
-  return Math.max(ARRIVAL_FLOOR_MS, base - (tavernLevel - 1) * ARRIVAL_TAVERN_SHRINK_MS);
+// ===== 营业时钟 =====
+/** 一刻 = 15 分钟；营业时钟按刻跳动。 */
+export const MINUTES_PER_QUARTER = 15;
+
+function hourToMs(hours: number): number {
+  return (hours * 60 / MINUTES_PER_QUARTER) * C.session.msPerQuarter;
+}
+
+/** 从开门到打烊的现实毫秒数。 */
+export function getSessionDurationMs(): number {
+  return hourToMs(C.session.closeHour - C.session.openHour);
+}
+
+/** 营业已过现实毫秒 → 当天几点几分（分钟数，按刻取整，到打烊时刻封顶）。 */
+export function getClockMinutes(elapsedMs: number): number {
+  const quarters = Math.floor(Math.max(0, elapsedMs) / C.session.msPerQuarter);
+  return Math.min(C.session.closeHour * 60, C.session.openHour * 60 + quarters * MINUTES_PER_QUARTER);
+}
+
+const BRANCHES = "子丑寅卯辰巳午未申酉戌亥";
+const QUARTER_NAMES = ["", "一刻", "二刻", "三刻"];
+
+/** 一个时辰两小时，分「初」「正」：23:00 子初、0:00 子正、8:00 辰正、9:00 巳初。 */
+export function getShichen(minutes: number): string {
+  const total = ((Math.floor(minutes) % 1440) + 1440) % 1440;
+  const hour = Math.floor(total / 60);
+  return BRANCHES[Math.floor(((hour + 1) % 24) / 2)];
+}
+
+/** 时辰 + 初/正 + 刻，如「辰正一刻」「巳初」。 */
+export function formatClock(minutes: number): string {
+  const total = ((Math.floor(minutes) % 1440) + 1440) % 1440;
+  const hour = Math.floor(total / 60);
+  const quarter = Math.floor((total % 60) / MINUTES_PER_QUARTER);
+  return `${getShichen(total)}${hour % 2 === 1 ? "初" : "正"}${QUARTER_NAMES[quarter]}`;
+}
+
+/**
+ * 当天每位客人的到店时刻（相对开门的现实毫秒，升序）：第一位开门即到，
+ * 其余在开门到 lastArrivalHour 之间均匀铺开，各自随机前后浮动。rand 返回 [0,1)。
+ */
+export function getArrivalSchedule(count: number, rand: () => number): number[] {
+  if (count <= 0) return [];
+  const window = hourToMs(C.session.lastArrivalHour - C.session.openHour);
+  const step = window / count;
+  const times = [Math.min(C.session.firstArrivalMs, step)];
+  for (let i = 1; i < count; i++) {
+    const jitter = (rand() * 2 - 1) * C.session.arrivalJitter * step;
+    times.push(Math.min(window, Math.max(0, step * i + jitter)));
+  }
+  return times.sort((a, b) => a - b);
+}
+
+/** 当天随机事件的触发时刻（相对开门的现实毫秒，升序），落在开门到 events.lastHour 之间。 */
+export function getEventSchedule(count: number, rand: () => number): number[] {
+  const window = hourToMs(C.events.lastHour - C.session.openHour);
+  return Array.from({ length: Math.max(0, count) }, () => rand() * window).sort((a, b) => a - b);
 }
 
 // ===== 食客类型与口味 =====
@@ -186,7 +236,7 @@ export function pickPatronName(kind: PatronKind, roll: number): string {
 
 /**
  * 按权重抽食客类型；roll 取 [0,1) 方便测试。
- * rareWeightFactor 只放大稀客（priceFactor ≥ 1.8）的权重，供「灵雾」天时使用。
+ * rareWeightFactor 只放大稀客的权重，供声望等级使用。
  */
 export function pickPatronKind(roll: number, rareWeightFactor = 1): PatronKind {
   const factor = Math.max(0, rareWeightFactor);
@@ -270,7 +320,7 @@ export function gainReputation(reputation: number, amount: number): number {
 }
 
 /**
- * 一批流失最多掉一级：即使一次走了很多人（提前打烊清场、缺料连锁），
+ * 一批流失最多掉一级：即使一次走了很多人（比如缺料连锁），
  * 也只回退到上一级门槛，防止一次失误清空一周进度。
  */
 export function loseReputation(reputation: number, lostCount: number): number {
@@ -301,9 +351,9 @@ export function getSpecialPrice(base: number, isSpecial: boolean): number {
   return isSpecial ? Math.round(base * (1 + DAILY_SPECIAL_BONUS)) : base;
 }
 
-/** 端上想吃的菜加价；有想吃的却上错，食客只付半价。bonus 供天时叠加。 */
-export function getWishPrice(base: number, matched: boolean, hasWish = false, bonus = 0): number {
-  if (matched) return Math.round(base * (1 + WISH_PRICE_BONUS + Math.max(0, bonus)));
+/** 端上想吃的菜加价；有想吃的却上错，食客只付半价。 */
+export function getWishPrice(base: number, matched: boolean, hasWish = false): number {
+  if (matched) return Math.round(base * (1 + WISH_PRICE_BONUS));
   if (hasWish) return Math.round(base * WISH_MISS_MULTIPLIER);
   return base;
 }
@@ -466,44 +516,29 @@ export function getGoalCoinReward(goal: DailyGoal, revenue: number): number {
   return goal.rewardCoins + Math.round(Math.max(0, revenue) * GOAL_REVENUE_BONUS);
 }
 
-// ===== 天时：按本机日期轮换的当日环境，让每天开门有不同打法 =====
-/**
- * 天时每天（本机公历日期）固定一条，影响客流 / 稀客 / 口味 / 采购 / 修为。
- * 同一台设备同一天里玩多少回合都是同一条；跨天自动换。
- */
-export interface OmenDef {
+// ===== 天气：按本机日期轮换，纯装饰 =====
+export interface WeatherDef {
   id: string;
   name: string;
-  /** 状态栏与题意用的短说明，控制在 8 字内。 */
-  short: string;
+  /** 开场题头与见闻录用的一句氛围描述。 */
   desc: string;
   /** 天气粒子：0=晴（金尘）1=灵雾 2=落英 3=夜雨。 */
   visual: 0 | 1 | 2 | 3;
-  /** <1 客流变多；>1 客流变少。 */
-  arrivalFactor: number;
-  priceFactor: number;
-  /** 口味命中额外加价，叠加在 +50% 之上。 */
-  wishBonus: number;
-  /** <1 采购更便宜。 */
-  purchaseFactor: number;
-  rareWeightFactor: number;
-  /** 亲自下厨每道菜额外修为。 */
-  cultivationBonus: number;
 }
 
-export const OMENS: OmenDef[] = C.omens;
+export const WEATHERS: WeatherDef[] = C.weathers;
 
 /** 本机公历日期键，YYYY-MM-DD。 */
-// shortcut: 天时与开市利是信任本机时钟，改系统日期可刷；接入服务端或需要防作弊时换成服务器日期
+// shortcut: 天气与开市利是信任本机时钟，改系统日期可刷；接入服务端或需要防作弊时换成服务器日期
 export function localDateKey(date = new Date()): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
-/** 同一天永远是同一道天时；用日期字符串做稳定散列，读档/重开一致。 */
-export function getDailyOmen(dateKey: string): OmenDef {
+/** 同一天永远是同一种天气；用日期字符串做稳定散列，读档/重开一致。 */
+export function getDailyWeather(dateKey: string): WeatherDef {
   let hash = 0;
   for (let i = 0; i < dateKey.length; i++) hash = (hash * 31 + dateKey.charCodeAt(i)) >>> 0;
-  return OMENS[hash % OMENS.length];
+  return WEATHERS[hash % WEATHERS.length];
 }
 
 // ===== 开市利是：本机每天第一次开店的一次性奖励 =====

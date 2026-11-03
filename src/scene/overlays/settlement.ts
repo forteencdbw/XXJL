@@ -1,5 +1,5 @@
 // 结算弹窗与破产弹窗。
-import { BANKRUPT_STREAK, DISHES, GOAL_STREAK_TARGET, getDailyOmen, getDailySpecial, getRepLevelInfo, getUpgradeCost, isFestivalDay, localDateKey } from "../../logic";
+import { BANKRUPT_STREAK, DISHES, GOAL_STREAK_TARGET, getDailySpecial, getRepLevelInfo, getUpgradeCost, isFestivalDay } from "../../logic";
 import { CARD_W, SCREEN_H, SCREEN_W, STATUS_BAR_H, XIAN_FONT } from "../constants";
 import type { TavernScene } from "../TavernScene";
 
@@ -41,7 +41,6 @@ export class SettlementOverlayMethods {
     const totalRent = this.lastRent;
     const netIncome = this.sessionRevenue - totalWage - totalLoan - totalRent;
     const summary = [
-      `今日天时：${this.omen.name} · ${this.omen.short}`,
       ...(this.lastGift
         ? [`开市利是：连续 ${this.lastGift.streak} 天 · +${this.lastGift.coins} 灵石、+${this.lastGift.cultivation} 修为`]
         : []),
@@ -62,11 +61,6 @@ export class SettlementOverlayMethods {
     const nextSpecial = DISHES.find(
       (d) => d.id === getDailySpecial(this.day, this.level, this.unlockedDishIds()),
     );
-    // 明日天时按本机日期预告：给「明天再回来看看」一个具体的理由
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const tomorrowOmen = getDailyOmen(localDateKey(tomorrow));
-    summary.push(`明日天时：${tomorrowOmen.name} · ${tomorrowOmen.short}`);
     summary.push(
       isFestivalDay(this.day)
         ? "明日：灯会 · 客流更旺 · 目标赏 ×1.5（别错过）"

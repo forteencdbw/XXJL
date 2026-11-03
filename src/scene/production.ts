@@ -255,10 +255,6 @@ export class ProductionMethods {
         );
   }
 
-  canFinishBeforeClose(this: TavernScene, dish: Dish, driver: Driver, emp?: Employee): boolean {
-    return this.sessionEndsAt <= 0 || this.time.now + this.cookDuration(dish, driver, emp) <= this.sessionEndsAt;
-  }
-
   /** 返回是否真的起锅。 */
   startCook(this: TavernScene, booth: Booth, index: number, driver: Driver, dish?: Dish, emp?: Employee): boolean {
     if (booth.state !== "awaitingCook") return false;
@@ -289,11 +285,6 @@ export class ProductionMethods {
     if (menu.length === 0) return false;
     const chosen = dish ?? menu[this.dishCursor % menu.length];
     const duration = this.cookDuration(chosen, driver, emp);
-    // 打烊前做不完的菜不启动；轮转只在真正起锅后才前进，避免空转吃掉菜序
-    if (!this.canFinishBeforeClose(chosen, driver, emp)) {
-      if (driver === "player") this.showHint("这道菜来不及了，换道快菜");
-      return false;
-    }
     if (dish === undefined) this.dishCursor += 1;
     this.inventory -= 1;
     // 连击在起锅时锁定：命中口味 +1 连，上错清零；伙计出菜不参与

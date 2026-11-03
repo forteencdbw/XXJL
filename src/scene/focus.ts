@@ -233,7 +233,8 @@ export class FocusMethods {
       this.reputationBarBg,
       this.reputationBar,
       this.chronicleText,
-      this.omenBadge,
+      this.weatherBadge,
+      this.clockText,
       this.comboBadge,
       this.sfxButton,
       this.startButton,
@@ -245,6 +246,8 @@ export class FocusMethods {
     ];
     ui.forEach((obj) => obj.setVisible(!hidden));
     this.purchaseButton.setVisible(!hidden);
+    // 营业中（含收尾结算）没有开始按钮；特写/结算恢复界面时别把它带回来
+    if (this.gameState === "open") this.startButton.setVisible(false);
     this.tutorialBanner.setVisible(false);
   }
 }

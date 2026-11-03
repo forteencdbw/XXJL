@@ -7,13 +7,17 @@ import {
   LOANS,
   LOAN_PERIODS,
   NIGHT_COLOR,
-  OMENS,
+  WEATHERS,
+  formatClock,
+  getArrivalSchedule,
+  getClockMinutes,
+  getEventSchedule,
+  getSessionDurationMs,
   PATRON_KINDS,
   RANDOM_EVENTS,
   REALMS,
   applyEvent,
   getAchievements,
-  getArrivalInterval,
   getAscensionPriceMultiplier,
   getAscensionStartCoins,
   getAscensionStartInventory,
@@ -30,7 +34,7 @@ import {
   getDailyGoal,
   getDailyGoalOptions,
   getDailyGift,
-  getDailyOmen,
+  getDailyWeather,
   getDailyRent,
   getDailySpecial,
   getFestivalGoalMultiplier,
@@ -272,14 +276,43 @@ describe("灵石商行", () => {
 });
 
 describe("顾客到店与破产阈值", () => {
-  it("酒楼等级会小幅缩短到店间隔", () => {
-    const base = 5000;
-    expect(getArrivalInterval(1, base)).toBe(base);
-    expect(getArrivalInterval(3, base)).toBeLessThan(base);
+  it("营业时钟：4 秒一刻，8 点到 23 点共 4 分钟，到打烊封顶", () => {
+    expect(getSessionDurationMs()).toBe(240000);
+    expect(getClockMinutes(0)).toBe(480);
+    expect(getClockMinutes(3999)).toBe(480);
+    expect(getClockMinutes(4000)).toBe(495);
+    expect(getClockMinutes(240000)).toBe(23 * 60);
+    expect(getClockMinutes(999999)).toBe(23 * 60);
   });
 
-  it("到店间隔有下限", () => {
-    expect(getArrivalInterval(999, 7000)).toBeGreaterThanOrEqual(1500);
+  it("时辰：初/正与刻", () => {
+    expect(formatClock(8 * 60)).toBe("辰正");
+    expect(formatClock(8 * 60 + 15)).toBe("辰正一刻");
+    expect(formatClock(8 * 60 + 45)).toBe("辰正三刻");
+    expect(formatClock(9 * 60)).toBe("巳初");
+    expect(formatClock(12 * 60 + 30)).toBe("午正二刻");
+    expect(formatClock(23 * 60)).toBe("子初");
+    expect(formatClock(0)).toBe("子正");
+    expect(formatClock(21 * 60)).toBe("亥初");
+  });
+
+  it("到店时刻：第一位开门即到，其余铺满到 21 点前", () => {
+    const window = 13 * 4 * 4000;
+    for (const r of [0, 0.5, 0.999]) {
+      const times = getArrivalSchedule(5, () => r);
+      expect(times).toHaveLength(5);
+      expect(times[0]).toBeLessThanOrEqual(2200);
+      expect(times[4]).toBeLessThanOrEqual(window);
+      expect([...times].sort((x, y) => x - y)).toEqual(times);
+    }
+    expect(getArrivalSchedule(5, () => 0.5)[4]).toBeCloseTo(window * 0.8);
+    expect(getArrivalSchedule(0, Math.random)).toEqual([]);
+  });
+
+  it("事件时刻落在开门到戌初之间", () => {
+    const times = getEventSchedule(3, () => 0.999);
+    expect(times).toHaveLength(3);
+    expect(Math.max(...times)).toBeLessThan(11 * 4 * 4000);
   });
 
   it("破产阈值为连续 5 回合", () => {
@@ -570,31 +603,18 @@ describe("声望", () => {
   });
 });
 
-describe("天时与开市利是", () => {
-  it("同一天是同一道天时，连续 60 天覆盖全部六道", () => {
-    expect(getDailyOmen("2026-10-26")).toBe(getDailyOmen("2026-10-26"));
+describe("天气与开市利是", () => {
+  it("同一天是同一种天气，连续 60 天覆盖全部四种", () => {
+    expect(getDailyWeather("2026-10-26")).toBe(getDailyWeather("2026-10-26"));
     const seen = new Set<string>();
     for (let i = 0; i < 60; i++) {
-      seen.add(getDailyOmen(localDateKey(new Date(2026, 0, 1 + i))).id);
+      seen.add(getDailyWeather(localDateKey(new Date(2026, 0, 1 + i))).id);
     }
-    expect(seen.size).toBe(OMENS.length);
-    expect(new Set(OMENS.map((o) => o.id)).size).toBe(OMENS.length);
+    expect(seen.size).toBe(WEATHERS.length);
+    expect(new Set(WEATHERS.map((w) => w.visual)).size).toBe(WEATHERS.length);
   });
 
-  it("天时数值都在合理范围，短说明不超长", () => {
-    for (const omen of OMENS) {
-      expect(omen.arrivalFactor).toBeGreaterThan(0);
-      expect(omen.priceFactor).toBeGreaterThan(0);
-      expect(omen.purchaseFactor).toBeGreaterThan(0);
-      expect(omen.rareWeightFactor).toBeGreaterThan(0);
-      expect(omen.wishBonus).toBeGreaterThanOrEqual(0);
-      expect(omen.cultivationBonus).toBeGreaterThanOrEqual(0);
-      expect(omen.short.length).toBeLessThanOrEqual(8);
-      expect(omen.desc.length).toBeGreaterThan(0);
-    }
-  });
-
-  it("灵雾天时抽到稀客的比例明显变高", () => {
+  it("稀客权重倍率放大稀客比例（声望等级用）", () => {
     const countRare = (factor: number) => {
       let rare = 0;
       for (let i = 0; i < 5000; i++) {
@@ -605,11 +625,10 @@ describe("天时与开市利是", () => {
     expect(countRare(3)).toBeGreaterThan(countRare(1) * 2);
   });
 
-  it("口味赏可以叠加天时加成，上错仍只付半价", () => {
+  it("口味命中加价，上错只付半价", () => {
     expect(getWishPrice(100, true)).toBe(150);
-    expect(getWishPrice(100, true, true, 0.2)).toBe(170);
-    expect(getWishPrice(100, false, true, 0.2)).toBe(50);
-    expect(getWishPrice(100, false, false, 0.2)).toBe(100);
+    expect(getWishPrice(100, false, true)).toBe(50);
+    expect(getWishPrice(100, false, false)).toBe(100);
   });
 
   it("连续开店：同日不变、隔日 +1、断一天归 1", () => {

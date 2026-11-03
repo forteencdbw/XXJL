@@ -19,6 +19,18 @@ export const GAME = {
 
   /** 营业中的节奏 */
   session: {
+    /** 营业时钟：现实多少毫秒走一刻（游戏内 15 分钟） */
+    msPerQuarter: 4000,
+    /** 几点开门（辰正 = 8） */
+    openHour: 8,
+    /** 几点打烊（子初 = 23）；到点后不再来客，店里客人走完即结算 */
+    closeHour: 23,
+    /** 最后一位客人最晚几点到；当天客人在开门到这个时刻之间均匀铺开 */
+    lastArrivalHour: 21,
+    /** 每位客人到店时刻的随机浮动（0.3 = 前后浮动平均间隔的 30%） */
+    arrivalJitter: 0.3,
+    /** 开门后第一位客人几毫秒内到，避免开局空等 */
+    firstArrivalMs: 2200,
     /** 排队耐心（毫秒），再乘食客类型的耐心系数 */
     queuePatienceMs: 8000,
     /** 第 1 天排队耐心倍率（教学缓冲） */
@@ -29,14 +41,6 @@ export const GAME = {
     diningMs: 4500,
     /** 入座后留给玩家亲手出菜的优先窗口（毫秒），之后伙计才接手 */
     cookPriorityMs: 1500,
-    /** 到店间隔随机下限（毫秒） */
-    arrivalMinMs: 4000,
-    /** 到店间隔随机上限（毫秒） */
-    arrivalMaxMs: 7000,
-    /** 酒楼每升一级，到店间隔缩短（毫秒） */
-    arrivalShrinkPerLevelMs: 150,
-    /** 到店间隔最短（毫秒） */
-    arrivalFloorMs: 1500,
   },
 
   /** 招待 / 烹饪耗时（玩家基准，伙计再乘伙计倍率） */
@@ -286,20 +290,13 @@ export const GAME = {
     goalExtraCultivation: 1,
   },
 
-  /**
-   * 天时（每天按本机日期轮换一条）。
-   * arrivalFactor <1 客多 >1 客少；priceFactor 售价倍率；wishBonus 口味命中额外加价；
-   * purchaseFactor 采购价倍率；rareWeightFactor 稀客权重倍率；cultivationBonus 亲自下厨额外修为。
-   * visual 天气粒子：0 晴 1 灵雾 2 落英 3 夜雨。
-   */
-  omens: [
-    { id: "clear", name: "晴", short: "客流 +12%", desc: "风和日丽，来往食客多了些", visual: 0, arrivalFactor: 0.88, priceFactor: 1, wishBonus: 0, purchaseFactor: 1, rareWeightFactor: 1, cultivationBonus: 0 },
-    { id: "mist", name: "灵雾", short: "稀客 ×3", desc: "仙雾缭绕，仙门中人更愿登门", visual: 1, arrivalFactor: 1, priceFactor: 1, wishBonus: 0, purchaseFactor: 1, rareWeightFactor: 3, cultivationBonus: 0 },
-    { id: "petals", name: "落英", short: "口味赏 +20%", desc: "落英缤纷，懂吃的人更舍得掏钱", visual: 2, arrivalFactor: 1, priceFactor: 1, wishBonus: 0.2, purchaseFactor: 1, rareWeightFactor: 1, cultivationBonus: 0 },
-    { id: "market", name: "集市", short: "灵材 6 折", desc: "山下开市，灵材便宜了四成", visual: 0, arrivalFactor: 1, priceFactor: 1, wishBonus: 0, purchaseFactor: 0.6, rareWeightFactor: 1, cultivationBonus: 0 },
-    { id: "rain", name: "夜雨", short: "客少价高", desc: "雨夜客稀，来的都是肯花灵石的人", visual: 3, arrivalFactor: 1.12, priceFactor: 1.15, wishBonus: 0, purchaseFactor: 1, rareWeightFactor: 1, cultivationBonus: 0 },
-    { id: "moon", name: "月满", short: "下厨多悟", desc: "月华入灶，亲自下厨多悟一分", visual: 0, arrivalFactor: 1, priceFactor: 1, wishBonus: 0, purchaseFactor: 1, rareWeightFactor: 1, cultivationBonus: 1 },
-  ] as { id: string; name: string; short: string; desc: string; visual: 0 | 1 | 2 | 3; arrivalFactor: number; priceFactor: number; wishBonus: number; purchaseFactor: number; rareWeightFactor: number; cultivationBonus: number }[],
+  /** 天气（每天按本机日期轮换一种，纯装饰）。visual 天气粒子：0 晴 1 灵雾 2 落英 3 夜雨。 */
+  weathers: [
+    { id: "clear", name: "晴", desc: "风和日丽，檐下浮着金尘", visual: 0 },
+    { id: "mist", name: "灵雾", desc: "仙雾缭绕，山门若隐若现", visual: 1 },
+    { id: "petals", name: "落英", desc: "落英缤纷，花瓣飘进雅座", visual: 2 },
+    { id: "rain", name: "夜雨", desc: "夜雨潇潇，檐角滴答作响", visual: 3 },
+  ] as { id: string; name: string; desc: string; visual: 0 | 1 | 2 | 3 }[],
 
   /** 开市利是（本机每天第一次开店） */
   dailyGift: {
@@ -376,6 +373,8 @@ export const GAME = {
     patronsPerEvent: 5,
     /** 每天最多几次 */
     maxPerSession: 4,
+    /** 几点以后不再触发（戌初 = 19）；触发时刻随机落在开门到这个时刻之间 */
+    lastHour: 19,
     /** coins/ingredients/cultivation 可为负；weight 抽取权重 */
     pool: [
       { id: "rain", text: "灵雨润田，后厨凭空多出一筐灵材", kind: "good", coins: 0, ingredients: 3, cultivation: 0, weight: 2 },
@@ -427,10 +426,16 @@ export function validateConfig(cfg: GameConfig): string[] {
       if (!dishIds.has(id)) errors.push(`patronKinds[${i}].favorites 引用了不存在的菜「${id}」`);
     }),
   );
-  if (cfg.session.arrivalMinMs > cfg.session.arrivalMaxMs) errors.push("session.arrivalMinMs 不能大于 arrivalMaxMs");
+  const se = cfg.session;
+  if (!(se.openHour < se.lastArrivalHour && se.lastArrivalHour <= se.closeHour && se.closeHour <= 24))
+    errors.push("session 时刻要满足 openHour < lastArrivalHour ≤ closeHour ≤ 24");
+  if (!(se.openHour < cfg.events.lastHour && cfg.events.lastHour <= se.closeHour))
+    errors.push("events.lastHour 要在 session.openHour 与 closeHour 之间");
+  if (se.msPerQuarter < 100) errors.push("session.msPerQuarter 至少 100 毫秒");
   for (const [path, v] of [
     ["regulars.returnChance", cfg.regulars.returnChance],
     ["dailyGoal.partialThreshold", cfg.dailyGoal.partialThreshold],
+    ["session.arrivalJitter", cfg.session.arrivalJitter],
     ["staff.buyDiscountCap", cfg.staff.buyDiscountCap],
   ] as const) {
     if (v > 1) errors.push(`${path} 是比例，不能大于 1（现在是 ${v}）`);

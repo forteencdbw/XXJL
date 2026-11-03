@@ -31,7 +31,7 @@ export class MenuOverlayMethods {
     layer.add(this.add.text(40, 58, "选择今日菜单", { fontSize: "36px", color: "#ffe6a8", fontFamily: XIAN_FONT }));
     layer.add(
       this.add
-        .text(690, 60, `天时 · ${this.omen.name}`, {
+        .text(690, 60, `天气 · ${this.weather.name}`, {
           fontSize: "21px",
           color: "#e0c9a0",
           fontFamily: XIAN_FONT,
@@ -59,9 +59,9 @@ export class MenuOverlayMethods {
       this.add.text(
         40,
         142,
-        `今日目标二选一 · 库存 ${this.inventory} · 日租 ${getDailyRent(this.level) + getFloorRent(this.floorsBuilt)} 灵石 · 天时 ${
-          this.omen.name
-        }：${this.omen.short}${isFestivalDay(this.day) ? " · 灯会赏 ×1.5" : ""}`,
+        `今日目标二选一 · 库存 ${this.inventory} · 日租 ${getDailyRent(this.level) + getFloorRent(this.floorsBuilt)} 灵石${
+          isFestivalDay(this.day) ? " · 灯会赏 ×1.5" : ""
+        }`,
         { fontSize: "16px", color: "#e0c060" },
       ),
     );

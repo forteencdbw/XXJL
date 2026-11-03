@@ -64,8 +64,7 @@ export class StaffMethods {
   staffTryCook(this: TavernScene, e: Employee, time: number): boolean {
     const menu = this.getMenuDishes();
     const next = menu.length ? menu[this.dishCursor % menu.length] : null;
-    // 先确认轮到的菜能在打烊前做完；做不完就直接不接，避免每帧空转
-    if (!next || !this.canFinishBeforeClose(next, "staff", e)) return false;
+    if (!next) return false;
     const index = this.booths.findIndex(
       (booth) => booth.state === "awaitingCook" && booth.floor === this.activeFloor && time - booth.awaitingSince >= COOK_PRIORITY_MS,
     );

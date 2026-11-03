@@ -19,10 +19,10 @@ export class AmbientMethods {
     if (puffs === 0) this.spawnSteam(-272 + Phaser.Math.Between(-8, 8), 826, 0.16);
   }
 
-  /** 天时对应的天气粒子：晴=流萤，灵雾=低雾，落英=花瓣，夜雨=雨丝。纯氛围。 */
+  /** 当日天气的粒子：晴=流萤，灵雾=低雾，落英=花瓣，夜雨=雨丝。纯氛围。 */
   emitWeather(this: TavernScene) {
     if (this.gameState !== "open" || this.settling) return;
-    const mode = this.omen.visual;
+    const mode = this.weather.visual;
     const cam = this.cameras.main;
     const x = cam.scrollX + Phaser.Math.Between(30, 690);
     if (mode === 1) {

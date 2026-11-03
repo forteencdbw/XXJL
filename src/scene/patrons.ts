@@ -260,7 +260,7 @@ export class PatronMethods {
     const isFirstGuest = !this.firstGuestShown;
     this.firstGuestShown = true;
     // 声望越高，仙门贵客越愿意登门：等级 1–9 直接当作稀客权重倍率
-    const rareWeight = this.omen.rareWeightFactor * getRepLevel(this.reputation);
+    const rareWeight = getRepLevel(this.reputation);
     // 新档第一位客人固定是御剑而来的白无锋：让玩家先看到本作最有辨识度的出场
     const tutorialSword = isFirstGuest && this.day === 1 && !regular;
     const kind = tutorialSword
@@ -310,7 +310,7 @@ export class PatronMethods {
   }
 
   /** 随机事件：不打断操作，直接把结果记进见闻录并飘一条提示。 */
-  triggerRandomEvent(this: TavernScene, time: number) {
+  triggerRandomEvent(this: TavernScene) {
     const event = pickRandomEvent(Math.random());
     const next = applyEvent(event, {
       coins: this.coins,
@@ -322,7 +322,6 @@ export class PatronMethods {
     this.displayedCoins = this.coins;
     this.inventory = next.ingredients;
     this.eventsThisSession += 1;
-    this.nextEventAt = time + Phaser.Math.Between(14000, 24000);
     const parts: string[] = [];
     if (event.coins !== 0) parts.push(`灵石 ${event.coins > 0 ? "+" : ""}${event.coins}`);
     if (event.ingredients !== 0) parts.push(`灵材 ${event.ingredients > 0 ? "+" : ""}${event.ingredients}`);

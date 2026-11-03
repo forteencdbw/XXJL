@@ -23,7 +23,8 @@ export class HudMethods {
       this.queueText.setText(`排队 ${this.queue.length}/${queueCap} · 已满`);
       this.queueText.setColor("#ff9a8a");
     } else if (open && !this.settling && this.patronsSpawned < this.patronsTotal) {
-      const nextIn = Math.max(0, Math.ceil((this.nextArrivalAt - this.time.now) / 1000));
+      const nextAt = this.sessionStartedAt + (this.arrivalTimes[this.patronsSpawned] ?? 0);
+      const nextIn = Math.max(0, Math.ceil((nextAt - this.time.now) / 1000));
       this.queueText.setText(`排队 ${this.queue.length}/${queueCap} · 下位 ${nextIn}s`);
       this.queueText.setColor("#a8d8b0");
     } else if (open && !this.settling) {
@@ -44,6 +45,7 @@ export class HudMethods {
     this.reputationBar.setScale(repRatio, 1);
     const next = getNextRealm(this.cultivation);
     this.realmText.setText(`境界：${REALMS[this.realmIndex()].name}`);
+    this.clockText.setText(this.clockLabel());
     this.cultivationText.setText(
       next ? `修为 ${this.cultivation}/${next.cultivation}` : `修为 ${this.cultivation} 圆满`,
     );
@@ -83,8 +85,8 @@ export class HudMethods {
       }
     } else {
       const goal = this.currentDayGoal();
-      // 打烊页：奖励明细留给菜单目标卡，HUD 只留日期、天时与目标，避免长行压到画面
-      this.sessionText.setText(`第 ${this.day} 日 · 天时：${this.omen.name} · ${goal.label}`);
+      // 打烊页：奖励明细留给菜单目标卡，HUD 只留日期、天气与目标，避免长行压到画面
+      this.sessionText.setText(`第 ${this.day} 日 · 天气：${this.weather.name} · ${goal.label}`);
       this.goalText.setText("");
       // 事务面板标题常驻回访提示：今天还没领利是就写「待领」，领过则显示连续天数
       const giftPending = this.lastGiftDate !== this.todayKey;
@@ -99,14 +101,13 @@ export class HudMethods {
     // 营业中把常驻日志与声音开关收起：给主画面让位，日志在打烊视图里看
     this.chronicleText.setVisible(!open);
     this.sfxButton.setVisible(!open);
-    const showOmen = open && !this.settling;
-    this.omenBadge.setVisible(showOmen);
-    this.omenBadge.setText(`天时 · ${this.omen.name}（${this.omen.short}）`);
-    this.comboBadge.setVisible(showOmen && this.combo > 0);
+    const showWeather = open && !this.settling;
+    this.weatherBadge.setVisible(showWeather);
+    this.weatherBadge.setText(`天气 · ${this.weather.name}`);
+    this.comboBadge.setVisible(showWeather && this.combo > 0);
     this.comboBadge.setText(`连击 ×${this.combo} · 收益 +${this.combo * 5}%`);
 
     const menu = this.getMenuDishes();
-    const canServeBeforeClose = menu.some((dish) => this.canFinishBeforeClose(dish, "player"));
     const wished = new Set(
       this.booths
         .filter((booth) => booth.state === "awaitingCook" && booth.floor === this.activeFloor)
@@ -128,9 +129,7 @@ export class HudMethods {
       visual.label.setVisible(showLabel);
       const regular = booth.patronRegular;
       visual.label.setColor(
-        booth.state === "awaitingCook" && !canServeBeforeClose
-          ? "#ff9a8a"
-          : (kind && isRarePatron(kind)) || regular
+        (kind && isRarePatron(kind)) || regular
             ? "#ffd98a"
             : "#ffffff",
       );
@@ -158,15 +157,14 @@ export class HudMethods {
       const dish = menu[i];
       chip.setVisible(showChips && dish !== undefined);
       if (!dish) return;
-      const finishable = this.canFinishBeforeClose(dish, "player");
-      chip.setAlpha(showChips ? (busy || !finishable ? 0.5 : 1) : 1);
+      chip.setAlpha(showChips && busy ? 0.5 : 1);
       const wanted = wished.has(dish.id);
       const special = dish.id === specialDish?.id;
       chip.setText(`${wanted ? "★" : ""}${special ? "◆" : ""}${dish.name} ${this.dishPrice(dish)}`);
       chip.setBackgroundColor(special ? "#4a3a14" : wanted ? "#6a4a14" : "#2e2119");
     });
 
-    this.startButton.setText(open ? "提前打烊" : "开始营业");
+    this.startButton.setText("开始营业");
     this.serveButton.setText(this.playerSeat ? "招待中…" : "招待入座");
     this.cookButton.setText(this.playerCookingBooth !== null ? "烹饪中…" : "动手烹饪");
 

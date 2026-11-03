@@ -1,7 +1,7 @@
 // 主场景：字段（全部场景状态）、create/update 入口；方法按功能拆在 scene/ 其他文件。
 import Phaser from "phaser";
-import { DISHES, EMPTY_META, STARTING_COINS, STARTING_INVENTORY, getDailyOmen, localDateKey } from "../logic";
-import type { DailyGoal, Employee, MetaStats, OmenDef } from "../logic";
+import { DISHES, EMPTY_META, STARTING_COINS, STARTING_INVENTORY, getDailyWeather, localDateKey } from "../logic";
+import type { DailyGoal, Employee, MetaStats, WeatherDef } from "../logic";
 import { Character } from "./Character";
 import { ProgressButton } from "./ProgressButton";
 import { AUTOSAVE_MS, CAMERA_CLOSED_X, SCREEN_H, USE_VECTOR_TITLE } from "./constants";
@@ -68,10 +68,7 @@ export class TavernScene extends Phaser.Scene {
   gameState: GameState = "closed";
   selectedDishIds = new Set<string>();
   dishCursor = 0;
-  sessionEndsAt = 0;
   sessionStartedAt = 0;
-  /** 天色推进用的名义时长，随当天客人数变化。 */
-  sessionNominalMs = 90000;
   /** 当天已成型的客人总数：开市时按声望锁定，营业中升级次日才生效。 */
   patronsTotal = 0;
   /** 已经到过店（含排队时被拒）的客人数，用于判断名单是否走完。 */
@@ -108,9 +105,9 @@ export class TavernScene extends Phaser.Scene {
     streakCultivation: number;
   } | null = null;
   goalStreak = 0;
-  /** 本机日期与当日天时：跨天时在开店前刷新。 */
+  /** 本机日期与当日天气：跨天时在开店前刷新。 */
   todayKey = localDateKey();
-  omen: OmenDef = getDailyOmen(localDateKey());
+  weather: WeatherDef = getDailyWeather(localDateKey());
   lastGiftDate?: string;
   giftStreak = 0;
   lastGift: { streak: number; coins: number; cultivation: number; ingredients: number } | null =
@@ -156,12 +153,14 @@ export class TavernScene extends Phaser.Scene {
   reputationBarBg!: Phaser.GameObjects.Rectangle;
   reputationBar!: Phaser.GameObjects.Rectangle;
   chronicleText!: Phaser.GameObjects.Text;
-  omenBadge!: Phaser.GameObjects.Text;
+  weatherBadge!: Phaser.GameObjects.Text;
+  clockText!: Phaser.GameObjects.Text;
   comboBadge!: Phaser.GameObjects.Text;
   boothVisuals: BoothVisual[] = [];
 
-  nextArrivalAt = 0;
-  nextEventAt = 0;
+  /** 当天每位客人 / 每个随机事件的触发时刻（相对开门的现实毫秒，升序）。 */
+  arrivalTimes: number[] = [];
+  eventTimes: number[] = [];
   eventsThisSession = 0;
   /** HUD 上显示的灵石数，收益到账时从这里滚动到真实值。 */
   displayedCoins = STARTING_COINS;
@@ -293,10 +292,6 @@ export class TavernScene extends Phaser.Scene {
     if (this.overlay) this.overlay.setPosition(this.cameras.main.scrollX, this.cameras.main.scrollY);
 
     if (this.gameState === "open" && !this.settling) {
-      if (time >= this.sessionEndsAt) {
-        this.endSession();
-        return;
-      }
       this.tickOpenSession(time);
     }
 

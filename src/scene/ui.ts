@@ -116,12 +116,14 @@ export class UiMethods {
     this.hudChips = this.add.graphics().setScrollFactor(0).setDepth(30.2);
     this.hudChips.fillStyle(0x0a0704, 0.42);
     this.hudChips.fillRoundedRect(12, 2, 362, 34, 8);
-    this.hudChips.fillRoundedRect(404, 2, 168, 34, 8);
+    this.hudChips.fillRoundedRect(380, 2, 156, 34, 8);
+    this.hudChips.fillRoundedRect(542, 2, 166, 34, 8);
     this.hudChips.fillRoundedRect(12, 36, 254, 30, 7);
     this.hudChips.fillRoundedRect(270, 36, 434, 30, 7);
     this.hudChips.lineStyle(1, 0x8a6a3a, 0.28);
     this.hudChips.strokeRoundedRect(12, 2, 362, 34, 8);
-    this.hudChips.strokeRoundedRect(404, 2, 168, 34, 8);
+    this.hudChips.strokeRoundedRect(380, 2, 156, 34, 8);
+    this.hudChips.strokeRoundedRect(542, 2, 166, 34, 8);
     this.hudChips.strokeRoundedRect(12, 36, 254, 30, 7);
     this.hudChips.strokeRoundedRect(270, 36, 434, 30, 7);
 
@@ -129,7 +131,10 @@ export class UiMethods {
     this.inventoryText = this.addUiText(190, 6, "", "26px", "#a8d8b0");
     this.levelText = this.addUiText(400, 6, "", "18px", "#87ceeb");
     this.queueText = this.addUiText(24, 40, "", "24px", "#d8c8a8");
-    this.realmText = this.addUiText(430, 9, "", "21px", "#e0c9a0");
+    this.realmText = this.addUiText(396, 9, "", "21px", "#e0c9a0");
+    // 状态栏最右：营业时钟的时辰
+    this.clockText = this.addUiText(696, 9, "", "21px", "#ffd98a").setOrigin(1, 0);
+    this.clockText.setStyle({ fontStyle: "bold" });
     this.cultivationText = this.addUiText(300, 42, "", "21px", "#b8d8c8");
     this.goalText = this.addUiText(440, 40, "", "25px", "#e0c060");
     this.goalText.setWordWrapWidth(260);
@@ -148,7 +153,7 @@ export class UiMethods {
       .setScrollFactor(0)
       .setDepth(30.7);
     this.chronicleText = this.addUiText(24, 96, "", "17px", "#b8b0a0");
-    this.omenBadge = this.addUiText(24, 176, "", "17px", "#e0c9a0").setVisible(false);
+    this.weatherBadge = this.addUiText(24, 176, "", "17px", "#e0c9a0").setVisible(false);
     this.comboBadge = this.addUiText(696, 174, "", "19px", "#ffb45a")
       .setOrigin(1, 0)
       .setVisible(false);
@@ -175,8 +180,8 @@ export class UiMethods {
     const audio = loadAudioSettings();
     this.sfxMuted = audio.sfxMuted;
     this.sfxButton = this.addUiButton(
-      580,
-      8,
+      612,
+      96,
       () => {
         this.sfxMuted = !this.sfxMuted;
         setSfxMuted(this.sfxMuted);
@@ -188,8 +193,8 @@ export class UiMethods {
     this.refreshAudioButtons();
 
     // 营业中操作按钮：与采购/打烊同处底部操作区
-    this.serveButton = this.addUiButton(346, 1186, () => this.startSeat("player"), { x: 14, y: 28 }, 6, "20px");
-    this.cookButton = this.addUiButton(460, 1186, () => this.manualCook(), { x: 14, y: 28 }, 6, "20px");
+    this.serveButton = this.addUiButton(232, 1186, () => this.startSeat("player"), { x: 14, y: 28 }, 6, "20px");
+    this.cookButton = this.addUiButton(346, 1186, () => this.manualCook(), { x: 14, y: 28 }, 6, "20px");
     this.serveButton.setBackgroundColor("#35543a");
     this.cookButton.setBackgroundColor("#5a3a1c");
     // 出菜行：点哪道菜就做哪道，优先端给想吃它的那一桌
@@ -414,13 +419,14 @@ export class UiMethods {
   }
 
   positionUi(this: TavernScene, isOpen: boolean) {
-    // 打烊时「开始营业」是主行动；营业中换成「提前打烊」配色。高度保持大按钮。
+    // 打烊时「开始营业」是主行动；营业中一定跑满到子初，不显示这个按钮
     this.startButton.setStyle({
-      fontSize: isOpen ? "18px" : "24px",
+      fontSize: "24px",
       color: "#f5e6c8",
-      backgroundColor: isOpen ? "#2a1c18" : "#8a2a22",
-      padding: isOpen ? { x: 20, y: 28 } : { x: 30, y: 26 },
+      backgroundColor: "#8a2a22",
+      padding: { x: 30, y: 26 },
     });
+    this.startButton.setVisible(!isOpen);
     this.relayoutTables();
     this.setFloorTabsVisible(isOpen);
     this.applyFloorLook();
