@@ -1,33 +1,34 @@
-// 纯数值逻辑：不依赖 Phaser / DOM，便于单元测试。
+// 纯数值逻辑：不依赖 Phaser / DOM，便于单元测试。数值本身都在 config.ts。
+import { GAME } from "./config";
 
 export type ProductionRole = "hawker" | "server" | "cook";
 export type StaffRole = ProductionRole | "buyer";
 
-export const TABLE_COUNT_BASE = 3;
-export const ARRIVAL_MIN_MS = 4000;
-export const ARRIVAL_MAX_MS = 7000;
-export const ARRIVAL_TAVERN_SHRINK_MS = 150;
-export const ARRIVAL_FLOOR_MS = 1500;
-export const STARTING_COINS = 20;
-export const STARTING_INVENTORY = 8;
-export const PURCHASE_COST = 5;
-export const PURCHASE_TIME_MS = 15000;
-export const PURCHASE_EMERGENCY_MULTIPLIER = 2;
-export const PURCHASE_TAVERN_SHRINK_PER_LEVEL_MS = 300;
-export const PURCHASE_FLOOR_MS = 3000;
-export const PURCHASE_DISCOUNT_PER_LEVEL = 0.08;
-export const PURCHASE_DISCOUNT_CAP = 0.5;
-export const UPGRADE_BASE_COST = 30;
-export const UPGRADE_COST_MULTIPLIER = 1.75;
-export const STAFF_SPEED_PENALTY = 1.6;
-// 4 级时三岗都应快于玩家：1.6 × 0.82^3 ≈ 0.88、0.85^3 ≈ 0.98、0.84^3 ≈ 0.95
-export const STAFF_LEVEL_SPEEDUP = { hawker: 0.82, server: 0.85, cook: 0.84 } as const;
-export const EXP_PER_LEVEL = 3;
-export const MAX_STAFF_LEVEL = 4;
-export const STAFF_BASE_WAGE = { hawker: 5, server: 8, cook: 10, buyer: 6 } as const;
-export const WAGE_PER_LEVEL = 1.3;
-export const LOAN_PERIODS = 12;
-export const BANKRUPT_STREAK = 5;
+const C = GAME;
+export const TABLE_COUNT_BASE = C.tavern.groundFloorBaseBooths;
+export const ARRIVAL_MIN_MS = C.session.arrivalMinMs;
+export const ARRIVAL_MAX_MS = C.session.arrivalMaxMs;
+export const ARRIVAL_TAVERN_SHRINK_MS = C.session.arrivalShrinkPerLevelMs;
+export const ARRIVAL_FLOOR_MS = C.session.arrivalFloorMs;
+export const STARTING_COINS = C.start.coins;
+export const STARTING_INVENTORY = C.start.ingredients;
+export const PURCHASE_COST = C.purchase.cost;
+export const PURCHASE_TIME_MS = C.purchase.emergencyTimeMs;
+export const PURCHASE_EMERGENCY_MULTIPLIER = C.purchase.emergencyPriceMultiplier;
+export const PURCHASE_TAVERN_SHRINK_PER_LEVEL_MS = C.purchase.emergencyShrinkPerLevelMs;
+export const PURCHASE_FLOOR_MS = C.purchase.emergencyFloorMs;
+export const PURCHASE_DISCOUNT_PER_LEVEL = C.staff.buyerDiscountPerLevel;
+export const PURCHASE_DISCOUNT_CAP = C.staff.buyerDiscountCap;
+export const UPGRADE_BASE_COST = C.tavern.upgradeBaseCost;
+export const UPGRADE_COST_MULTIPLIER = C.tavern.upgradeCostMultiplier;
+export const STAFF_SPEED_PENALTY = C.staff.speedPenalty;
+export const STAFF_LEVEL_SPEEDUP = C.staff.levelSpeedup;
+export const EXP_PER_LEVEL = C.staff.expPerLevel;
+export const MAX_STAFF_LEVEL = C.staff.maxLevel;
+export const STAFF_BASE_WAGE = C.staff.baseWage;
+export const WAGE_PER_LEVEL = C.staff.wageGrowthPerLevel;
+export const LOAN_PERIODS = C.bank.periods;
+export const BANKRUPT_STREAK = C.bank.bankruptStreak;
 export const NIGHT_COLOR = 0x1b2440;
 
 export interface Dish {
@@ -40,15 +41,7 @@ export interface Dish {
 
 // 价格越高、单位时间收益越低：高价菜靠口味/稀客加成才值得，走量菜靠翻台。
 // price / cookMs（每秒收益）从 4.0 逐级降到 2.95，避免“只挂最贵一道菜”成为唯一解。
-export const DISHES: Dish[] = [
-  { id: "stirfry", name: "清炒灵蔬", price: 6, cookMs: 1500, unlockLevel: 1 },
-  { id: "porridge", name: "灵米粥", price: 9, cookMs: 2500, unlockLevel: 2 },
-  { id: "jelly", name: "玉露羹", price: 14, cookMs: 4000, unlockLevel: 3 },
-  { id: "fish", name: "龙涎鱼脍", price: 22, cookMs: 6500, unlockLevel: 4 },
-  { id: "ginseng", name: "九转灵参", price: 32, cookMs: 10000, unlockLevel: 6 },
-  { id: "phoenix", name: "凤凰涅槃羹", price: 46, cookMs: 15000, unlockLevel: 8 },
-  { id: "voidfruit", name: "太虚道果", price: 65, cookMs: 22000, unlockLevel: 10 },
-];
+export const DISHES: Dish[] = C.dishes;
 
 export interface LoanDef {
   id: string;
@@ -60,11 +53,7 @@ export interface LoanDef {
   minDay: number;
 }
 
-export const LOANS: LoanDef[] = [
-  { id: "small", name: "小借", principal: 200, totalRepay: 240, unlockLevel: 1, minDay: 3 },
-  { id: "medium", name: "中借", principal: 500, totalRepay: 650, unlockLevel: 3, minDay: 1 },
-  { id: "large", name: "大借", principal: 1200, totalRepay: 1680, unlockLevel: 5, minDay: 1 },
-];
+export const LOANS: LoanDef[] = C.bank.loans;
 
 export const SKY_STOPS = [
   { t: 0, color: 0xa8d8ff },
@@ -79,11 +68,8 @@ export function getBoothCount(level: number): number {
 
 // ===== 楼层：一层散座 / 二层雅座 / 三层仙门包间 =====
 export const MAX_FLOORS = 3;
-export const FLOOR_CAP = 4;
-export const FLOOR_UNLOCKS = [
-  { floor: 1, level: 3, cost: 120, name: "二楼 · 雅座" },
-  { floor: 2, level: 6, cost: 450, name: "三楼 · 仙门包间" },
-] as const;
+export const FLOOR_CAP = C.tavern.boothsPerFloorCap;
+export const FLOOR_UNLOCKS = C.tavern.floorUnlocks;
 
 export type FloorIndex = 0 | 1 | 2;
 
@@ -92,8 +78,8 @@ export function getFloorBoothCount(level: number, floorsBuilt: number, floor: nu
   if (floor < 0 || floor >= MAX_FLOORS || floor > floorsBuilt) return 0;
   const lvl = Math.max(1, level);
   if (floor === 0) return Math.min(FLOOR_CAP, TABLE_COUNT_BASE + Math.min(1, lvl - 1));
-  if (floor === 1) return Math.min(FLOOR_CAP, 2 + Math.max(0, lvl - 3));
-  return Math.min(FLOOR_CAP, 2 + Math.max(0, lvl - 6));
+  // 楼上每层建成时 2 桌，之后酒楼每升一级 +1
+  return Math.min(FLOOR_CAP, 2 + Math.max(0, lvl - FLOOR_UNLOCKS[floor - 1].level));
 }
 
 export function getTotalBoothCount(level: number, floorsBuilt: number): number {
@@ -103,21 +89,21 @@ export function getTotalBoothCount(level: number, floorsBuilt: number): number {
 }
 
 export function getFloorPriceMultiplier(floor: number): number {
-  return floor <= 0 ? 1 : floor === 1 ? 1.15 : 1.25;
+  return C.tavern.floorPriceMultipliers[Math.min(2, Math.max(0, floor))];
 }
 
 export function getFloorPatienceMultiplier(floor: number): number {
-  return floor <= 0 ? 1 : floor === 1 ? 1.1 : 1.1;
+  return C.tavern.floorPatienceMultipliers[Math.min(2, Math.max(0, floor))];
 }
 
-/** 每多一层，日租 +6。 */
+/** 每多一层，日租 + rentPerFloor。 */
 export function getFloorRent(floorsBuilt: number): number {
-  return Math.max(0, floorsBuilt) * 6;
+  return Math.max(0, floorsBuilt) * C.tavern.rentPerFloor;
 }
 
 /** 12 桌后的等级只给很小的全局售价成长。 */
 export function getPostCapPriceBonus(level: number): number {
-  return 1 + Math.max(0, level - 8) * 0.01;
+  return 1 + Math.max(0, level - C.tavern.postCapPriceStartLevel) * C.tavern.postCapPriceStep;
 }
 
 export function getUpgradeCost(level: number): number {
@@ -125,10 +111,10 @@ export function getUpgradeCost(level: number): number {
 }
 
 // ===== 营造：除雅座扩建外的两条专精线 =====
-export const STOVE_BASE_COST = 34;
-export const STOVE_COST_MULTIPLIER = 1.75;
-export const STOVE_SPEEDUP = 0.9;
-export const STOVE_SPEED_FLOOR = 0.5;
+export const STOVE_BASE_COST = C.stove.baseCost;
+export const STOVE_COST_MULTIPLIER = C.stove.costMultiplier;
+export const STOVE_SPEEDUP = C.stove.speedupPerLevel;
+export const STOVE_SPEED_FLOOR = C.stove.speedFloor;
 
 export function getStoveUpgradeCost(level: number): number {
   return Math.round(STOVE_BASE_COST * Math.pow(STOVE_COST_MULTIPLIER, Math.max(0, level)));
@@ -139,8 +125,8 @@ export function getStoveSpeedFactor(level: number): number {
   return Math.max(STOVE_SPEED_FLOOR, Math.pow(STOVE_SPEEDUP, Math.max(0, level)));
 }
 
-export const SIGN_BASE_COST = 26;
-export const SIGN_COST_MULTIPLIER = 1.7;
+export const SIGN_BASE_COST = C.sign.baseCost;
+export const SIGN_COST_MULTIPLIER = C.sign.costMultiplier;
 
 export function getSignUpgradeCost(level: number): number {
   return Math.round(SIGN_BASE_COST * Math.pow(SIGN_COST_MULTIPLIER, Math.max(0, level)));
@@ -196,15 +182,12 @@ export interface PatronKind {
   names: string[];
 }
 
-export const PATRON_KINDS: PatronKind[] = [
-  { id: "rogue", name: "散修", bodyColor: 0x7a8a6a, hairColor: 0x2b2b2b, patienceFactor: 1, favorites: ["stirfry", "ginseng"], weight: 8, priceFactor: 1, names: ["沈青崖", "陆行舟", "顾长风", "唐不器"] },
-  { id: "sword", name: "剑修", bodyColor: 0x5a7a9a, hairColor: 0x1b1b2b, patienceFactor: 0.8, favorites: ["fish", "jelly", "voidfruit"], weight: 8, priceFactor: 1.1, names: ["白无锋", "叶惊鸿", "江雪照", "谢孤云"] },
-  { id: "alchemist", name: "丹修", bodyColor: 0x8a6a9a, hairColor: 0x3b2b3b, patienceFactor: 1.1, favorites: ["porridge", "jelly", "ginseng"], weight: 8, priceFactor: 1.05, names: ["苏问丹", "柳含烟", "程九炉", "温岐黄"] },
-  { id: "demon", name: "妖修", bodyColor: 0x9a5a3a, hairColor: 0x4a2b1b, patienceFactor: 1.2, favorites: ["fish", "stirfry", "phoenix"], weight: 8, priceFactor: 1.2, names: ["阿椒", "青尾", "胡三娘", "花间狸"] },
-  { id: "mortal", name: "凡人", bodyColor: 0xb0a090, hairColor: 0x3b3b3b, patienceFactor: 1.3, favorites: [], weight: 8, priceFactor: 0.9, names: ["王二", "李婶", "陈货郎", "赵小满"] },
-  { id: "elder", name: "仙门长老", bodyColor: 0xe8e0c8, hairColor: 0xdfe6ff, patienceFactor: 1.5, favorites: ["ginseng", "phoenix", "voidfruit"], weight: 1, priceFactor: 2.5, names: ["玄阳真人", "清虚长老", "素心仙子", "太微道人"] },
-  { id: "demonlord", name: "魔道散人", bodyColor: 0x6a2a3a, hairColor: 0x1a1a1a, patienceFactor: 0.7, favorites: ["fish", "phoenix"], weight: 1, priceFactor: 1.8, names: ["殷无咎", "屠千山", "夜罗刹", "鬼母"] },
-];
+export const PATRON_KINDS: PatronKind[] = C.patronKinds;
+
+/** 稀客：★ 标记、特殊音效、更多声望，受灵雾与声望放大权重。 */
+export function isRarePatron(kind: PatronKind): boolean {
+  return kind.priceFactor >= C.rarePriceFactor;
+}
 
 /** roll 取 [0,1)，同一类食客也有不同姓名。 */
 export function pickPatronName(kind: PatronKind, roll: number): string {
@@ -217,7 +200,7 @@ export function pickPatronName(kind: PatronKind, roll: number): string {
  */
 export function pickPatronKind(roll: number, rareWeightFactor = 1): PatronKind {
   const factor = Math.max(0, rareWeightFactor);
-  const weightOf = (kind: PatronKind) => kind.weight * (kind.priceFactor >= 1.8 ? factor : 1);
+  const weightOf = (kind: PatronKind) => kind.weight * (isRarePatron(kind) ? factor : 1);
   const total = PATRON_KINDS.reduce((sum, kind) => sum + weightOf(kind), 0);
   let cursor = Math.min(0.999999, Math.max(0, roll)) * total;
   for (const kind of PATRON_KINDS) {
@@ -248,9 +231,9 @@ export function getDishFans(dishId: string): string[] {
  * 声望是修仙界对这家酒楼的长期印象：服务客人累积，客人流失回退。
  * 等级决定当天到店人数与稀客比例，是长线成长的主轴。
  */
-export const REP_GAIN_SERVED = 10;
-export const REP_GAIN_RARE = 25;
-export const REP_LOSS = 20;
+export const REP_GAIN_SERVED = C.reputation.gainServed;
+export const REP_GAIN_RARE = C.reputation.gainRare;
+export const REP_LOSS = C.reputation.lossPerPatron;
 
 export interface RepLevelDef {
   title: string;
@@ -260,17 +243,7 @@ export interface RepLevelDef {
   patrons: number;
 }
 
-export const REP_LEVELS: RepLevelDef[] = [
-  { title: "无名小馆", threshold: 0, patrons: 5 },
-  { title: "初露锋芒", threshold: 60, patrons: 6 },
-  { title: "小有名气", threshold: 180, patrons: 7 },
-  { title: "声名鹊起", threshold: 400, patrons: 9 },
-  { title: "名动一方", threshold: 750, patrons: 10 },
-  { title: "声名远扬", threshold: 1250, patrons: 12 },
-  { title: "名震天下", threshold: 1900, patrons: 13 },
-  { title: "名动九霄", threshold: 2700, patrons: 15 },
-  { title: "仙凡共仰", threshold: 3700, patrons: 16 },
-];
+export const REP_LEVELS: RepLevelDef[] = C.reputation.levels;
 
 /** 当前声望所在等级下标（0 = 无名小馆）。 */
 export function getRepTier(reputation: number): number {
@@ -297,7 +270,7 @@ export function getNextRepThreshold(reputation: number): number | null {
 
 /** 服务完一位客人：稀客登门，名声传得更远。 */
 export function getRepGain(kind: PatronKind): number {
-  return kind.priceFactor >= 1.8 ? REP_GAIN_RARE : REP_GAIN_SERVED;
+  return isRarePatron(kind) ? REP_GAIN_RARE : REP_GAIN_SERVED;
 }
 
 /** 声望封顶在最高一级门槛，避免无限累积后掉级失去意义。 */
@@ -318,9 +291,9 @@ export function loseReputation(reputation: number, lostCount: number): number {
   return Math.max(REP_LEVELS[tier - 1].threshold, raw);
 }
 
-export const WISH_PRICE_BONUS = 0.5;
-export const WISH_MISS_MULTIPLIER = 0.5;
-export const DAILY_SPECIAL_BONUS = 0.25;
+export const WISH_PRICE_BONUS = C.pricing.wishBonus;
+export const WISH_MISS_MULTIPLIER = C.pricing.wishMissMultiplier;
+export const DAILY_SPECIAL_BONUS = C.pricing.dailySpecialBonus;
 
 /**
  * 今日招牌：从已解锁菜品里按天轮换一道，售价 +25%。
@@ -357,18 +330,7 @@ export interface RandomEventDef {
 }
 
 /** 事件池整体期望为正，单次损失有硬上限（灵石 -4、灵材 -2）。 */
-export const RANDOM_EVENTS: RandomEventDef[] = [
-  { id: "rain", text: "灵雨润田，后厨凭空多出一筐灵材", kind: "good", coins: 0, ingredients: 3, cultivation: 0, weight: 2 },
-  { id: "immortal", text: "一位过路仙长尝了口小菜，留下几块灵石", kind: "good", coins: 6, ingredients: 0, cultivation: 0, weight: 2 },
-  { id: "guidance", text: "仙人指路，你在灶火间窥见一丝道韵", kind: "good", coins: 0, ingredients: 0, cultivation: 3, weight: 2 },
-  { id: "tip", text: "食客吃得尽兴，多留了一份赏钱", kind: "good", coins: 5, ingredients: 0, cultivation: 0, weight: 2 },
-  { id: "oldfriend", text: "旧友来访，叙旧之余留下一壶灵酒", kind: "good", coins: 3, ingredients: 0, cultivation: 2, weight: 1 },
-  { id: "crane", text: "仙鹤衔芝落在檐角，赠你一味灵材与一段感悟", kind: "good", coins: 0, ingredients: 4, cultivation: 6, weight: 1 },
-  { id: "beggar", text: "小妖讨食，你舍了一味灵材，换得它口中一段修行心得", kind: "mixed", coins: 0, ingredients: -1, cultivation: 4, weight: 2 },
-  { id: "wind", text: "妖风过境，吹散了后厨晾着的一味灵材", kind: "bad", coins: 0, ingredients: -2, cultivation: 0, weight: 1 },
-  { id: "thief", text: "蟊贼光顾，柜上少了几块灵石", kind: "bad", coins: -4, ingredients: 0, cultivation: 0, weight: 1 },
-  { id: "mishap", text: "灶台走了水，赔了些灵石与灵材", kind: "bad", coins: -3, ingredients: -1, cultivation: 0, weight: 1 },
-];
+export const RANDOM_EVENTS: RandomEventDef[] = C.events.pool;
 
 /** 按权重抽一个事件；roll 取 [0,1) 方便测试。 */
 export function pickRandomEvent(roll: number): RandomEventDef {
@@ -437,33 +399,36 @@ export interface GoalPayout {
 
 /** 每天二选一的目标：收入/口味，奖励略有差异，让玩家按今日菜单做选择。 */
 export function getDailyGoalOptions(_day: number, level: number): DailyGoal[] {
-  const rewardCoins = 8 + level * 3;
-  const rewardCultivation = 1 + Math.floor(level / 3);
+  const G = C.dailyGoal;
+  const rewardCoins = G.rewardCoinsBase + level * G.rewardCoinsPerLevel;
+  const rewardCultivation = G.rewardCultivationBase + Math.floor(level / G.rewardCultivationLevelsPerStep);
+  const revenueTarget = G.revenueBase + level * G.revenuePerLevel;
+  const wishTarget = G.wishBase + Math.floor(level / G.wishLevelsPerStep);
   return [
     {
       kind: "revenue",
-      label: `本日收入 ${30 + level * 8} 灵石`,
-      target: 30 + level * 8,
-      rewardCoins: rewardCoins + 4,
+      label: `本日收入 ${revenueTarget} 灵石`,
+      target: revenueTarget,
+      rewardCoins: rewardCoins + G.revenueGoalExtraCoins,
       rewardCultivation,
     },
     {
       kind: "wish",
-      label: `满足 ${1 + Math.floor(level / 2)} 位食客的口味`,
-      target: 1 + Math.floor(level / 2),
+      label: `满足 ${wishTarget} 位食客的口味`,
+      target: wishTarget,
       rewardCoins: rewardCoins,
-      rewardCultivation: rewardCultivation + 1,
+      rewardCultivation: rewardCultivation + G.wishGoalExtraCultivation,
     },
   ];
 }
 
 /** 每天的店面租金，按等级缓慢上涨；结算时扣除。 */
 export function getDailyRent(level: number): number {
-  return 8 + Math.max(1, level) * 4;
+  return C.tavern.rentBase + Math.max(1, level) * C.tavern.rentPerLevel;
 }
 
 /** 每七天一次灯会：客流更旺、目标赏更高，给长局一个周节奏。 */
-export const FESTIVAL_INTERVAL = 7;
+export const FESTIVAL_INTERVAL = C.festival.interval;
 
 export function isFestivalDay(day: number): boolean {
   return Math.max(1, day) % FESTIVAL_INTERVAL === 0;
@@ -471,16 +436,17 @@ export function isFestivalDay(day: number): boolean {
 
 /** 灯会日目标赏金倍率；修为另 +1。 */
 export function getFestivalGoalMultiplier(day: number): number {
-  return isFestivalDay(day) ? 1.5 : 1;
+  return isFestivalDay(day) ? C.festival.goalCoinMultiplier : 1;
 }
 
 /** 连续三天达成（或拿到半赏）目标的三日之约奖励。 */
-export const GOAL_STREAK_TARGET = 3;
+export const GOAL_STREAK_TARGET = C.dailyGoal.streakDays;
 
 export function getStreakBonus(level: number): { coins: number; cultivation: number } {
   return {
-    coins: 20 + Math.max(1, level) * 5,
-    cultivation: 2 + Math.floor(Math.max(1, level) / 4),
+    coins: C.dailyGoal.streakCoinsBase + Math.max(1, level) * C.dailyGoal.streakCoinsPerLevel,
+    cultivation:
+      C.dailyGoal.streakCultivationBase + Math.floor(Math.max(1, level) / C.dailyGoal.streakCultivationLevelsPerStep),
   };
 }
 
@@ -488,23 +454,23 @@ export function getStreakBonus(level: number): { coins: number; cultivation: num
 export function getGoalPayout(goal: DailyGoal, stats: SessionStats): GoalPayout {
   const progress = getGoalProgress(goal, stats);
   const met = progress >= goal.target;
-  const partial = !met && progress >= Math.ceil(goal.target * 0.6);
+  const partial = !met && progress >= Math.ceil(goal.target * C.dailyGoal.partialThreshold);
   const fullCoins = getGoalCoinReward(goal, stats.revenue);
   return {
     met,
     partial,
     progress,
-    coins: met ? fullCoins : partial ? Math.max(1, Math.round(fullCoins * 0.5)) : 0,
+    coins: met ? fullCoins : partial ? Math.max(1, Math.round(fullCoins * C.dailyGoal.partialRewardRatio)) : 0,
     cultivation: met
       ? goal.rewardCultivation
       : partial
-        ? Math.max(1, Math.ceil(goal.rewardCultivation / 2))
+        ? Math.max(1, Math.ceil(goal.rewardCultivation * C.dailyGoal.partialRewardRatio))
         : 0,
   };
 }
 
 /** 目标奖励 = 基础灵石 + 当日菜品收入的 15%，让高流水的一天也值得为目标调整打法。 */
-export const GOAL_REVENUE_BONUS = 0.15;
+export const GOAL_REVENUE_BONUS = C.dailyGoal.revenueBonusRatio;
 
 export function getGoalCoinReward(goal: DailyGoal, revenue: number): number {
   return goal.rewardCoins + Math.round(Math.max(0, revenue) * GOAL_REVENUE_BONUS);
@@ -535,86 +501,7 @@ export interface OmenDef {
   cultivationBonus: number;
 }
 
-export const OMENS: OmenDef[] = [
-  {
-    id: "clear",
-    name: "晴",
-    short: "客流 +12%",
-    desc: "风和日丽，来往食客多了些",
-    visual: 0,
-    arrivalFactor: 0.88,
-    priceFactor: 1,
-    wishBonus: 0,
-    purchaseFactor: 1,
-    rareWeightFactor: 1,
-    cultivationBonus: 0,
-  },
-  {
-    id: "mist",
-    name: "灵雾",
-    short: "稀客 ×3",
-    desc: "仙雾缭绕，仙门中人更愿登门",
-    visual: 1,
-    arrivalFactor: 1,
-    priceFactor: 1,
-    wishBonus: 0,
-    purchaseFactor: 1,
-    rareWeightFactor: 3,
-    cultivationBonus: 0,
-  },
-  {
-    id: "petals",
-    name: "落英",
-    short: "口味赏 +20%",
-    desc: "落英缤纷，懂吃的人更舍得掏钱",
-    visual: 2,
-    arrivalFactor: 1,
-    priceFactor: 1,
-    wishBonus: 0.2,
-    purchaseFactor: 1,
-    rareWeightFactor: 1,
-    cultivationBonus: 0,
-  },
-  {
-    id: "market",
-    name: "集市",
-    short: "灵材 6 折",
-    desc: "山下开市，灵材便宜了四成",
-    visual: 0,
-    arrivalFactor: 1,
-    priceFactor: 1,
-    wishBonus: 0,
-    purchaseFactor: 0.6,
-    rareWeightFactor: 1,
-    cultivationBonus: 0,
-  },
-  {
-    id: "rain",
-    name: "夜雨",
-    short: "客少价高",
-    desc: "雨夜客稀，来的都是肯花灵石的人",
-    visual: 3,
-    arrivalFactor: 1.12,
-    priceFactor: 1.15,
-    wishBonus: 0,
-    purchaseFactor: 1,
-    rareWeightFactor: 1,
-    cultivationBonus: 0,
-  },
-  {
-    id: "moon",
-    name: "月满",
-    short: "下厨多悟",
-    desc: "月华入灶，亲自下厨多悟一分",
-    visual: 0,
-    arrivalFactor: 1,
-    priceFactor: 1,
-    wishBonus: 0,
-    purchaseFactor: 1,
-    rareWeightFactor: 1,
-    cultivationBonus: 1,
-  },
-];
+export const OMENS: OmenDef[] = C.omens;
 
 /** 本机公历日期键，YYYY-MM-DD。 */
 // shortcut: 天时与开市利是信任本机时钟，改系统日期可刷；接入服务端或需要防作弊时换成服务器日期
@@ -630,7 +517,7 @@ export function getDailyOmen(dateKey: string): OmenDef {
 }
 
 // ===== 开市利是：本机每天第一次开店的一次性奖励 =====
-export const GIFT_STREAK_CAP = 7;
+export const GIFT_STREAK_CAP = C.dailyGift.streakCap;
 
 function dateDayNumber(key: string): number | null {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(key);
@@ -659,9 +546,9 @@ export function getDailyGift(
 ): { coins: number; cultivation: number; ingredients: number } {
   const s = Math.min(GIFT_STREAK_CAP, Math.max(1, Math.floor(streak)));
   return {
-    coins: 15 + s * 5 + Math.max(1, level) * 2,
-    cultivation: 1 + Math.floor(s / 3),
-    ingredients: s >= 3 ? 2 : 0,
+    coins: C.dailyGift.coinsBase + s * C.dailyGift.coinsPerStreakDay + Math.max(1, level) * C.dailyGift.coinsPerLevel,
+    cultivation: 1 + Math.floor(s / C.dailyGift.cultivationStreakStep),
+    ingredients: s >= C.dailyGift.ingredientsFromStreak ? C.dailyGift.ingredients : 0,
   };
 }
 
@@ -671,18 +558,13 @@ export interface RealmDef {
   name: string;
   cultivation: number;
   perk: string;
+  priceMultiplier: number;
+  playerSpeed: number;
+  staffSpeed: number;
+  closingIngredients: number;
 }
 
-export const REALMS: RealmDef[] = [
-  { name: "炼气", cultivation: 0, perk: "初入仙途" },
-  { name: "筑基", cultivation: 30, perk: "菜品售价 +10%" },
-  { name: "金丹", cultivation: 80, perk: "玩家操作速度 +10%" },
-  { name: "元婴", cultivation: 160, perk: "心境空明（加成待重做）" },
-  { name: "化神", cultivation: 280, perk: "打烊时自动领悟 3 灵材" },
-  { name: "炼虚", cultivation: 450, perk: "伙计操作速度 +10%" },
-  { name: "合体", cultivation: 700, perk: "菜品售价 +20%" },
-  { name: "大乘", cultivation: 1000, perk: "菜品售价 +30%" },
-];
+export const REALMS: RealmDef[] = C.realms;
 
 export function getRealmIndex(cultivation: number): number {
   let index = 0;
@@ -698,28 +580,34 @@ export function getNextRealm(cultivation: number): RealmDef | null {
 
 /** 只有亲自下厨才得修为：伙计出菜换灵石，玩家下厨换修行，两者不可兼得。 */
 export function getCultivationGain(personal: boolean): number {
-  return personal ? 2 : 0;
+  return personal ? C.cultivation.perPersonalDish : 0;
 }
 
 export function getRealmPriceMultiplier(realmIndex: number): number {
-  if (realmIndex >= 7) return 1.3;
-  if (realmIndex >= 6) return 1.2;
-  if (realmIndex >= 1) return 1.1;
-  return 1;
+  return realmAt(realmIndex).priceMultiplier;
 }
 
 export function getRealmPlayerSpeedFactor(realmIndex: number): number {
-  return realmIndex >= 2 ? 0.9 : 1;
+  return realmAt(realmIndex).playerSpeed;
 }
 
 export function getRealmStaffSpeedFactor(realmIndex: number): number {
-  return realmIndex >= 5 ? 0.9 : 1;
+  return realmAt(realmIndex).staffSpeed;
+}
+
+/** 打烊时凭空得的灵材（化神起）。 */
+export function getRealmClosingIngredients(realmIndex: number): number {
+  return realmAt(realmIndex).closingIngredients;
+}
+
+function realmAt(realmIndex: number): RealmDef {
+  return REALMS[Math.min(REALMS.length - 1, Math.max(0, realmIndex))];
 }
 
 /** 飞升一次留一重仙缘，跨周目永久提高售价。 */
-export const ASCENSION_PRICE_BONUS = 0.1;
-export const ASCENSION_START_COIN_BONUS = 20;
-export const ASCENSION_START_INGREDIENT_BONUS = 2;
+export const ASCENSION_PRICE_BONUS = C.ascension.priceBonus;
+export const ASCENSION_START_COIN_BONUS = C.ascension.startCoinBonus;
+export const ASCENSION_START_INGREDIENT_BONUS = C.ascension.startIngredientBonus;
 
 export function getAscensionPriceMultiplier(ascensions: number): number {
   return 1 + ASCENSION_PRICE_BONUS * Math.max(0, Math.floor(ascensions));
@@ -727,7 +615,7 @@ export function getAscensionPriceMultiplier(ascensions: number): number {
 
 /** 每 3 重仙缘，飞升后的新周目直接从更高酒楼等级开局，跳过早期重复劳动。 */
 export function getAscensionStartLevel(ascensions: number): number {
-  return 1 + Math.floor(Math.max(0, Math.floor(ascensions)) / 3);
+  return 1 + Math.floor(Math.max(0, Math.floor(ascensions)) / C.ascension.levelEvery);
 }
 
 export function getAscensionStartCoins(ascensions: number): number {

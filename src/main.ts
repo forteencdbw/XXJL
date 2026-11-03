@@ -57,6 +57,10 @@ import {
   getRealmPlayerSpeedFactor,
   getRealmPriceMultiplier,
   getRealmStaffSpeedFactor,
+  getRealmClosingIngredients,
+  isRarePatron,
+  ARRIVAL_MIN_MS,
+  ARRIVAL_MAX_MS,
   getSignUpgradeCost,
   getSpecialPrice,
   getStaffDuration,
@@ -78,12 +82,14 @@ import {
 import { EXP_PER_LEVEL } from "./logic";
 import type { DailyGoal, Dish, LoanDef, MetaStats, OmenDef, PatronKind, StaffRole } from "./logic";
 import { decodeSaveCode, encodeSaveCode } from "./savecode";
+import { GAME, validateConfig } from "./config";
 
 // ===== 本文件独有的常量 =====
-const QUEUE_PATIENCE_MS = 8000;
-const DINING_MS = 4500;
+// 玩法数值都在 config.ts，这里只取别名
+const QUEUE_PATIENCE_MS = GAME.session.queuePatienceMs;
+const DINING_MS = GAME.session.diningMs;
 /** 桌子入座后先给玩家这么久亲手出菜，伙计再接手。 */
-const COOK_PRIORITY_MS = 1500;
+const COOK_PRIORITY_MS = GAME.session.cookPriorityMs;
 /** 保底上限：名单耗尽即结算，这个只防卡死。 */
 const SESSION_HARD_STOP_MS = 15 * 60 * 1000;
 /** 最后一位离店后停顿一下再结算，给清场留个过场。 */
@@ -93,25 +99,25 @@ const NOMINAL_MS_PER_PATRON = 20000;
 /** 顾客进场动画整体放慢，体现悠闲。 */
 const ENTRANCE_SLOW = 1.5;
 /** 玩家连续命中口味的连击：每次 +5%，最多 5 连（+25%）。 */
-const COMBO_STEP = 0.05;
-const COMBO_MAX = 5;
-const PURCHASE_AMOUNT = 5;
-const PURCHASE_TARGET_STOCK = 10;
-const HIRE_COST_HAWKER = 30;
-const HIRE_COST_SERVER = 40;
-const HIRE_COST_COOK = 50;
-const HIRE_COST_BUYER = 35;
+const COMBO_STEP = GAME.combo.step;
+const COMBO_MAX = GAME.combo.max;
+const PURCHASE_AMOUNT = GAME.purchase.amount;
+const PURCHASE_TARGET_STOCK = GAME.staff.buyerTargetStockBase;
+const HIRE_COST_HAWKER = GAME.staff.hireCost.hawker;
+const HIRE_COST_SERVER = GAME.staff.hireCost.server;
+const HIRE_COST_COOK = GAME.staff.hireCost.cook;
+const HIRE_COST_BUYER = GAME.staff.hireCost.buyer;
 const CHRONICLE_MAX_LINES = 1;
 const SAVE_KEY = "tavern_save_v2";
 const AUTOSAVE_MS = 2000;
 /** 随机事件上限；实际次数按当天客人数缩放（约每 5 位 1 次）。 */
-const MAX_EVENTS_PER_SESSION = 4;
+const MAX_EVENTS_PER_SESSION = GAME.events.maxPerSession;
 
-const SEAT_BASE_MS = 1900;
-const SEAT_TAVERN_SHRINK_PER_LEVEL_MS = 190;
-const SEAT_FLOOR_MS = 480;
-const COOK_TAVERN_SHRINK_PER_LEVEL_MS = 200;
-const COOK_FLOOR_MS = 500;
+const SEAT_BASE_MS = GAME.timing.seatBaseMs;
+const SEAT_TAVERN_SHRINK_PER_LEVEL_MS = GAME.timing.seatShrinkPerLevelMs;
+const SEAT_FLOOR_MS = GAME.timing.seatFloorMs;
+const COOK_TAVERN_SHRINK_PER_LEVEL_MS = GAME.timing.cookShrinkPerLevelMs;
+const COOK_FLOOR_MS = GAME.timing.cookFloorMs;
 
 const COLOR_PLAYER = 0xffa94d;
 const COLOR_STAFF = 0x4da6ff;
@@ -4548,11 +4554,11 @@ class TavernScene extends Phaser.Scene {
     if (this.patronsSpawned < this.patronsTotal && time >= this.nextArrivalAt) {
       this.spawnPatron(time);
       this.patronsSpawned += 1;
-      this.nextArrivalAt = time + getArrivalInterval(this.level, Phaser.Math.Between(4000, 7000));
+      this.nextArrivalAt = time + getArrivalInterval(this.level, Phaser.Math.Between(ARRIVAL_MIN_MS, ARRIVAL_MAX_MS));
     }
 
     // 随机事件按当天人数缩放：约每 5 位客人 1 次，最多 4 次
-    const eventCap = Math.min(MAX_EVENTS_PER_SESSION, Math.max(1, Math.floor(this.patronsTotal / 5)));
+    const eventCap = Math.min(MAX_EVENTS_PER_SESSION, Math.max(1, Math.floor(this.patronsTotal / GAME.events.patronsPerEvent)));
     if (this.eventsThisSession < eventCap && time >= this.nextEventAt) {
       this.triggerRandomEvent(time);
     }
@@ -4650,7 +4656,7 @@ class TavernScene extends Phaser.Scene {
               ? `${guest}没吃到想吃的${dishName}，只付半价，收入 +${price} 灵石`
               : `${guest}用罢${dishName}离店，收入 +${price} 灵石`,
         );
-        const rare = priceFactor >= 1.8;
+        const rare = priceFactor >= GAME.rarePriceFactor;
         this.gainReputationFor(rare);
         const cultGain = this.cultivationGainFor(personal, matched, rare);
         this.gainCultivation(cultGain);
@@ -4702,7 +4708,7 @@ class TavernScene extends Phaser.Scene {
   private tickClosedProcurement() {
     if (this.staffLevel.buyer === 0 || !this.auto.buyer) return;
     // 酒楼越大，备货目标越高，避免高等级时 10 份存货撑不过一局
-    const target = PURCHASE_TARGET_STOCK + this.level * 2;
+    const target = PURCHASE_TARGET_STOCK + this.level * GAME.staff.buyerTargetStockPerLevel;
     if (this.inventory >= target) return;
     const price = this.purchasePrice(false);
     let bought = 0;
@@ -5189,8 +5195,8 @@ class TavernScene extends Phaser.Scene {
       const baseCount = getRepLevelInfo(this.reputation).patrons;
       // 客流类天时与灯会直接改人数；第 1 天少来一位当教学缓冲
       const omenCount =
-        Math.round(baseCount / this.omen.arrivalFactor) + (isFestivalDay(this.day) ? 3 : 0);
-      this.patronsTotal = Math.max(1, omenCount - (this.day === 1 ? 1 : 0));
+        Math.round(baseCount / this.omen.arrivalFactor) + (isFestivalDay(this.day) ? GAME.festival.extraPatrons : 0);
+      this.patronsTotal = Math.max(1, omenCount - (this.day === 1 ? GAME.session.firstDayFewerPatrons : 0));
       this.patronsSpawned = 0;
       this.roundEnding = false;
       this.pendingRepLoss = 0;
@@ -5198,7 +5204,7 @@ class TavernScene extends Phaser.Scene {
       this.repLostToday = 0;
       this.sessionNominalMs = this.patronsTotal * NOMINAL_MS_PER_PATRON;
       this.sessionEndsAt = this.time.now + SESSION_HARD_STOP_MS;
-      const firstArrival = getArrivalInterval(this.level, Phaser.Math.Between(4000, 7000));
+      const firstArrival = getArrivalInterval(this.level, Phaser.Math.Between(ARRIVAL_MIN_MS, ARRIVAL_MAX_MS));
       // 每天开门后第一位客人都在 2.2 秒内到，避免开局长时间空等
       this.nextArrivalAt = this.time.now + Math.min(firstArrival, 2200);
       this.eventsThisSession = 0;
@@ -5274,7 +5280,7 @@ class TavernScene extends Phaser.Scene {
         this.sessionRevenue += price;
         if (matched) this.sessionWishes += 1;
         const personal = booth.cookingDriver === "player";
-        const rare = factor >= 1.8;
+        const rare = factor >= GAME.rarePriceFactor;
         this.gainReputationFor(rare);
         this.gainCultivation(this.cultivationGainFor(personal, matched, rare));
         this.log(`打烊前最后一桌用罢${dish.name}${matched ? "" : "（口味不合半价）"}，收入 +${price}`);
@@ -5335,9 +5341,10 @@ class TavernScene extends Phaser.Scene {
       this.startCelebration();
       this.buildSettlementOverlay();
     }
-    if (this.realmIndex() >= 4) {
-      this.inventory += 3;
-      this.log("化神境心念一动，打烊时凭空凝出 3 灵材");
+    const closingIngredients = getRealmClosingIngredients(this.realmIndex());
+    if (closingIngredients > 0) {
+      this.inventory += closingIngredients;
+      this.log(`${REALMS[this.realmIndex()].name}境心念一动，打烊时凭空凝出 ${closingIngredients} 灵材`);
     }
     // 破产只重置本局，仙缘保留；其余情况立刻落盘
     if (this.gameState === "bankrupt") this.writeSave(this.freshSave(this.ascensions));
@@ -6528,8 +6535,8 @@ class TavernScene extends Phaser.Scene {
   private cultivationGainFor(personal: boolean, matched: boolean, rare: boolean): number {
     return (
       getCultivationGain(personal) +
-      (personal && matched ? 1 : 0) +
-      (personal && rare ? 1 : 0) +
+      (personal && matched ? GAME.cultivation.wishHitBonus : 0) +
+      (personal && rare ? GAME.cultivation.rareBonus : 0) +
       (personal ? this.omen.cultivationBonus : 0)
     );
   }
@@ -7338,7 +7345,7 @@ class TavernScene extends Phaser.Scene {
       this.log(`常客${name}第 ${existing.visits} 次来店，还是那口${dishName}`);
       return;
     }
-    if (this.regulars.length >= 6) return;
+    if (this.regulars.length >= GAME.regulars.max) return;
     this.regulars.push({ name, kindId: kind.id, wish, visits: 1 });
     // 今天刚成为常客的人，今天不再从门口刷出来
     this.regularsToday.add(name);
@@ -7553,7 +7560,7 @@ class TavernScene extends Phaser.Scene {
     const forceRegular = this.regularDueToday && regularPool.length > 0;
     const regular = forceRegular
       ? regularPool[0]
-      : regularPool.length > 0 && Math.random() < 0.3
+      : regularPool.length > 0 && Math.random() < GAME.regulars.returnChance
         ? regularPool[Math.floor(Math.random() * regularPool.length)]
         : null;
     if (regular) {
@@ -7571,7 +7578,7 @@ class TavernScene extends Phaser.Scene {
       : regular
         ? (PATRON_KINDS.find((k) => k.id === regular.kindId) ?? pickPatronKind(Math.random(), rareWeight))
         : pickPatronKind(Math.random(), rareWeight);
-    const rare = kind.priceFactor >= 1.8;
+    const rare = isRarePatron(kind);
     const slotX = QUEUE_X + this.queue.length * this.queueGap();
     const spawnX = Math.max(980, slotX + 60);
     const longHair = kind.id === "alchemist" || kind.id === "demonlord" || kind.id === "elder";
@@ -7594,7 +7601,7 @@ class TavernScene extends Phaser.Scene {
     }
 
     this.patronEntrance(char, kind, slotX);
-    const patience = QUEUE_PATIENCE_MS * kind.patienceFactor * (this.day === 1 ? 2.2 : 1);
+    const patience = QUEUE_PATIENCE_MS * kind.patienceFactor * (this.day === 1 ? GAME.session.firstDayPatienceMultiplier : 1);
     this.queue.push({ expiresAt: time + patience, patienceMs: patience, char, kind, wish, name, regular: !!regular });
     if (this.day === 1 && this.tutorialHintStage === 0) {
       this.tutorialHintStage = 1;
@@ -7726,7 +7733,7 @@ class TavernScene extends Phaser.Scene {
     let candidates = emptyBooths.filter(({ booth }) => booth.floor === this.activeFloor);
     if (candidates.length === 0) {
       const hasEmpty = (floor: number) => emptyBooths.some(({ booth }) => booth.floor === floor);
-      const rare = (first?.kind.priceFactor ?? 1) >= 1.8;
+      const rare = (first?.kind.priceFactor ?? 1) >= GAME.rarePriceFactor;
       const targetFloor = rare
         ? hasEmpty(2)
           ? 2
@@ -7756,7 +7763,7 @@ class TavernScene extends Phaser.Scene {
     const patron = this.queue.shift()!;
     patron.char.setVisible(booth.floor === this.activeFloor);
     patron.char.setPatience(null);
-    patron.char.setMood(patron.kind.priceFactor >= 1.8 ? "cold" : "waiting");
+    patron.char.setMood(isRarePatron(patron.kind) ? "cold" : "waiting");
     booth.state = "seating";
     const progress: SeatProgress = {
       startedAt: this.time.now,
@@ -7792,7 +7799,7 @@ class TavernScene extends Phaser.Scene {
     booth.patronWish = patron.wish;
     booth.patronName = patron.name;
     booth.patronRegular = patron.regular;
-    if (patron.kind.priceFactor >= 1.8) {
+    if (isRarePatron(patron.kind)) {
       patron.char.say(patron.kind.id === "elder" ? "此子有慧根。" : "本座只等一炷香。", "cold");
     }
   }
@@ -7995,7 +8002,7 @@ class TavernScene extends Phaser.Scene {
     this.playerPurchasing = {
       startedAt: this.time.now,
       // 营业中急购是救火，不该让玩家被锁 15 秒；压到约 9 秒
-      duration: Math.round(getPurchaseDuration(this.level) * 0.6),
+      duration: Math.round(getPurchaseDuration(this.level) * GAME.purchase.emergencyDurationScale),
       amount: PURCHASE_AMOUNT,
     };
     this.save();
@@ -8185,7 +8192,7 @@ class TavernScene extends Phaser.Scene {
     const payout = getGoalPayout(goal, stats);
     if (isFestivalDay(sessionDay)) {
       payout.coins = Math.round(payout.coins * getFestivalGoalMultiplier(sessionDay));
-      payout.cultivation += 1;
+      payout.cultivation += GAME.festival.goalExtraCultivation;
     }
     const streakBonus = getStreakBonus(this.level);
     const qualified = payout.met || payout.partial;
@@ -8552,12 +8559,12 @@ class TavernScene extends Phaser.Scene {
       visual.label.setColor(
         booth.state === "awaitingCook" && !canServeBeforeClose
           ? "#ff9a8a"
-          : (kind && kind.priceFactor >= 1.8) || regular
+          : (kind && isRarePatron(kind)) || regular
             ? "#ffd98a"
             : "#ffffff",
       );
       // 桌卡只留最短信息：想吃什么/做哪道/入座；桌号单独常驻，常客用「常·」标记
-      const marker = kind && kind.priceFactor >= 1.8 ? "★" : regular ? "常·" : "";
+      const marker = kind && isRarePatron(kind) ? "★" : regular ? "常·" : "";
       const labelText =
         booth.state === "awaitingCook"
           ? `${marker}${wishName ?? "随意"}↓`
@@ -8644,7 +8651,7 @@ class TavernScene extends Phaser.Scene {
     } else {
       this.purchaseButton.setLabel(
         open
-          ? `急购 +${PURCHASE_AMOUNT}（${purchasePriceLabel} 灵石，约 9s）`
+          ? `急购 +${PURCHASE_AMOUNT}（${purchasePriceLabel} 灵石，约 ${Math.round((getPurchaseDuration(this.level) * GAME.purchase.emergencyDurationScale) / 1000)}s）`
           : `备货 +${PURCHASE_AMOUNT}（${purchasePriceLabel} 灵石）`,
       );
     }
@@ -8652,7 +8659,14 @@ class TavernScene extends Phaser.Scene {
   }
 }
 
-new Phaser.Game({
+const configErrors = validateConfig(GAME);
+if (configErrors.length > 0) {
+  // 配置填错就不启动游戏，直接把出错项列在页面上
+  const box = document.createElement("pre");
+  box.style.cssText = "color:#ff6b6b;background:#1b1b1b;padding:24px;font:16px/1.6 monospace;white-space:pre-wrap;margin:0;min-height:100vh";
+  box.textContent = `src/config.ts 配置有误，游戏未启动：\n\n${configErrors.map((e) => `· ${e}`).join("\n")}`;
+  document.body.replaceChildren(box);
+} else new Phaser.Game({
   type: Phaser.AUTO,
   parent: "app",
   width: SCREEN_W,
