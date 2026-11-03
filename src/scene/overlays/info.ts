@@ -1,0 +1,210 @@
+// 二级页面：玩法说明、账簿成就、存档导入导出。
+import { REALMS, getAchievements } from "../../logic";
+import { decodeSaveCode, encodeSaveCode } from "../../savecode";
+import { SAVE_KEY, SCREEN_H, SCREEN_W, XIAN_FONT } from "../constants";
+import type { TavernScene } from "../TavernScene";
+
+export class InfoOverlayMethods {
+  /** 玩法说明：新档第一次进门自动弹出，也可随时从「玩法」按钮打开。 */
+  showHelp(this: TavernScene) {
+    this.destroyOverlay();
+    const cam = this.cameras.main;
+    const layer = this.add.container(cam.scrollX, cam.scrollY).setDepth(110);
+    layer.add(this.add.rectangle(0, 0, SCREEN_W, SCREEN_H, 0x000000, 0.97).setOrigin(0, 0).setInteractive());
+    layer.add(this.add.text(40, 80, "灵膳楼 · 掌柜须知", { fontSize: "30px", color: "#ffe6a8", fontFamily: XIAN_FONT }));
+    layer.add(
+      this.add.text(40, 142, "你是被逐出师门的散修，带着一口旧锅，在青云镇外支起「灵膳楼」。", {
+        fontSize: "17px",
+        color: "#c8b8a0",
+        fontStyle: "italic",
+        wordWrap: { width: 640 },
+      }),
+    );
+    layer.add(
+      this.add.text(40, 176, "白日营生，夜里修行；总有一天，要踏破虚空。", {
+        fontSize: "17px",
+        color: "#c8b8a0",
+        fontStyle: "italic",
+      }),
+    );
+    layer.add(this.add.rectangle(40, 218, 640, 2, 0x8a6a3a).setOrigin(0, 0));
+    const lines = [
+      "营业前：采购灵材、雇伙计并安排分工、营造升级、选菜单，然后「开始营业」。",
+      "营业中：门口排队 → 招待入座 → 出菜行点菜 → 用膳结账。",
+      "营业中可左右拖动画面，查看门外排队与空地。",
+      "天时每天随本机日期更换；本机每天第一次开店领「开市利是」，连续越久赏越多。",
+      "只有亲自下厨得修为；端对口味 +50%，有想吃的却上错只付半价。",
+      "亲手连续端对口味会累积连击，最多 +25% 售价；上错一次清零。",
+      "修为推动境界突破，境界提高售价、操作速度与客流。",
+      "修到大乘可飞升：重置本局，仙缘永久提高售价与开局资源。",
+      "每天一个目标，达成有额外灵石与修为；连亏 5 日破产。",
+      "「账簿」看成绩、「存档」备份；缺灵石可去灵石商行借小借。",
+    ];
+    lines.forEach((line, i) => {
+      layer.add(
+        this.add.text(40, 250 + i * 42, line, {
+          fontSize: "17px",
+          color: "#dddddd",
+          wordWrap: { width: 640 },
+          lineSpacing: 6,
+        }),
+      );
+    });
+    this.addOverlayClose(layer, 650, "知道了，去营生");
+    this.overlay = layer;
+  }
+
+  /** 二级页面：账簿。跨周目累计数据、本机最高记录与成就。 */
+  buildRecordOverlay(this: TavernScene) {
+    this.destroyOverlay();
+    const cam = this.cameras.main;
+    const layer = this.add.container(cam.scrollX, cam.scrollY).setDepth(100);
+    layer.add(this.add.rectangle(0, 0, SCREEN_W, SCREEN_H, 0x000000, 0.97).setOrigin(0, 0).setInteractive());
+    layer.add(this.add.text(40, 70, "账簿", { fontSize: "30px", color: "#ffe6a8", fontFamily: XIAN_FONT }));
+    const meta = this.meta;
+    const realmName = REALMS[Math.min(Math.max(0, meta.maxRealm), REALMS.length - 1)].name;
+    const stats = [
+      `累计营业 ${meta.days} 日`,
+      `累计食客 ${meta.served} 位`,
+      `累计收益 ${meta.revenue} 灵石`,
+      `单日最高 ${meta.bestRevenue} 灵石`,
+      `单日最多 ${meta.bestServed} 位食客`,
+      `每日目标达成 ${meta.goalsMet} 次`,
+      `最高境界 ${realmName} · 当前仙缘 ${this.ascensions} 重`,
+    ];
+    stats.forEach((line, i) => {
+      layer.add(this.add.text(40, 126 + i * 30, line, { fontSize: "18px", color: "#dddddd" }));
+    });
+    layer.add(this.add.text(400, 126, "本机单日榜", { fontSize: "18px", color: "#ffd98a" }));
+    if (this.meta.topDays.length === 0) {
+      layer.add(this.add.text(400, 160, "尚无记录", { fontSize: "14px", color: "#777777" }));
+    } else {
+      this.meta.topDays.forEach((record, i) => {
+        layer.add(
+          this.add.text(400, 158 + i * 26, `${i + 1}. 第${record.day}日 · Lv${record.level} · ${record.revenue} 灵石`, {
+            fontSize: "14px",
+            color: i === 0 ? "#ffd98a" : "#bbbbbb",
+          }),
+        );
+      });
+    }
+
+    const achievements = getAchievements(meta, this.ascensions);
+    const unlocked = achievements.filter((item) => item.unlocked).length;
+    layer.add(
+      this.add.text(40, 352, `成就 ${unlocked}/${achievements.length}`, { fontSize: "20px", color: "#ffd98a" }),
+    );
+    achievements.forEach((item, i) => {
+      const y = 392 + i * 32;
+      layer.add(
+        this.add.text(48, y, `${item.unlocked ? "✓" : "○"} ${item.name}`, {
+          fontSize: "16px",
+          color: item.unlocked ? "#9fdf6a" : "#777777",
+        }),
+      );
+      layer.add(
+        this.add.text(236, y + 1, item.desc, {
+          fontSize: "14px",
+          color: item.unlocked ? "#bbbbbb" : "#666666",
+        }),
+      );
+    });
+
+    this.addOverlayClose(layer, 740);
+    this.overlay = layer;
+  }
+
+  /** 导出/导入存档。用浏览器原生输入框承载长文本（Phaser 没有文本输入控件）。 */
+  openSaveDialog(this: TavernScene, mode: "export" | "import") {
+    document.getElementById("save-dialog")?.remove();
+    const overlay = document.createElement("div");
+    overlay.id = "save-dialog";
+    overlay.style.cssText =
+      "position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.82);display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;font-family:system-ui,sans-serif;";
+    const panel = document.createElement("div");
+    panel.style.cssText =
+      "width:min(92vw,560px);background:#1b2440;border:2px solid #3f5a7a;border-radius:10px;padding:18px;color:#fff;box-sizing:border-box;";
+    const title = document.createElement("div");
+    title.textContent = mode === "export" ? "导出存档" : "导入存档";
+    title.style.cssText = "font-size:22px;color:#ffd98a;margin-bottom:8px;";
+    const hint = document.createElement("div");
+    hint.textContent =
+      mode === "export"
+        ? "复制整段导出码保存。换设备或清空浏览器后，在这里选「导入存档」恢复。"
+        : "粘贴 LS2. 开头的导出码。导入会覆盖本机当前进度。";
+    hint.style.cssText = "font-size:14px;color:#bbbbbb;line-height:1.5;margin-bottom:10px;";
+    const textarea = document.createElement("textarea");
+    textarea.value = mode === "export" ? encodeSaveCode(this.buildSaveData()) : "";
+    textarea.readOnly = mode === "export";
+    textarea.placeholder = mode === "import" ? "在这里粘贴导出码" : "";
+    textarea.style.cssText =
+      "width:100%;height:170px;box-sizing:border-box;background:#0e1524;color:#cfe2ff;border:1px solid #3f5a7a;border-radius:6px;padding:10px;font-family:monospace;font-size:12px;resize:none;";
+    const status = document.createElement("div");
+    status.style.cssText = "min-height:20px;font-size:13px;color:#ff9a8a;margin:6px 0;";
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex;gap:10px;flex-wrap:wrap;";
+
+    const button = (label: string, primary: boolean, onClick: () => void) => {
+      const btn = document.createElement("button");
+      btn.textContent = label;
+      btn.style.cssText = `flex:1;min-width:110px;padding:12px;border-radius:6px;border:0;font-size:16px;cursor:pointer;background:${
+        primary ? "#3f6a3f" : "#3a3a3a"
+      };color:#fff;`;
+      btn.addEventListener("click", onClick);
+      row.appendChild(btn);
+    };
+
+    if (mode === "export") {
+      button("复制导出码", true, () => {
+        textarea.focus();
+        textarea.select();
+        const done = () => {
+          status.style.color = "#9fe870";
+          status.textContent = "已复制到剪贴板";
+        };
+        const fallback = () => {
+          try {
+            document.execCommand("copy");
+            done();
+          } catch {
+            status.style.color = "#ff9a8a";
+            status.textContent = "复制失败，请手动全选复制";
+          }
+        };
+        if (navigator.clipboard?.writeText) navigator.clipboard.writeText(textarea.value).then(done, fallback);
+        else fallback();
+      });
+    } else {
+      button("确认导入", true, () => {
+        const data = decodeSaveCode(textarea.value);
+        if (!data || typeof data !== "object" || (data as { v?: unknown }).v !== 2) {
+          status.textContent = "导出码无效或版本不匹配";
+          return;
+        }
+        try {
+          localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+          // 禁止 beforeunload 用当前内存状态覆盖刚导入的存档
+          this.suppressSave = true;
+          location.reload();
+        } catch {
+          status.textContent = "无法写入本地存档（浏览器存储不可用）";
+        }
+      });
+    }
+    button(mode === "export" ? "导入存档" : "导出存档", false, () =>
+      this.openSaveDialog(mode === "export" ? "import" : "export"),
+    );
+    button("关闭", false, () => overlay.remove());
+
+    panel.append(title, hint, textarea, status, row);
+    overlay.appendChild(panel);
+    overlay.addEventListener("click", (event) => {
+      if (event.target === overlay) overlay.remove();
+    });
+    document.body.appendChild(overlay);
+    if (mode === "export") {
+      textarea.focus();
+      textarea.select();
+    }
+  }
+}
