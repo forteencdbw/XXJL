@@ -42,9 +42,8 @@ export class SettlementOverlayMethods {
     const netIncome = this.sessionRevenue - totalWage - totalLoan - totalRent;
     const summary = [
       ...(this.lastGift
-        ? [`开市利是：连续 ${this.lastGift.streak} 天 · +${this.lastGift.coins} 灵石、+${this.lastGift.cultivation} 修为`]
+        ? [`开市利是：连续 ${this.lastGift.streak} 天 · +${this.lastGift.coins} 灵石`]
         : []),
-      `修为增长：+${this.sessionCultivation}`,
       `声望：${getRepLevelInfo(this.reputation).title} · +${this.repGainedToday} / −${this.repLostToday} → ${this.reputation}`,
       `工资合计：${totalWage} 灵石`,
       `店面租金：${totalRent} 灵石`,
@@ -152,11 +151,9 @@ export class SettlementOverlayMethods {
         partial,
         progress,
         rewardCoins,
-        rewardCultivation,
         streakCount,
         streakComplete,
         streakCoins,
-        streakCultivation,
       } = this.lastGoalResult;
       panel.add(
         this.add
@@ -171,9 +168,9 @@ export class SettlementOverlayMethods {
           left + 16,
           y,
           met
-            ? `达成！+${rewardCoins} 灵石、+${rewardCultivation} 修为`
+            ? `达成！+${rewardCoins} 灵石`
             : partial
-              ? `差一点（${progress}/${goal.target}）· 半赏 +${rewardCoins} 灵石、+${rewardCultivation} 修为`
+              ? `差一点（${progress}/${goal.target}）· 半赏 +${rewardCoins} 灵石`
               : `未达成（${progress}/${goal.target}）`,
           { fontSize: "21px", color: met ? "#9fdf6a" : partial ? "#e0c060" : "#999999" },
         ),
@@ -184,8 +181,8 @@ export class SettlementOverlayMethods {
           left + 16,
           y,
           streakComplete
-            ? `三日之约达成！额外 +${streakCoins} 灵石、+${streakCultivation} 修为`
-            : `三日之约 ${streakCount}/${GOAL_STREAK_TARGET} · 满 ${GOAL_STREAK_TARGET} 天赏 ${streakCoins} 灵石 + ${streakCultivation} 修为`,
+            ? `三日之约达成！额外 +${streakCoins} 灵石`
+            : `三日之约 ${streakCount}/${GOAL_STREAK_TARGET} · 满 ${GOAL_STREAK_TARGET} 天赏 ${streakCoins} 灵石`,
           { fontSize: "17px", color: streakComplete ? "#9fdf6a" : "#c8b8a0" },
         ),
       );

@@ -1,75 +1,11 @@
-// 一次性表现：浮字、连击、突破、庆祝、碰杯、日题头、事件提示。
+// 一次性表现：浮字、庆祝、碰杯、日题头、事件提示。
 import Phaser from "phaser";
-import { playSfx } from "../audio";
 import { isFestivalDay } from "../logic";
 import { Character } from "./Character";
 import { ACTOR_Y, FLOOR_Y, SCREEN_W, XIAN_FONT } from "./constants";
 import type { TavernScene } from "./TavernScene";
 
 export class FxMethods {
-  /** 连击只奖励玩家亲手命中口味；达到 2 连起飘字，不打断节奏。 */
-  showComboPopup(this: TavernScene) {
-    const t = this.add
-      .text(this.playerChar.x, this.playerChar.y - 84, `连击 ×${this.combo}`, {
-        fontSize: "18px",
-        color: "#ffb45a",
-        fontFamily: XIAN_FONT,
-        stroke: "#2a1a0a",
-        strokeThickness: 3,
-      })
-      .setOrigin(0.5)
-      .setDepth(31);
-    this.tweens.add({
-      targets: t,
-      y: t.y - 34,
-      alpha: 0,
-      duration: 900,
-      ease: "Sine.easeOut",
-      onComplete: () => t.destroy(),
-    });
-  }
-
-  /** 突破：白光一闪、金色灵环扩散、境界浮字。 */
-  celebrateBreakthrough(this: TavernScene, realmName: string) {
-    playSfx("upgrade");
-    this.showEventToast(`突破 · ${realmName}`, true);
-    this.cameras.main.flash(500, 255, 236, 170);
-    const { x, y } = this.playerChar;
-    for (let i = 0; i < 3; i++) {
-      const ring = this.add
-        .circle(x, y, 20, 0x000000, 0)
-        .setStrokeStyle(4, 0xffe08a, 0.9)
-        .setDepth(30);
-      this.tweens.add({
-        targets: ring,
-        scale: 4.5,
-        alpha: 0,
-        delay: i * 120,
-        duration: 700,
-        ease: "Cubic.easeOut",
-        onComplete: () => ring.destroy(),
-      });
-    }
-    const text = this.add
-      .text(x, y - 90, `突破 · ${realmName}`, {
-        fontSize: "26px",
-        color: "#ffe08a",
-        stroke: "#3a2a10",
-        strokeThickness: 5,
-      })
-      .setOrigin(0.5)
-      .setDepth(45);
-    this.tweens.add({
-      targets: text,
-      y: y - 150,
-      alpha: 0,
-      duration: 1400,
-      ease: "Cubic.easeOut",
-      onComplete: () => text.destroy(),
-    });
-    this.refreshPlayerAura();
-  }
-
   /** 境界灵气：颜色与大小随境界、仙缘变化。 */
   refreshPlayerAura(this: TavernScene) {
     const colors = [0x8ab4ff, 0x7fe8dd, 0x9fe870, 0xffd98a, 0xff9a6a, 0xc8a8ff, 0xff8ad8, 0xfff2c0];
@@ -330,27 +266,6 @@ export class FxMethods {
       duration: 900,
       ease: "Cubic.easeOut",
       onComplete: () => heart.destroy(),
-    });
-  }
-
-  /** 亲自出菜得修为时，在桌上飘一行青色「+N 修为」。 */
-  showCultivationPopup(this: TavernScene, worldX: number, worldY: number, amount: number) {
-    const text = this.add
-      .text(worldX, worldY, `+${amount} 修为`, {
-        fontSize: "20px",
-        color: "#9fe8ff",
-        stroke: "#123040",
-        strokeThickness: 4,
-      })
-      .setOrigin(0.5)
-      .setDepth(26);
-    this.tweens.add({
-      targets: text,
-      y: worldY - 42,
-      alpha: 0,
-      duration: 900,
-      ease: "Cubic.easeOut",
-      onComplete: () => text.destroy(),
     });
   }
 

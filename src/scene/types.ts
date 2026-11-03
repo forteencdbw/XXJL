@@ -3,27 +3,26 @@ import Phaser from "phaser";
 import type { DailyGoal, Dish, Employee, MetaStats, PatronKind } from "../logic";
 import { Character } from "./Character";
 
-export type Driver = "player" | "staff";
 export type GameState = "closed" | "selectingMenu" | "open" | "bankrupt";
 export type TapText = Phaser.GameObjects.Text & { onTap: () => void };
 
-export type BoothState = "empty" | "seating" | "awaitingCook" | "cooking" | "dining";
+/** awaitingServe：菜已出锅放在灶台上等跑堂；serving：跑堂正端着走过来。 */
+export type BoothState = "empty" | "seating" | "awaitingCook" | "cooking" | "awaitingServe" | "serving" | "dining";
 
 export interface Booth {
   floor: number;
   state: BoothState;
-  cookingDriver: Driver | null;
-  /** 掌勺员工 id；玩家下厨时为 null。 */
+  /** 掌勺员工 id。 */
   cookStaffId: number | null;
-  /** 起锅时锁定的烹饪质量（售价倍率）；玩家下厨为 1。 */
+  /** 起锅时锁定的烹饪质量（售价倍率）。 */
   cookQuality: number;
   currentDish: Dish | null;
   cookStartedAt: number;
   cookDoneAt: number;
   departAt: number;
   awaitingSince: number;
-  /** 起锅时锁定的连击加价比例，离店结算时按此生效。 */
-  comboBonus: number;
+  /** 出锅时刻，跑堂先端等得最久的一桌。 */
+  readyAt: number;
   patronChar?: Character;
   patronKind: PatronKind | null;
   patronWish: string | null;
@@ -65,7 +64,9 @@ export interface OpProgress {
   startedAt: number;
   duration: number;
 }
-export interface SeatProgress extends OpProgress {
+/** 员工手上的一件活：领座 / 烹饪 / 传菜。 */
+export interface StaffTask extends OpProgress {
+  kind: "seat" | "cook" | "serve";
   boothIndex: number;
 }
 export interface PurchaseProgress extends OpProgress {
@@ -74,8 +75,9 @@ export interface PurchaseProgress extends OpProgress {
 /** 员工在营业中的临时状态，不进存档。 */
 export interface StaffRuntime {
   char: Character;
-  seat: SeatProgress | null;
-  cookingBooth: number | null;
+  task: StaffTask | null;
+  /** 人在哪层：领座/传菜去楼上时跟着上楼，玩家看哪层才显示哪层的人。 */
+  floor: number;
 }
 
 export interface SaveData {
@@ -88,6 +90,8 @@ export interface SaveData {
   /** 修仙界对本店的累计印象，决定每天到店人数与稀客比例。 */
   reputation: number;
   employees: Employee[];
+  /** 掌柜（也是员工，不能辞退、不领工资）；旧档没有时按新档掌柜补上。 */
+  shopkeeper?: Employee;
   /** 今日招聘候选人与生成它们的天数。 */
   candidates?: Employee[];
   candidatesDay?: number;

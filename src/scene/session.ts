@@ -2,8 +2,8 @@
 import Phaser from "phaser";
 import { playSfx } from "../audio";
 import { GAME } from "../config";
-import { BANKRUPT_STREAK, DISHES, GOAL_STREAK_TARGET, NIGHT_COLOR, REALMS, REP_GAIN_RARE, REP_GAIN_SERVED, formatClock, gainReputation, loseReputation, getArrivalSchedule, getClockMinutes, getDailyGoal, getDailyGoalOptions, getDailyRent, getEventSchedule, getFestivalGoalMultiplier, getFloorRent, getGoalPayout, getLoanDue, getRealmClosingIngredients, getRepLevelInfo, getSessionDurationMs, getShichen, getStreakBonus, isFestivalDay, skyColorAt, updateMeta } from "../logic";
-import { ACTOR_Y, CAMERA_CLOSED_X, CAMERA_OPEN_X, DINING_MS, FLOOR_Y, MAX_EVENTS_PER_SESSION, PLAYER_HOME, PURCHASE_AMOUNT, PURCHASE_TARGET_STOCK, ROUND_END_DELAY_MS, SCREEN_H, SCREEN_W, SKY_TRANSITION_MS } from "./constants";
+import { BANKRUPT_STREAK, DISHES, formatClock, gainReputation, getArrivalSchedule, getClockMinutes, getDailyGoal, getDailyGoalOptions, getDailyRent, getEventSchedule, getFestivalGoalMultiplier, getFloorRent, getGoalPayout, getLoanDue, getRepLevelInfo, getSessionDurationMs, getShichen, getStreakBonus, GOAL_STREAK_TARGET, isFestivalDay, loseReputation, NIGHT_COLOR, REP_GAIN_RARE, REP_GAIN_SERVED, skyColorAt, updateMeta } from "../logic";
+import { ACTOR_Y, CAMERA_CLOSED_X, CAMERA_OPEN_X, FLOOR_Y, MAX_EVENTS_PER_SESSION, PURCHASE_AMOUNT, PURCHASE_TARGET_STOCK, ROUND_END_DELAY_MS, SCREEN_H, SCREEN_W, SKY_TRANSITION_MS } from "./constants";
 import type { TavernScene } from "./TavernScene";
 
 export class SessionMethods {
@@ -39,38 +39,11 @@ export class SessionMethods {
       patron.char.setPatience((patron.expiresAt - time) / patron.patienceMs);
     });
 
-    this.playerSeat = this.resolveSeat(this.playerSeat, time, "player");
-    for (const e of this.employees) {
-      const rt = this.staffRt.get(e.id);
-      if (rt) rt.seat = this.resolveSeat(rt.seat, time, "staff", e);
-    }
+    this.resolveStaffTasks(time);
 
     this.booths.forEach((booth, index) => {
       if (booth.state === "cooking" && time >= booth.cookDoneAt) {
-        playSfx("cook");
-        booth.state = "dining";
-        booth.departAt = time + DINING_MS;
-        booth.patronChar?.setDining(true);
-        this.showDiningProp(index);
-        this.log("出餐完毕，食客开始用膳");
-        // 另一桌正在用膳时，给一次看得见的碰杯，而不是只等 5.6 秒的随机闲聊
-        const other = this.booths.find((b) => b !== booth && b.state === "dining" && b.patronChar);
-        const clinkA = booth.patronChar;
-        const clinkB = other?.patronChar;
-        if (clinkA && clinkB) {
-          this.time.delayedCall(250, () => {
-            if (clinkA.active && clinkB.active) this.showClink(clinkA, clinkB);
-          });
-        }
-        if (booth.cookingDriver === "player" && this.playerCookingBooth === index) {
-          this.playerCookingBooth = null;
-          this.moveActorHome("player", "cook");
-        }
-        const cookRt = booth.cookStaffId === null ? undefined : this.staffRt.get(booth.cookStaffId);
-        if (booth.cookingDriver === "staff" && cookRt?.cookingBooth === index) {
-          cookRt.cookingBooth = null;
-          this.moveActorHome("staff", "cook", this.employeeById(booth.cookStaffId));
-        }
+        this.finishCook(index, time);
       } else if (booth.state === "dining" && time >= booth.departAt) {
         const dish = booth.currentDish;
         const matched = dish !== null && booth.patronWish === dish.id;
@@ -83,11 +56,8 @@ export class SessionMethods {
         const guestKind = booth.patronKind;
         const guestWish = booth.patronWish;
         const guestRegular = booth.patronRegular;
-        const personal = booth.cookingDriver === "player";
         booth.state = "empty";
-        booth.cookingDriver = null;
         booth.currentDish = null;
-        booth.comboBonus = 0;
         booth.patronKind = null;
         booth.patronWish = null;
         booth.patronName = null;
@@ -122,15 +92,10 @@ export class SessionMethods {
         );
         const rare = priceFactor >= GAME.rarePriceFactor;
         this.gainReputationFor(rare);
-        const cultGain = this.cultivationGainFor(personal, matched, rare);
-        this.gainCultivation(cultGain);
-        if (cultGain > 0) {
-          this.showCultivationPopup(this.tablePosition(index).x, FLOOR_Y - 160, cultGain);
-        }
       }
     });
 
-    this.assignStaffWork(time);
+    this.assignStaffWork();
     // 两桌同时用膳时，每 7 秒至少给一次碰杯，不靠随机闲聊撞运气
     if (!this.focusing && time - this.lastClinkAt > 7000) {
       const dining = this.booths.filter((b) => b.state === "dining" && b.patronChar);
@@ -295,9 +260,7 @@ export class SessionMethods {
         booth.patronChar?.destroy();
         booth.patronChar = undefined;
         booth.state = "empty";
-        booth.cookingDriver = null;
         booth.currentDish = null;
-        booth.comboBonus = 0;
         booth.cookStartedAt = 0;
         booth.cookDoneAt = 0;
         booth.departAt = 0;
@@ -309,16 +272,14 @@ export class SessionMethods {
         booth.diningProp = undefined;
         booth.awaitingSince = 0;
       });
-      this.playerSeat = null;
-      this.playerCookingBooth = null;
       this.pendingFireId = null;
 
-      this.playerChar.teleportTo(PLAYER_HOME.x, PLAYER_HOME.y);
-      for (const e of this.employees) {
+      for (const e of this.workforce()) {
         const rt = this.staffRt.get(e.id);
         if (!rt) continue;
-        rt.seat = null;
-        rt.cookingBooth = null;
+        rt.task = null;
+        rt.floor = 0;
+        rt.char.setCarrying(false);
         const h = this.staffHome(e);
         rt.char.teleportTo(h.x, h.y);
       }
@@ -336,8 +297,6 @@ export class SessionMethods {
       this.sessionWishes = 0;
       this.stockLost = 0;
       this.queueLost = 0;
-      this.sessionCultivation = 0;
-      this.combo = 0;
       this.lastGift = null;
       this.goalAnnounced = false;
       this.regularsToday.clear();
@@ -373,6 +332,7 @@ export class SessionMethods {
       playSfx("open");
       this.log("开张大吉，今日营业开始");
       this.showDayBanner();
+      if (this.day === 1) this.showHint("掌柜会按伙计页的分工自动干活，打烊后去伙计页调整顺序");
 
       this.cameras.main.fadeIn(450, 0, 0, 0);
       this.transitioning = false;
@@ -417,11 +377,9 @@ export class SessionMethods {
       this.log(`打烊，采购的灵材到店 +${this.playerPurchasing.amount}`);
       this.playerPurchasing = null;
     }
-    this.playerSeat = null;
-    this.playerCookingBooth = null;
     this.staffRt.forEach((rt) => {
-      rt.seat = null;
-      rt.cookingBooth = null;
+      rt.task = null;
+      rt.char.setCarrying(false);
     });
     this.flushRepLoss();
     this.displayedCoins = this.coins;
@@ -444,19 +402,12 @@ export class SessionMethods {
     // 结算/破产期间锁定副屏，避免重复结算或误买
     this.purchaseButton.setEnabled(false);
     this.startButton.setAlpha(0.4);
-    this.serveButton.setAlpha(0.4);
-    this.cookButton.setAlpha(0.4);
     // 镜头暂留营业视角，等玩家在结算面板点「打烊」后再拉远过渡
     if (this.gameState === "bankrupt") {
       this.buildBankruptOverlay();
     } else {
       this.startCelebration();
       this.buildSettlementOverlay();
-    }
-    const closingIngredients = getRealmClosingIngredients(this.realmIndex());
-    if (closingIngredients > 0) {
-      this.inventory += closingIngredients;
-      this.log(`${REALMS[this.realmIndex()].name}境心念一动，打烊时凭空凝出 ${closingIngredients} 灵材`);
     }
     // 破产只重置本局，仙缘保留；其余情况立刻落盘
     if (this.gameState === "bankrupt") this.writeSave(this.freshSave(this.ascensions));
@@ -512,7 +463,6 @@ export class SessionMethods {
     const payout = getGoalPayout(goal, stats);
     if (isFestivalDay(sessionDay)) {
       payout.coins = Math.round(payout.coins * getFestivalGoalMultiplier(sessionDay));
-      payout.cultivation += GAME.festival.goalExtraCultivation;
     }
     const streakBonus = getStreakBonus(this.level);
     const qualified = payout.met || payout.partial;
@@ -526,11 +476,9 @@ export class SessionMethods {
       partial: payout.partial,
       progress: payout.progress,
       rewardCoins: payout.coins,
-      rewardCultivation: payout.cultivation,
       streakCount,
       streakComplete,
       streakCoins: streakBonus.coins,
-      streakCultivation: streakBonus.cultivation,
     };
     if (!qualified) {
       this.log(`第 ${this.day - 1} 日目标未达成：${goal.label}`);
@@ -539,16 +487,12 @@ export class SessionMethods {
     this.coins += payout.coins;
     this.log(
       payout.met
-        ? `第 ${this.day - 1} 日目标达成：${goal.label}，赏 ${payout.coins} 灵石、${payout.cultivation} 修为`
-        : `第 ${this.day - 1} 日目标差一点：${goal.label}（${payout.progress}/${goal.target}），半赏 ${payout.coins} 灵石、${payout.cultivation} 修为`,
+        ? `第 ${this.day - 1} 日目标达成：${goal.label}，赏 ${payout.coins} 灵石`
+        : `第 ${this.day - 1} 日目标差一点：${goal.label}（${payout.progress}/${goal.target}），半赏 ${payout.coins} 灵石`,
     );
-    this.gainCultivation(payout.cultivation);
     if (streakComplete) {
       this.coins += streakBonus.coins;
-      this.gainCultivation(streakBonus.cultivation);
-      this.log(
-        `三日之约达成：连达 ${GOAL_STREAK_TARGET} 天，额外赏 ${streakBonus.coins} 灵石、${streakBonus.cultivation} 修为`,
-      );
+      this.log(`三日之约达成：连达 ${GOAL_STREAK_TARGET} 天，额外赏 ${streakBonus.coins} 灵石`);
     }
     this.displayedCoins = this.coins;
   }

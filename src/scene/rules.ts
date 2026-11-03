@@ -1,6 +1,5 @@
-// 经营规则的场景侧换算：境界、价格、修为、天气、开市利是、菜单。
-import { GAME } from "../config";
-import { DISHES, REALMS, getAscensionPriceMultiplier, getCultivationGain, getDailyGift, getDailyGoal, getDailySpecial, getDailyWeather, getFloorPriceMultiplier, getGiftStreak, getPostCapPriceBonus, getPurchasePrice, getRealmIndex, getRealmPriceMultiplier, getSpecialPrice, getWishPrice, localDateKey } from "../logic";
+// 经营规则的场景侧换算：价格、天气、开市利是、菜单；境界只读（修为子系统占位）。
+import { DISHES, getDailyGift, getDailyGoal, getDailySpecial, getDailyWeather, getFloorPriceMultiplier, getGiftStreak, getPostCapPriceBonus, getPurchasePrice, getRealmIndex, getSpecialPrice, getWishPrice, localDateKey } from "../logic";
 import type { DailyGoal, Dish } from "../logic";
 import type { Booth } from "./types";
 import type { TavernScene } from "./TavernScene";
@@ -16,17 +15,13 @@ export class RuleMethods {
     return this.dailyGoal;
   }
 
-  /** 售价按当前境界加成结算。 */
   currentDailySpecial(this: TavernScene): string | null {
     return getDailySpecial(this.day, this.level, this.unlockedDishIds());
   }
 
+  /** 菜品基础售价；境界与仙缘的加成随修为子系统停用。 */
   baseDishPrice(this: TavernScene, dish: Dish): number {
-    return Math.round(
-      dish.price *
-        getRealmPriceMultiplier(this.realmIndex()) *
-        getAscensionPriceMultiplier(this.ascensions),
-    );
+    return dish.price;
   }
 
   dishPrice(this: TavernScene, dish: Dish): number {
@@ -38,7 +33,7 @@ export class RuleMethods {
     return getPurchasePrice(this.bestBuyer()?.stars.buy ?? 0, emergency);
   }
 
-  /** 一桌离店时的成交价：菜品价 × 身份 × 楼层 × 口味 × 连击 × 烹饪质量。 */
+  /** 一桌离店时的成交价：菜品价 × 身份 × 楼层 × 口味 × 烹饪质量。 */
   boothPrice(this: TavernScene, booth: Booth, dish: Dish): number {
     const matched = booth.patronWish === dish.id;
     const hasWish = booth.patronWish !== null;
@@ -49,16 +44,7 @@ export class RuleMethods {
         getPostCapPriceBonus(this.level),
     );
     return Math.round(
-      getWishPrice(base, matched, hasWish) * (1 + booth.comboBonus) * booth.cookQuality,
-    );
-  }
-
-  /** 只有玩家亲自下厨才计修为。 */
-  cultivationGainFor(this: TavernScene, personal: boolean, matched: boolean, rare: boolean): number {
-    return (
-      getCultivationGain(personal) +
-      (personal && matched ? GAME.cultivation.wishHitBonus : 0) +
-      (personal && rare ? GAME.cultivation.rareBonus : 0)
+      getWishPrice(base, matched, hasWish) * booth.cookQuality,
     );
   }
 
@@ -81,29 +67,14 @@ export class RuleMethods {
     this.coins += gift.coins;
     this.displayedCoins = this.coins;
     this.inventory += gift.ingredients;
-    this.gainCultivation(gift.cultivation);
-    // 利是修为算跨日奖励，不计入「今日下厨修为」，避免结算里同一笔 +2 出现两次
-    this.sessionCultivation = Math.max(0, this.sessionCultivation - gift.cultivation);
     this.log(
-      `开市利是（连续第 ${this.giftStreak} 天）：+${gift.coins} 灵石、+${gift.cultivation} 修为${
+      `开市利是（连续第 ${this.giftStreak} 天）：+${gift.coins} 灵石${
         gift.ingredients ? `、+${gift.ingredients} 灵材` : ""
       }`,
     );
     this.showEventToast(`开市利是 · 连续第 ${this.giftStreak} 天 +${gift.coins} 灵石`, true);
     // 一次性跨日奖励立即落盘：营业中刷新会回退本局，但不能重领利是
     this.writeSave(this.buildSaveData());
-  }
-
-  gainCultivation(this: TavernScene, amount: number) {
-    const before = this.realmIndex();
-    this.cultivation += amount;
-    this.sessionCultivation += amount;
-    const after = this.realmIndex();
-    if (after > before) {
-      const realm = REALMS[after];
-      this.log(`灵台清明，境界突破至「${realm.name}」——${realm.perk}`);
-      this.celebrateBreakthrough(realm.name);
-    }
   }
 
   getMenuDishes(this: TavernScene): Dish[] {

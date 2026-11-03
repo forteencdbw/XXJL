@@ -1,7 +1,7 @@
 // 屏幕固定层 UI：搭建底栏/导航卡/按钮、镜头拖拽、性别与音效开关、二级页面关闭。
 import Phaser from "phaser";
 import { loadAudioSettings, playSfx, setSfxMuted } from "../audio";
-import { DISHES, NIGHT_COLOR } from "../logic";
+import { NIGHT_COLOR } from "../logic";
 import { ProgressButton } from "./ProgressButton";
 import { SCREEN_H, SCREEN_W, STATUS_BAR_H, XIAN_FONT } from "./constants";
 import type { TapText } from "./types";
@@ -116,13 +116,11 @@ export class UiMethods {
     this.hudChips = this.add.graphics().setScrollFactor(0).setDepth(30.2);
     this.hudChips.fillStyle(0x0a0704, 0.42);
     this.hudChips.fillRoundedRect(12, 2, 362, 34, 8);
-    this.hudChips.fillRoundedRect(380, 2, 156, 34, 8);
     this.hudChips.fillRoundedRect(542, 2, 166, 34, 8);
     this.hudChips.fillRoundedRect(12, 36, 254, 30, 7);
     this.hudChips.fillRoundedRect(270, 36, 434, 30, 7);
     this.hudChips.lineStyle(1, 0x8a6a3a, 0.28);
     this.hudChips.strokeRoundedRect(12, 2, 362, 34, 8);
-    this.hudChips.strokeRoundedRect(380, 2, 156, 34, 8);
     this.hudChips.strokeRoundedRect(542, 2, 166, 34, 8);
     this.hudChips.strokeRoundedRect(12, 36, 254, 30, 7);
     this.hudChips.strokeRoundedRect(270, 36, 434, 30, 7);
@@ -131,11 +129,9 @@ export class UiMethods {
     this.inventoryText = this.addUiText(190, 6, "", "26px", "#a8d8b0");
     this.levelText = this.addUiText(400, 6, "", "18px", "#87ceeb");
     this.queueText = this.addUiText(24, 40, "", "24px", "#d8c8a8");
-    this.realmText = this.addUiText(396, 9, "", "21px", "#e0c9a0");
     // 状态栏最右：营业时钟的时辰
     this.clockText = this.addUiText(696, 9, "", "21px", "#ffd98a").setOrigin(1, 0);
     this.clockText.setStyle({ fontStyle: "bold" });
-    this.cultivationText = this.addUiText(300, 42, "", "21px", "#b8d8c8");
     this.goalText = this.addUiText(440, 40, "", "25px", "#e0c060");
     this.goalText.setWordWrapWidth(260);
     this.sessionText = this.addUiText(24, 70, "", "21px", "#a8b8c8");
@@ -154,27 +150,9 @@ export class UiMethods {
       .setDepth(30.7);
     this.chronicleText = this.addUiText(24, 96, "", "17px", "#b8b0a0");
     this.weatherBadge = this.addUiText(24, 176, "", "17px", "#e0c9a0").setVisible(false);
-    this.comboBadge = this.addUiText(696, 174, "", "19px", "#ffb45a")
-      .setOrigin(1, 0)
-      .setVisible(false);
-    this.comboBadge.setStyle({ fontStyle: "bold" });
-    [this.coinsText, this.inventoryText, this.queueText, this.realmText, this.cultivationText, this.goalText].forEach(
+    [this.coinsText, this.inventoryText, this.queueText, this.goalText].forEach(
       (text) => text.setStyle({ fontStyle: "bold" }),
     );
-    this.tutorialBanner = this.add
-      .text(360, 1140, "", {
-        fontSize: "18px",
-        color: "#ffe6c8",
-        backgroundColor: "rgba(30,22,15,0.92)",
-        padding: { x: 14, y: 7 },
-        align: "center",
-        wordWrap: { width: 640 },
-        fontFamily: XIAN_FONT,
-      })
-      .setOrigin(0.5)
-      .setScrollFactor(0)
-      .setDepth(32)
-      .setVisible(false);
     this.levelText.setVisible(false);
 
     const audio = loadAudioSettings();
@@ -192,31 +170,14 @@ export class UiMethods {
     );
     this.refreshAudioButtons();
 
-    // 营业中操作按钮：与采购/打烊同处底部操作区
-    this.serveButton = this.addUiButton(232, 1186, () => this.startSeat("player"), { x: 14, y: 28 }, 6, "20px");
-    this.cookButton = this.addUiButton(346, 1186, () => this.manualCook(), { x: 14, y: 28 }, 6, "20px");
-    this.serveButton.setBackgroundColor("#35543a");
-    this.cookButton.setBackgroundColor("#5a3a1c");
-    // 出菜行：点哪道菜就做哪道，优先端给想吃它的那一桌
-    this.dishChipLabel = this.addUiText(16, 1014, "出菜 · 点菜名", "19px", "#e0c9a0");
-    this.dishChips = DISHES.map((_, i) =>
-      this.addUiButton(
-        56 + (i % 4) * 150,
-        1042 + Math.floor(i / 4) * 68,
-        () => {
-          const dish = this.getMenuDishes()[i];
-          if (dish) this.manualCookDish(dish);
-        },
-        { x: 8, y: 20 },
-        3,
-        "18px",
-      ),
-    );
-    this.dishChips.forEach((chip) => chip.setVisible(false));
 
     // 通用按钮：底部固定
     this.purchaseButton = new ProgressButton(this, 16, 1186, 200, 80, () => this.startPurchase(), this.registerUi);
     this.startButton = this.addUiButton(222, 1186, () => this.onStartButton(), { x: 12, y: 28 }, 6, "20px");
+    // 修为子系统入口：营业、打烊都在
+    this.cultivationButton = this.addUiButton(560, 1186, () => this.buildCultivationOverlay(), { x: 30, y: 28 }, 6, "22px");
+    this.cultivationButton.setBackgroundColor("#3a2e4a");
+    this.cultivationButton.setText("修为");
 
     // 打烊期的经营按钮：两列四行，保证每格都是可点的大按钮
     this.navPanel = this.add.container(0, 0).setScrollFactor(0).setDepth(30);
@@ -244,10 +205,6 @@ export class UiMethods {
     );
     this.genderButton = this.addNavCard(180, 1005, "形象 · 男", "点击切换", () => this.toggleGender());
     this.bankButton = this.addNavCard(180, 1109, "灵石商行", "借贷 · 还账", () => this.buildBankOverlay());
-    this.cultivationButton = this.addNavCard(540, 797, "修行 · 境界", "修为 · 突破 · 飞升", () =>
-      this.buildCultivationOverlay(),
-      true,
-    );
     this.helpButton = this.addNavCard(540, 901, "玩法", "规则与操作", () => this.showHelp(), true);
     this.recordButton = this.addNavCard(540, 1005, "账簿", "累计 · 成就", () => this.buildRecordOverlay(), true);
     this.saveButton = this.addNavCard(540, 1109, "存档", "导出 · 导入", () => this.openSaveDialog("export"), true);
@@ -409,7 +366,6 @@ export class UiMethods {
       this.bankButton,
       this.upgradeButton,
       this.genderButton,
-      this.cultivationButton,
       this.helpButton,
       this.recordButton,
       this.saveButton,
@@ -431,14 +387,11 @@ export class UiMethods {
     this.setFloorTabsVisible(isOpen);
     this.applyFloorLook();
 
-    this.serveButton.setVisible(isOpen);
-    this.cookButton.setVisible(isOpen);
     this.setClosedNavVisible(!isOpen && !this.overlay);
     this.rightFrame.setVisible(isOpen);
     this.closedBackdrop.setVisible(!isOpen);
 
-    this.playerChar.setVisible(isOpen);
-    this.staffChars().forEach((c) => c.setVisible(isOpen));
+    // 掌柜与伙计的显隐按各自所在楼层，统一在 refreshBoothVisibility 里处理
     this.refreshBoothVisibility();
     this.windowViews.forEach((w) => w.setVisible(isOpen));
   }

@@ -4,15 +4,10 @@ import { GAME } from "../config";
 // 玩法数值都在 config.ts，这里只取别名
 export const QUEUE_PATIENCE_MS = GAME.session.queuePatienceMs;
 export const DINING_MS = GAME.session.diningMs;
-/** 桌子入座后先给玩家这么久亲手出菜，伙计再接手。 */
-export const COOK_PRIORITY_MS = GAME.session.cookPriorityMs;
 /** 最后一位离店后停顿一下再结算，给清场留个过场。 */
 export const ROUND_END_DELAY_MS = 1200;
 /** 顾客进场动画整体放慢，体现悠闲。 */
 export const ENTRANCE_SLOW = 1.5;
-/** 玩家连续命中口味的连击：每次 +5%，最多 5 连（+25%）。 */
-export const COMBO_STEP = GAME.combo.step;
-export const COMBO_MAX = GAME.combo.max;
 export const PURCHASE_AMOUNT = GAME.purchase.amount;
 export const PURCHASE_TARGET_STOCK = GAME.staff.buyerTargetStockBase;
 export const CHRONICLE_MAX_LINES = 1;
@@ -21,9 +16,6 @@ export const AUTOSAVE_MS = 2000;
 /** 随机事件上限；实际次数按当天客人数缩放（约每 5 位 1 次）。 */
 export const MAX_EVENTS_PER_SESSION = GAME.events.maxPerSession;
 
-export const SEAT_BASE_MS = GAME.timing.seatBaseMs;
-export const SEAT_TAVERN_SHRINK_PER_LEVEL_MS = GAME.timing.seatShrinkPerLevelMs;
-export const SEAT_FLOOR_MS = GAME.timing.seatFloorMs;
 export const COOK_TAVERN_SHRINK_PER_LEVEL_MS = GAME.timing.cookShrinkPerLevelMs;
 export const COOK_FLOOR_MS = GAME.timing.cookFloorMs;
 
@@ -57,6 +49,5 @@ export const PLAYER_HOME = { x: 240, y: ACTOR_Y };
 export const HAWKER_HOME = { x: 280, y: ACTOR_Y };
 export const SERVER_HOME = { x: 120, y: ACTOR_Y };
 export const COOK_HOME = { x: -290, y: ACTOR_Y };
-export const SERVE_SPOT = { x: 275, y: ACTOR_Y };
 export const COOK_SPOT = { x: -230, y: ACTOR_Y };
 export const DOOR_X = 320;

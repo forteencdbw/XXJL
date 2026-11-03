@@ -1,175 +1,116 @@
-// 产线：玩家/员工招待入座、烹饪、紧急采购。
+// 产线：员工（含掌柜）领座、烹饪、传菜，以及紧急采购。
 import Phaser from "phaser";
 import { playSfx } from "../audio";
 import { GAME } from "../config";
-import { DISHES, getCookQuality, getPlayerDuration, getPurchaseDuration, getRealmPlayerSpeedFactor, getRealmStaffSpeedFactor, getStaffDuration, getStoveSpeedFactor, isRarePatron } from "../logic";
-import type { Dish, Employee } from "../logic";
-import { ACTOR_Y, COMBO_MAX, COMBO_STEP, COOK_FLOOR_MS, COOK_SPOT, COOK_TAVERN_SHRINK_PER_LEVEL_MS, FLOOR_Y, PLAYER_HOME, PURCHASE_AMOUNT, SEAT_BASE_MS, SEAT_FLOOR_MS, SEAT_TAVERN_SHRINK_PER_LEVEL_MS, SERVE_SPOT } from "./constants";
-import type { Booth, Driver, SeatProgress } from "./types";
+import { DISHES, getCookQuality, getPurchaseDuration, getStaffDuration, getStoveSpeedFactor, getWalkSpeed, isRarePatron } from "../logic";
+import type { Employee } from "../logic";
+import { ACTOR_Y, COOK_FLOOR_MS, COOK_SPOT, COOK_TAVERN_SHRINK_PER_LEVEL_MS, DOOR_X, FLOOR_Y, PURCHASE_AMOUNT } from "./constants";
+import type { StaffRuntime } from "./types";
 import type { TavernScene } from "./TavernScene";
 
+/** 领座时跑堂站在客人前面（桌子在门的左边）的距离。 */
+const LEAD_GAP = 36;
+
 export class ProductionMethods {
+  /** 急购在途时不能再下单。 */
   isPlayerBusy(this: TavernScene): boolean {
-    return (
-      this.playerSeat !== null ||
-      this.playerCookingBooth !== null ||
-      this.playerPurchasing !== null
-    );
+    return this.playerPurchasing !== null;
   }
 
-  /** 玩家/伙计走到待客位再做动作；不再瞬移，也不再站到客人身上。 */
-  moveActorTo(this: TavernScene, driver: Driver, kind: "seat" | "cook", travelMs: number, emp?: Employee) {
-    const spot = kind === "seat" ? SERVE_SPOT : COOK_SPOT;
-    if (driver === "player") {
-      this.playerChar.walkTo(spot.x, spot.y, travelMs, () => this.playerChar.pulse());
-      return;
-    }
-    const char = emp && this.staffRt.get(emp.id)?.char;
-    char?.walkTo(spot.x, spot.y, travelMs, () => char.pulse());
+  /** 按身法换算的走路耗时（毫秒）。 */
+  walkMs(this: TavernScene, e: Employee, fromX: number, toX: number): number {
+    return (Math.abs(toX - fromX) / getWalkSpeed(e.stars.seat)) * 1000;
   }
 
-  moveActorHome(this: TavernScene, driver: Driver, _kind: "seat" | "cook", emp?: Employee) {
-    if (driver === "player") {
-      this.playerChar.walkTo(PLAYER_HOME.x, PLAYER_HOME.y, 300);
-      return;
-    }
-    if (!emp) return;
-    const home = this.staffHome(emp);
-    this.staffRt.get(emp.id)?.char.walkTo(home.x, home.y, 300);
+  /** 员工所在楼层与玩家正在看的楼层一致才显示。 */
+  setStaffFloor(this: TavernScene, rt: StaffRuntime, floor: number) {
+    rt.floor = floor;
+    rt.char.setVisible(this.gameState === "open" && floor === this.activeFloor);
   }
 
-  /** 返回是否真的开始领客（员工据此决定要不要去做下一项工作）。 */
-  startSeat(this: TavernScene, driver: Driver, emp?: Employee): boolean {
-    if (this.settling) return false;
-    if (this.inventory <= 0) {
-      if (driver === "player") this.showHint("灵材见底：先点左下「急购 +5」补货，再领客入座");
-      return false;
+  /** 做完一件事回到自己的站位；从楼上下来的先在门口出现。 */
+  sendStaffHome(this: TavernScene, e: Employee, rt: StaffRuntime) {
+    rt.task = null;
+    if (rt.floor !== 0) {
+      rt.char.teleportTo(DOOR_X, ACTOR_Y);
+      this.setStaffFloor(rt, 0);
     }
-    if (driver === "player" && this.isPlayerBusy()) {
-      this.showHint("你正忙着，稍等一下");
-      return false;
-    }
-    const rt = emp && this.staffRt.get(emp.id);
-    if (driver === "staff" && (!emp || !rt || rt.seat)) return false;
-    if (this.queue.length === 0) {
-      if (driver === "player") {
-        this.showHint(
-          this.booths.some((booth) => booth.state === "seating")
-            ? "伙计正在领客入座，稍等"
-            : "门外还没有客人，稍等",
-        );
-      }
-      return false;
-    }
+    const home = this.staffHome(e);
+    rt.char.walkTo(home.x, home.y, this.walkMs(e, rt.char.x, home.x));
+  }
 
-    if (!this.queue[0]?.char.arrived) {
-      if (driver === "player") this.showHint("客人还在路上，稍等");
-      return false;
-    }
+  /** 领座：跑堂先走到门口接人，再走在客人前面领到桌边；客人落座后跑堂才离开。返回是否接了这单。 */
+  startSeat(this: TavernScene, e: Employee): boolean {
+    const rt = this.staffRt.get(e.id);
+    if (this.settling || !rt || rt.task || this.inventory <= 0) return false;
+    const first = this.queue[0];
+    if (!first?.char.arrived) return false;
     const emptyBooths = this.booths
       .map((booth, index) => ({ booth, index }))
       .filter(({ booth }) => booth.state === "empty");
-    if (emptyBooths.length === 0) {
-      if (driver === "player") this.showHint("雅座满了，先出菜");
-      return false;
-    }
-    const first = this.queue[0];
+    if (emptyBooths.length === 0) return false;
     let candidates = emptyBooths.filter(({ booth }) => booth.floor === this.activeFloor);
     if (candidates.length === 0) {
       const hasEmpty = (floor: number) => emptyBooths.some(({ booth }) => booth.floor === floor);
-      const rare = (first?.kind.priceFactor ?? 1) >= GAME.rarePriceFactor;
-      const targetFloor = rare
-        ? hasEmpty(2)
-          ? 2
-          : hasEmpty(1)
-            ? 1
-            : 0
-        : hasEmpty(1)
-          ? 1
-          : hasEmpty(0)
-            ? 0
-            : 2;
+      // 稀客往楼上请，寻常客人先坐低层
+      const targetFloor = isRarePatron(first.kind)
+        ? hasEmpty(2) ? 2 : hasEmpty(1) ? 1 : 0
+        : hasEmpty(1) ? 1 : hasEmpty(0) ? 0 : 2;
       candidates = emptyBooths.filter(({ booth }) => booth.floor === targetFloor);
       if (candidates.length === 0) return false;
-      // 玩家亲自领客时，镜头跟着客人上楼；伙计自动招待则留在当前层
-      if (driver === "player" && targetFloor !== this.activeFloor) {
-        this.activeFloor = targetFloor;
-        this.applyFloorLook();
-        this.relayoutTables();
-        this.refreshBoothVisibility();
-        this.refreshFloorTabs();
-      }
     }
     // 不总是从最左一张开始，客人分散入座，画面更像一间活着的店
-    const { booth, index: boothIndex } =
-      candidates[Math.floor(Math.random() * candidates.length)];
+    const { booth, index: boothIndex } = candidates[Math.floor(Math.random() * candidates.length)];
 
     const patron = this.queue.shift()!;
-    patron.char.setVisible(booth.floor === this.activeFloor);
     patron.char.setPatience(null);
     patron.char.setMood(isRarePatron(patron.kind) ? "cold" : "waiting");
     booth.state = "seating";
-    const progress: SeatProgress = {
-      startedAt: this.time.now,
-      duration:
-        driver === "player"
-          ? getPlayerDuration(
-              SEAT_BASE_MS,
-              SEAT_TAVERN_SHRINK_PER_LEVEL_MS,
-              SEAT_FLOOR_MS,
-              this.level,
-              getRealmPlayerSpeedFactor(this.realmIndex()),
-            )
-          : getStaffDuration(
-              emp!.stars.seat,
-              SEAT_BASE_MS,
-              SEAT_TAVERN_SHRINK_PER_LEVEL_MS,
-              SEAT_FLOOR_MS,
-              this.level,
-              getRealmStaffSpeedFactor(this.realmIndex()),
-            ),
-      boothIndex,
-    };
-    if (driver === "player") this.playerSeat = progress;
-    else rt!.seat = progress;
-    this.moveActorTo(driver, "seat", Math.min(400, progress.duration), emp);
-
-    // 顾客从门口走向桌子，移动时长与招待进度同步
-    const table = this.tablePosition(boothIndex);
-    patron.char.walkTo(table.x, table.y, progress.duration);
     booth.patronChar = patron.char;
     booth.patronKind = patron.kind;
     booth.patronWish = patron.wish;
     booth.patronName = patron.name;
     booth.patronRegular = patron.regular;
-    if (isRarePatron(patron.kind)) {
-      patron.char.say(patron.kind.id === "elder" ? "此子有慧根。" : "本座只等一炷香。", "cold");
-    }
+
+    const char = rt.char;
+    const meetX = patron.char.x - LEAD_GAP;
+    const table = this.tablePosition(boothIndex);
+    const toDoor = this.walkMs(e, char.x, meetX);
+    const toTable = this.walkMs(e, meetX, table.x - LEAD_GAP);
+    rt.task = { kind: "seat", boothIndex, startedAt: this.time.now, duration: toDoor + toTable };
+    char.walkTo(meetX, ACTOR_Y, toDoor, () => {
+      if (!patron.char.active || rt.task?.boothIndex !== boothIndex) return;
+      // 领去楼上：两人在门口一起上楼，玩家看哪层就在哪层看见他们
+      this.setStaffFloor(rt, booth.floor);
+      patron.char.setVisible(booth.floor === this.activeFloor);
+      char.walkTo(table.x - LEAD_GAP, ACTOR_Y, toTable);
+      patron.char.walkTo(table.x, table.y, toTable);
+      if (isRarePatron(patron.kind)) {
+        patron.char.say(patron.kind.id === "elder" ? "此子有慧根。" : "本座只等一炷香。", "cold");
+      }
+    });
     return true;
   }
 
-  resolveSeat(this: TavernScene, progress: SeatProgress | null, time: number, driver: Driver, emp?: Employee): SeatProgress | null {
-    if (!progress || time < progress.startedAt + progress.duration) return progress;
-    const booth = this.booths[progress.boothIndex];
-    if (booth) {
+  finishSeat(this: TavernScene, e: Employee, rt: StaffRuntime, time: number) {
+    const index = rt.task!.boothIndex;
+    const booth = this.booths[index];
+    if (booth?.state === "seating") {
       playSfx("seat");
       booth.state = "awaitingCook";
       booth.awaitingSince = time;
       booth.patronChar?.setSeated(true);
-      this.log(driver === "player" ? "你领食客入座雅座，等候烹饪" : `${emp?.name ?? "伙计"}领食客入座雅座`);
-      if (emp) this.staffDidWork(emp, "seat");
-      this.showBoothOrder(progress.boothIndex);
-      if (this.day === 1 && this.tutorialHintStage <= 1) {
-        this.tutorialHintStage = 2;
-      }
+      this.log(`${e.name}领食客入座雅座`);
+      this.staffDidWork(e, "seat");
+      this.showBoothOrder(index);
     }
-    this.moveActorHome(driver, "seat", emp);
-    return null;
+    this.sendStaffHome(e, rt);
   }
 
   /** 入座时在桌上方飘出这一桌的订单，避免玩家只看到队列数字变化。 */
   showBoothOrder(this: TavernScene, index: number) {
     const booth = this.booths[index];
+    if (booth.floor !== this.activeFloor) return;
     const table = this.tablePosition(index);
     const wish = DISHES.find((dish) => dish.id === booth.patronWish)?.name;
     const guest = booth.patronKind?.name ?? "食客";
@@ -194,70 +135,19 @@ export class ProductionMethods {
     });
   }
 
-  manualCook(this: TavernScene) {
-    if (this.settling) return;
-    if (this.isPlayerBusy()) {
-      this.showHint("你正忙着，稍等一下");
-      return;
-    }
-    const index = this.booths.findIndex(
-      (booth) => booth.state === "awaitingCook" && booth.floor === this.activeFloor,
-    );
-    if (index === -1) {
-      this.showHint(
-        this.booths.some((booth) => booth.state === "seating" && booth.floor === this.activeFloor)
-          ? "食客还在入座，稍等片刻"
-          : "本层没有待烹饪的客人",
-      );
-      return;
-    }
-    this.startCook(this.booths[index], index, "player");
-  }
-
-  /** 指定菜品出餐：优先端给正想吃这道菜的那一桌。 */
-  manualCookDish(this: TavernScene, dish: Dish) {
-    if (this.settling) return;
-    if (this.isPlayerBusy()) {
-      this.showHint("你正忙着，稍等一下");
-      return;
-    }
-    const awaiting = this.booths
-      .map((booth, index) => ({ booth, index }))
-      .filter(({ booth }) => booth.state === "awaitingCook" && booth.floor === this.activeFloor);
-    if (awaiting.length === 0) {
-      this.showHint(
-        this.booths.some((booth) => booth.state === "seating" && booth.floor === this.activeFloor)
-          ? "食客还在入座，稍等片刻"
-          : "本层没有待出菜的客人",
-      );
-      return;
-    }
-    const target = awaiting.find(({ booth }) => booth.patronWish === dish.id) ?? awaiting[0];
-    this.startCook(target.booth, target.index, "player", dish);
-  }
-
-  cookDuration(this: TavernScene, dish: Dish, driver: Driver, emp?: Employee): number {
-    return driver === "player"
-      ? getPlayerDuration(
-          dish.cookMs,
-          COOK_TAVERN_SHRINK_PER_LEVEL_MS,
-          COOK_FLOOR_MS,
-          this.level,
-          getRealmPlayerSpeedFactor(this.realmIndex()) * getStoveSpeedFactor(this.stoveLevel),
-        )
-      : getStaffDuration(
-          emp?.stars.cook ?? 1,
-          dish.cookMs,
-          COOK_TAVERN_SHRINK_PER_LEVEL_MS,
-          COOK_FLOOR_MS,
-          this.level,
-          getRealmStaffSpeedFactor(this.realmIndex()) * getStoveSpeedFactor(this.stoveLevel),
-        );
-  }
-
-  /** 返回是否真的起锅。 */
-  startCook(this: TavernScene, booth: Booth, index: number, driver: Driver, dish?: Dish, emp?: Employee): boolean {
-    if (booth.state !== "awaitingCook") return false;
+  /** 烹饪：先接等得最久的一桌；客人想吃的菜在今日菜单上就做这道，否则按菜单轮转。返回是否起锅。 */
+  startCook(this: TavernScene, e: Employee): boolean {
+    const rt = this.staffRt.get(e.id);
+    if (this.settling || !rt || rt.task) return false;
+    const menu = this.getMenuDishes();
+    if (menu.length === 0) return false;
+    let index = -1;
+    this.booths.forEach((booth, i) => {
+      if (booth.state !== "awaitingCook") return;
+      if (index === -1 || booth.awaitingSince < this.booths[index].awaitingSince) index = i;
+    });
+    if (index === -1) return false;
+    const booth = this.booths[index];
     if (this.inventory <= 0) {
       booth.state = "empty";
       this.stockLost += 1;
@@ -277,56 +167,111 @@ export class ProductionMethods {
       this.sessionLost += 1;
       this.pendingRepLoss += 1;
       this.log(`灵材不足，${guest}没吃上菜便离开了`);
-      this.showHint("灵材不足，客人走了——赶紧备货");
+      this.showHint("灵材不足，客人走了——赶紧急购");
       return false;
     }
 
-    const menu = this.getMenuDishes();
-    if (menu.length === 0) return false;
-    const chosen = dish ?? menu[this.dishCursor % menu.length];
-    const duration = this.cookDuration(chosen, driver, emp);
-    if (dish === undefined) this.dishCursor += 1;
+    const wished = menu.find((dish) => dish.id === booth.patronWish);
+    const chosen = wished ?? menu[this.dishCursor++ % menu.length];
+    const duration = getStaffDuration(
+      e.stars.cook,
+      chosen.cookMs,
+      COOK_TAVERN_SHRINK_PER_LEVEL_MS,
+      COOK_FLOOR_MS,
+      this.level,
+      getStoveSpeedFactor(this.stoveLevel),
+    );
     this.inventory -= 1;
-    // 连击在起锅时锁定：命中口味 +1 连，上错清零；伙计出菜不参与
-    booth.comboBonus = 0;
-    if (driver === "player") {
-      if (booth.patronWish === chosen.id) {
-        this.combo = Math.min(COMBO_MAX, this.combo + 1);
-        booth.comboBonus = this.combo * COMBO_STEP;
-        if (this.combo >= 2) this.showComboPopup();
-      } else if (booth.patronWish !== null && this.combo > 0) {
-        this.log(`口味不合，连击中断（${this.combo} 连）`);
-        this.combo = 0;
-      }
-    }
     booth.state = "cooking";
-    booth.cookingDriver = driver;
-    booth.cookStaffId = emp?.id ?? null;
+    booth.cookStaffId = e.id;
     // 厨艺决定这道菜的成色，直接体现在售价上
-    booth.cookQuality = driver === "player" ? 1 : getCookQuality(emp?.stars.cook ?? 1);
+    booth.cookQuality = getCookQuality(e.stars.cook);
     booth.currentDish = chosen;
     booth.cookStartedAt = this.time.now;
     booth.cookDoneAt = this.time.now + duration;
-    if (driver === "player") this.playerCookingBooth = index;
-    else if (emp) {
-      const rt = this.staffRt.get(emp.id);
-      if (rt) rt.cookingBooth = index;
-      this.staffDidWork(emp, "cook");
-    }
-    this.moveActorTo(driver, "cook", Math.min(400, duration), emp);
-    this.log(
-      driver === "player"
-        ? `你下厨为 ${index + 1} 号桌烹制${chosen.name}`
-        : `${emp?.name ?? "伙计"}烹制${chosen.name}（雅座 ${index + 1}）`,
-    );
-    if (driver === "player" && this.day === 1 && this.tutorialHintStage === 2) {
-      this.tutorialHintStage = 3;
-      this.showHint("已起锅，等出餐");
-    }
+    rt.task = { kind: "cook", boothIndex: index, startedAt: this.time.now, duration };
+    this.staffDidWork(e, "cook");
+    rt.char.walkTo(COOK_SPOT.x, COOK_SPOT.y, Math.min(400, duration), () => rt.char.pulse());
+    this.log(`${e.name}烹制${chosen.name}（雅座 ${index + 1}）`);
     return true;
   }
 
-  /** 玩家点采购：打烊瞬间到货；营业中走 15 秒紧急采购（翻倍价）。灵石不足时赊账，费用照扣。 */
+  /** 菜做好了：放在灶台上等跑堂，掌勺的人可以接下一道。 */
+  finishCook(this: TavernScene, index: number, time: number) {
+    const booth = this.booths[index];
+    playSfx("cook");
+    booth.state = "awaitingServe";
+    booth.readyAt = time;
+    this.log(`${booth.currentDish?.name ?? "菜"}出锅，等跑堂传菜`);
+    const cook = this.employeeById(booth.cookStaffId);
+    const rt = cook && this.staffRt.get(cook.id);
+    if (cook && rt?.task?.kind === "cook" && rt.task.boothIndex === index) this.sendStaffHome(cook, rt);
+  }
+
+  /** 传菜：跑堂走到灶台取菜，再端到客人桌上。返回是否接了这单。 */
+  startServe(this: TavernScene, e: Employee): boolean {
+    const rt = this.staffRt.get(e.id);
+    if (this.settling || !rt || rt.task) return false;
+    let index = -1;
+    this.booths.forEach((booth, i) => {
+      if (booth.state !== "awaitingServe") return;
+      if (index === -1 || booth.readyAt < this.booths[index].readyAt) index = i;
+    });
+    if (index === -1) return false;
+    const booth = this.booths[index];
+    booth.state = "serving";
+    const char = rt.char;
+    const table = this.tablePosition(index);
+    const dropX = table.x + LEAD_GAP;
+    const toStove = this.walkMs(e, char.x, COOK_SPOT.x);
+    const toTable = this.walkMs(e, COOK_SPOT.x, dropX);
+    rt.task = { kind: "serve", boothIndex: index, startedAt: this.time.now, duration: toStove + toTable };
+    char.walkTo(COOK_SPOT.x, ACTOR_Y, toStove, () => {
+      if (rt.task?.boothIndex !== index) return;
+      char.setCarrying(true);
+      this.setStaffFloor(rt, booth.floor);
+      char.walkTo(dropX, ACTOR_Y, toTable);
+    });
+    return true;
+  }
+
+  /** 菜端上桌，客人开始用膳。 */
+  finishServe(this: TavernScene, e: Employee, rt: StaffRuntime, time: number) {
+    const index = rt.task!.boothIndex;
+    const booth = this.booths[index];
+    rt.char.setCarrying(false);
+    if (booth?.state === "serving") {
+      booth.state = "dining";
+      booth.departAt = time + GAME.session.diningMs;
+      booth.patronChar?.setDining(true);
+      this.showDiningProp(index);
+      this.staffDidWork(e, "seat");
+      this.log(`${e.name}把${booth.currentDish?.name ?? "菜"}端上桌，食客开始用膳`);
+      // 另一桌正在用膳时，给一次看得见的碰杯，而不是只等随机闲聊
+      const other = this.booths.find((b) => b !== booth && b.state === "dining" && b.patronChar);
+      const clinkA = booth.patronChar;
+      const clinkB = other?.patronChar;
+      if (clinkA && clinkB) {
+        this.time.delayedCall(250, () => {
+          if (clinkA.active && clinkB.active) this.showClink(clinkA, clinkB);
+        });
+      }
+    }
+    this.sendStaffHome(e, rt);
+  }
+
+  /** 每帧收尾到期的领座/传菜，烹饪由雅座状态推进。 */
+  resolveStaffTasks(this: TavernScene, time: number) {
+    for (const e of this.workforce()) {
+      const rt = this.staffRt.get(e.id);
+      const task = rt?.task;
+      if (!rt || !task || task.kind === "cook" || time < task.startedAt + task.duration) continue;
+      if (task.kind === "seat") this.finishSeat(e, rt, time);
+      else this.finishServe(e, rt, time);
+    }
+  }
+
+  /** 玩家点采购：打烊瞬间到货；营业中走紧急采购（翻倍价、要等货）。灵石不足时赊账，费用照扣。 */
   startPurchase(this: TavernScene) {
     if (this.settling) return;
     const emergency = this.gameState === "open";
@@ -345,7 +290,6 @@ export class ProductionMethods {
     }
     this.playerPurchasing = {
       startedAt: this.time.now,
-      // 营业中急购是救火，不该让玩家被锁 15 秒；压到约 9 秒
       duration: Math.round(getPurchaseDuration(this.level) * GAME.purchase.emergencyDurationScale),
       amount: PURCHASE_AMOUNT,
     };

@@ -286,16 +286,13 @@ export class PatronMethods {
       this.sessionLost += 1;
       this.queueLost += 1;
       this.log(`${name}见门外排满，转身离去`);
-      this.showHint("门外排满了，新客转身离开——先点「招待入座」清位");
+      this.showHint("门外排满了，新客转身离开——多安排人跑堂");
       return;
     }
 
     this.patronEntrance(char, kind, slotX);
     const patience = QUEUE_PATIENCE_MS * kind.patienceFactor * (this.day === 1 ? GAME.session.firstDayPatienceMultiplier : 1);
     this.queue.push({ expiresAt: time + patience, patienceMs: patience, char, kind, wish, name, regular: !!regular });
-    if (this.day === 1 && this.tutorialHintStage === 0) {
-      this.tutorialHintStage = 1;
-    }
     playSfx(rare ? "event" : "arrival");
     const wishName = DISHES.find((d) => d.id === wish)?.name;
     this.log(
@@ -312,12 +309,7 @@ export class PatronMethods {
   /** 随机事件：不打断操作，直接把结果记进见闻录并飘一条提示。 */
   triggerRandomEvent(this: TavernScene) {
     const event = pickRandomEvent(Math.random());
-    const next = applyEvent(event, {
-      coins: this.coins,
-      ingredients: this.inventory,
-      cultivation: this.cultivation,
-    });
-    const gainedCultivation = next.cultivation - this.cultivation;
+    const next = applyEvent(event, { coins: this.coins, ingredients: this.inventory });
     this.coins = next.coins;
     this.displayedCoins = this.coins;
     this.inventory = next.ingredients;
@@ -325,9 +317,7 @@ export class PatronMethods {
     const parts: string[] = [];
     if (event.coins !== 0) parts.push(`灵石 ${event.coins > 0 ? "+" : ""}${event.coins}`);
     if (event.ingredients !== 0) parts.push(`灵材 ${event.ingredients > 0 ? "+" : ""}${event.ingredients}`);
-    if (event.cultivation !== 0) parts.push(`修为 +${event.cultivation}`);
     this.log(`【事件】${event.text}${parts.length ? `（${parts.join("，")}）` : ""}`);
-    if (gainedCultivation > 0) this.gainCultivation(gainedCultivation);
     this.showEventToast(event.text, event.kind !== "bad");
     if (event.kind === "bad") this.cameras.main.shake(220, 0.006);
     playSfx("event");

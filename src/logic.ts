@@ -1,10 +1,11 @@
 // 纯数值逻辑：不依赖 Phaser / DOM，便于单元测试。数值本身都在 config.ts。
 import { GAME } from "./config";
 
-/** 员工可勾选的三项工作：招待入座 / 烹饪 / 采买。 */
+/** 员工可勾选的三项工作：跑堂（领座与传菜）/ 烹饪 / 采买。 */
 export type Job = "seat" | "cook" | "buy";
 export const JOBS: Job[] = ["seat", "cook", "buy"];
-export const JOB_NAMES: Record<Job, string> = { seat: "招待", cook: "烹饪", buy: "采买" };
+/** 「seat」是跑堂：领座与传菜两件事。 */
+export const JOB_NAMES: Record<Job, string> = { seat: "跑堂", cook: "烹饪", buy: "采买" };
 export const STAT_NAMES: Record<Job, string> = { seat: "身法", cook: "厨艺", buy: "精明" };
 
 const C = GAME;
@@ -40,7 +41,7 @@ export interface LoanDef {
   principal: number;
   totalRepay: number;
   unlockLevel: number;
-  /** 最早可借的第几天：小借要求先亲手经营两天。 */
+  /** 最早可借的第几天：小借要求先经营两天。 */
   minDay: number;
 }
 
@@ -123,16 +124,6 @@ export function getSignUpgradeCost(level: number): number {
   return Math.round(SIGN_BASE_COST * Math.pow(SIGN_COST_MULTIPLIER, Math.max(0, level)));
 }
 
-export function getPlayerDuration(
-  base: number,
-  shrinkPerLevel: number,
-  floor: number,
-  tavernLevel: number,
-  speedFactor = 1,
-): number {
-  return Math.max(floor, base * speedFactor - (tavernLevel - 1) * shrinkPerLevel);
-}
-
 /** 员工耗时：对口属性越高越快；stars 是这项工作对应的属性星数。 */
 export function getStaffDuration(
   stars: number,
@@ -144,6 +135,11 @@ export function getStaffDuration(
 ): number {
   const raw = base * getStarSpeedFactor(stars) * speedFactor - (tavernLevel - 1) * shrinkPerLevel;
   return Math.max(floor, raw);
+}
+
+/** 跑堂走路速度（像素/秒）：身法越高走得越快。 */
+export function getWalkSpeed(stars: number): number {
+  return C.staff.walkSpeed / getStarSpeedFactor(stars);
 }
 
 // ===== 营业时钟 =====
@@ -362,10 +358,9 @@ export function getWishPrice(base: number, matched: boolean, hasWish = false): n
 export interface RandomEventDef {
   id: string;
   text: string;
-  kind: "good" | "bad" | "mixed";
+  kind: "good" | "bad";
   coins: number;
   ingredients: number;
-  cultivation: number;
   weight: number;
 }
 
@@ -386,15 +381,13 @@ export function pickRandomEvent(roll: number): RandomEventDef {
 export interface EventState {
   coins: number;
   ingredients: number;
-  cultivation: number;
 }
 
-/** 结算事件：灵材与修为不为负，灵石按事件允许扣成欠款。 */
+/** 结算事件：灵材不为负，灵石按事件允许扣成欠款。 */
 export function applyEvent(event: RandomEventDef, state: EventState): EventState {
   return {
     coins: state.coins + event.coins,
     ingredients: Math.max(0, state.ingredients + event.ingredients),
-    cultivation: Math.max(0, state.cultivation + event.cultivation),
   };
 }
 
@@ -406,7 +399,6 @@ export interface DailyGoal {
   label: string;
   target: number;
   rewardCoins: number;
-  rewardCultivation: number;
 }
 
 export interface SessionStats {
@@ -434,14 +426,12 @@ export interface GoalPayout {
   partial: boolean;
   progress: number;
   coins: number;
-  cultivation: number;
 }
 
 /** 每天二选一的目标：收入/口味，奖励略有差异，让玩家按今日菜单做选择。 */
 export function getDailyGoalOptions(_day: number, level: number): DailyGoal[] {
   const G = C.dailyGoal;
   const rewardCoins = G.rewardCoinsBase + level * G.rewardCoinsPerLevel;
-  const rewardCultivation = G.rewardCultivationBase + Math.floor(level / G.rewardCultivationLevelsPerStep);
   const revenueTarget = G.revenueBase + level * G.revenuePerLevel;
   const wishTarget = G.wishBase + Math.floor(level / G.wishLevelsPerStep);
   return [
@@ -450,14 +440,12 @@ export function getDailyGoalOptions(_day: number, level: number): DailyGoal[] {
       label: `本日收入 ${revenueTarget} 灵石`,
       target: revenueTarget,
       rewardCoins: rewardCoins + G.revenueGoalExtraCoins,
-      rewardCultivation,
     },
     {
       kind: "wish",
       label: `满足 ${wishTarget} 位食客的口味`,
       target: wishTarget,
       rewardCoins: rewardCoins,
-      rewardCultivation: rewardCultivation + G.wishGoalExtraCultivation,
     },
   ];
 }
@@ -474,7 +462,7 @@ export function isFestivalDay(day: number): boolean {
   return Math.max(1, day) % FESTIVAL_INTERVAL === 0;
 }
 
-/** 灯会日目标赏金倍率；修为另 +1。 */
+/** 灯会日目标赏金倍率。 */
 export function getFestivalGoalMultiplier(day: number): number {
   return isFestivalDay(day) ? C.festival.goalCoinMultiplier : 1;
 }
@@ -482,12 +470,8 @@ export function getFestivalGoalMultiplier(day: number): number {
 /** 连续三天达成（或拿到半赏）目标的三日之约奖励。 */
 export const GOAL_STREAK_TARGET = C.dailyGoal.streakDays;
 
-export function getStreakBonus(level: number): { coins: number; cultivation: number } {
-  return {
-    coins: C.dailyGoal.streakCoinsBase + Math.max(1, level) * C.dailyGoal.streakCoinsPerLevel,
-    cultivation:
-      C.dailyGoal.streakCultivationBase + Math.floor(Math.max(1, level) / C.dailyGoal.streakCultivationLevelsPerStep),
-  };
+export function getStreakBonus(level: number): { coins: number } {
+  return { coins: C.dailyGoal.streakCoinsBase + Math.max(1, level) * C.dailyGoal.streakCoinsPerLevel };
 }
 
 /** 差一点也算数：达成给全赏，达到目标 60% 给半赏，避免 6/7、61/64 这类一整天空手。 */
@@ -501,11 +485,6 @@ export function getGoalPayout(goal: DailyGoal, stats: SessionStats): GoalPayout 
     partial,
     progress,
     coins: met ? fullCoins : partial ? Math.max(1, Math.round(fullCoins * C.dailyGoal.partialRewardRatio)) : 0,
-    cultivation: met
-      ? goal.rewardCultivation
-      : partial
-        ? Math.max(1, Math.ceil(goal.rewardCultivation * C.dailyGoal.partialRewardRatio))
-        : 0,
   };
 }
 
@@ -568,25 +547,18 @@ export function getGiftStreak(
 export function getDailyGift(
   streak: number,
   level: number,
-): { coins: number; cultivation: number; ingredients: number } {
+): { coins: number; ingredients: number } {
   const s = Math.min(GIFT_STREAK_CAP, Math.max(1, Math.floor(streak)));
   return {
     coins: C.dailyGift.coinsBase + s * C.dailyGift.coinsPerStreakDay + Math.max(1, level) * C.dailyGift.coinsPerLevel,
-    cultivation: 1 + Math.floor(s / C.dailyGift.cultivationStreakStep),
     ingredients: s >= C.dailyGift.ingredientsFromStreak ? C.dailyGift.ingredients : 0,
   };
 }
 
-// ===== 修为与境界 =====
-/** 境界越高，酒楼的仙缘越盛：售价、操作速度、客流依次获得加成。 */
+// ===== 修为与境界（修为子系统占位，只读显示） =====
 export interface RealmDef {
   name: string;
   cultivation: number;
-  perk: string;
-  priceMultiplier: number;
-  playerSpeed: number;
-  staffSpeed: number;
-  closingIngredients: number;
 }
 
 export const REALMS: RealmDef[] = C.realms;
@@ -601,54 +573,6 @@ export function getRealmIndex(cultivation: number): number {
 
 export function getNextRealm(cultivation: number): RealmDef | null {
   return REALMS[getRealmIndex(cultivation) + 1] ?? null;
-}
-
-/** 只有亲自下厨才得修为：伙计出菜换灵石，玩家下厨换修行，两者不可兼得。 */
-export function getCultivationGain(personal: boolean): number {
-  return personal ? C.cultivation.perPersonalDish : 0;
-}
-
-export function getRealmPriceMultiplier(realmIndex: number): number {
-  return realmAt(realmIndex).priceMultiplier;
-}
-
-export function getRealmPlayerSpeedFactor(realmIndex: number): number {
-  return realmAt(realmIndex).playerSpeed;
-}
-
-export function getRealmStaffSpeedFactor(realmIndex: number): number {
-  return realmAt(realmIndex).staffSpeed;
-}
-
-/** 打烊时凭空得的灵材（化神起）。 */
-export function getRealmClosingIngredients(realmIndex: number): number {
-  return realmAt(realmIndex).closingIngredients;
-}
-
-function realmAt(realmIndex: number): RealmDef {
-  return REALMS[Math.min(REALMS.length - 1, Math.max(0, realmIndex))];
-}
-
-/** 飞升一次留一重仙缘，跨周目永久提高售价。 */
-export const ASCENSION_PRICE_BONUS = C.ascension.priceBonus;
-export const ASCENSION_START_COIN_BONUS = C.ascension.startCoinBonus;
-export const ASCENSION_START_INGREDIENT_BONUS = C.ascension.startIngredientBonus;
-
-export function getAscensionPriceMultiplier(ascensions: number): number {
-  return 1 + ASCENSION_PRICE_BONUS * Math.max(0, Math.floor(ascensions));
-}
-
-/** 每 3 重仙缘，飞升后的新周目直接从更高酒楼等级开局，跳过早期重复劳动。 */
-export function getAscensionStartLevel(ascensions: number): number {
-  return 1 + Math.floor(Math.max(0, Math.floor(ascensions)) / C.ascension.levelEvery);
-}
-
-export function getAscensionStartCoins(ascensions: number): number {
-  return STARTING_COINS + Math.max(0, Math.floor(ascensions)) * ASCENSION_START_COIN_BONUS;
-}
-
-export function getAscensionStartInventory(ascensions: number): number {
-  return STARTING_INVENTORY + Math.max(0, Math.floor(ascensions)) * ASCENSION_START_INGREDIENT_BONUS;
 }
 
 // ===== 跨周目账簿与成就 =====
@@ -753,6 +677,21 @@ export interface Employee {
 }
 
 const S = C.staff;
+
+/** 掌柜的员工 id；雇来的伙计从 1 开始。 */
+export const SHOPKEEPER_ID = 0;
+
+/** 新档掌柜：三项同星，默认依次勾选烹饪、跑堂、采买。 */
+export function createShopkeeper(): Employee {
+  const n = S.shopkeeperStars;
+  return {
+    id: SHOPKEEPER_ID,
+    name: "掌柜",
+    stars: { seat: n, cook: n, buy: n },
+    work: { seat: 0, cook: 0, buy: 0 },
+    jobs: (["cook", "seat", "buy"] as Job[]).map((job) => ({ job, on: true })),
+  };
+}
 
 export function getStaffCap(tavernLevel: number): number {
   return Math.min(S.capMax, S.capBase + Math.floor(Math.max(1, tavernLevel) / S.capLevelsPerSlot));

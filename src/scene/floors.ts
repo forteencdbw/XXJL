@@ -240,21 +240,21 @@ export class FloorMethods {
 
   refreshBoothVisibility(this: TavernScene) {
     const open = this.gameState === "open";
-    this.booths.forEach((booth) => {
-      const visible = open && booth.floor === this.activeFloor;
+    this.booths.forEach((booth, i) => {
+      // 正被领座的客人跟着跑堂走：还在门口时算一楼，上楼后才算目标楼层
+      const escort = [...this.staffRt.values()].find((rt) => rt.task?.kind === "seat" && rt.task.boothIndex === i);
+      const visible = open && (escort ? escort.floor : booth.floor) === this.activeFloor;
       booth.patronChar?.setVisible(visible);
       booth.diningProp?.setVisible(visible);
     });
     const queueVisible = open && this.activeFloor === 0;
     this.queue.forEach((patron) => patron.char.setVisible(queueVisible));
+    // 掌柜和伙计在哪层就只在哪层露面
+    this.staffRt.forEach((rt) => rt.char.setVisible(open && rt.floor === this.activeFloor));
   }
 
-  switchFloor(this: TavernScene, floor: number, force = false) {
+  switchFloor(this: TavernScene, floor: number) {
     if (floor === this.activeFloor || floor < 0 || floor > this.floorsBuilt) return;
-    if (!force && this.isPlayerBusy()) {
-      this.showHint("掌柜正在忙，忙完再上楼");
-      return;
-    }
     const apply = () => {
       this.activeFloor = floor;
       this.applyFloorLook();
@@ -331,7 +331,6 @@ export class FloorMethods {
     return {
       floor,
       state: "empty",
-      cookingDriver: null,
       cookStaffId: null,
       cookQuality: 1,
       currentDish: null,
@@ -339,7 +338,7 @@ export class FloorMethods {
       cookDoneAt: 0,
       departAt: 0,
       awaitingSince: 0,
-      comboBonus: 0,
+      readyAt: 0,
       patronKind: null,
       patronWish: null,
       patronName: null,

@@ -846,6 +846,17 @@ export class Character extends Phaser.GameObjects.Container {
     });
   }
 
+  private carryProp?: Phaser.GameObjects.Ellipse;
+
+  /** 跑堂端菜：手边托一只碗，放下时收起。 */
+  setCarrying(on: boolean) {
+    this.carryProp?.destroy();
+    this.carryProp = undefined;
+    if (!on) return;
+    this.carryProp = this.scene.add.ellipse(16, -16, 18, 8, 0xf3e6cf).setStrokeStyle(1, 0x8a6a3a);
+    this.add(this.carryProp);
+  }
+
   /** 特写时收起聊天气泡，让字幕独占画面。 */
   clearBubble() {
     this.bubble?.destroy();

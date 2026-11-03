@@ -2,8 +2,8 @@
 import Phaser from "phaser";
 import { playSfx } from "../audio";
 import { GAME } from "../config";
-import { DISHES, REALMS, getGoalProgress, getNextRealm, getNextRepThreshold, getPurchaseDuration, getRepLevelInfo, getTotalBoothCount, isRarePatron } from "../logic";
-import { CHRONICLE_MAX_LINES, COLOR_PLAYER, COLOR_STAFF, PURCHASE_AMOUNT, SCREEN_W, XIAN_FONT } from "./constants";
+import { DISHES, getGoalProgress, getNextRepThreshold, getPurchaseDuration, getRepLevelInfo, getTotalBoothCount, isRarePatron } from "../logic";
+import { CHRONICLE_MAX_LINES, COLOR_STAFF, PURCHASE_AMOUNT, SCREEN_W, XIAN_FONT } from "./constants";
 import type { BoothState } from "./types";
 import type { TavernScene } from "./TavernScene";
 
@@ -12,7 +12,7 @@ export class HudMethods {
     if (this.focusing) return;
     const open = this.gameState === "open";
     // 掌柜说话时气泡就在头顶，先收起「掌柜」名牌
-    this.playerLabel.setVisible(open && !this.playerChar.isSpeaking());
+    this.playerLabel.setVisible(open && this.playerChar.visible && !this.playerChar.isSpeaking());
     if (open) this.playerLabel.setPosition(this.playerChar.x, this.playerChar.y - 120);
 
     this.coinsText.setText(`灵石：${this.displayedCoins}`);
@@ -44,23 +44,12 @@ export class HudMethods {
     const repRatio =
       nextRep === null ? 1 : Phaser.Math.Clamp((this.reputation - repInfo.threshold) / repSpan, 0, 1);
     this.reputationBar.setScale(repRatio, 1);
-    const next = getNextRealm(this.cultivation);
-    this.realmText.setText(`境界：${REALMS[this.realmIndex()].name}`);
     this.clockText.setText(this.clockLabel());
-    this.cultivationText.setText(
-      next ? `修为 ${this.cultivation}/${next.cultivation}` : `修为 ${this.cultivation} 圆满`,
-    );
     if (this.settling) {
       this.sessionText.setText("已打烊");
       this.goalText.setText("");
     } else if (open && this.sessionGoal) {
-      const busyLabel = this.playerSeat
-        ? "招待中"
-        : this.playerCookingBooth !== null
-          ? "烹饪中"
-          : this.playerPurchasing
-            ? "采购中"
-            : "";
+      const busyLabel = this.playerPurchasing ? "急购中" : "";
       this.sessionText.setText(
         `已服务 ${this.sessionServed}/${this.patronsTotal} · ${this.sessionRevenue}灵石${
           busyLabel ? ` · 掌柜${busyLabel}` : ""
@@ -105,16 +94,7 @@ export class HudMethods {
     const showWeather = open && !this.settling;
     this.weatherBadge.setVisible(showWeather);
     this.weatherBadge.setText(`天气 · ${this.weather.name}`);
-    this.comboBadge.setVisible(showWeather && this.combo > 0);
-    this.comboBadge.setText(`连击 ×${this.combo} · 收益 +${this.combo * 5}%`);
 
-    const menu = this.getMenuDishes();
-    const wished = new Set(
-      this.booths
-        .filter((booth) => booth.state === "awaitingCook" && booth.floor === this.activeFloor)
-        .map((booth) => booth.patronWish)
-        .filter((id): id is string => typeof id === "string"),
-    );
     this.booths.forEach((booth, i) => {
       const visual = this.boothVisuals[i];
       if (!visual) return;
@@ -125,7 +105,8 @@ export class HudMethods {
       const showLabel =
         open &&
         booth.floor === this.activeFloor &&
-        (booth.state === "awaitingCook" || booth.state === "seating" || booth.state === "cooking") &&
+        booth.state !== "empty" &&
+        booth.state !== "dining" &&
         !(booth.patronChar?.isSpeaking() ?? false);
       visual.label.setVisible(showLabel);
       const regular = booth.patronRegular;
@@ -144,49 +125,18 @@ export class HudMethods {
                 0,
                 Math.ceil((booth.cookDoneAt - this.time.now) / 1000),
               )}s`
-            : "入座";
+            : booth.state === "awaitingServe"
+              ? `${booth.currentDish?.name ?? "菜"} 待传`
+              : booth.state === "serving"
+                ? "上菜中"
+                : "入座";
       visual.label.setText(showLabel ? labelText : "");
     });
 
-    const busy = this.isPlayerBusy();
-    const showChips = open && !this.settling;
-    const specialId = this.currentDailySpecial();
-    const specialDish = specialId ? DISHES.find((d) => d.id === specialId) : undefined;
-    this.dishChipLabel.setVisible(showChips);
-    this.dishChipLabel.setText("出菜 · 点菜名");
-    this.dishChips.forEach((chip, i) => {
-      const dish = menu[i];
-      chip.setVisible(showChips && dish !== undefined);
-      if (!dish) return;
-      chip.setAlpha(showChips && busy ? 0.5 : 1);
-      const wanted = wished.has(dish.id);
-      const special = dish.id === specialDish?.id;
-      chip.setText(`${wanted ? "★" : ""}${special ? "◆" : ""}${dish.name} ${this.dishPrice(dish)}`);
-      chip.setBackgroundColor(special ? "#4a3a14" : wanted ? "#6a4a14" : "#2e2119");
-    });
-
     this.startButton.setText("开始营业");
-    this.serveButton.setText(this.playerSeat ? "招待中…" : "招待入座");
-    this.cookButton.setText(this.playerCookingBooth !== null ? "烹饪中…" : "动手烹饪");
 
-    const actionAlpha = this.settling ? 0.4 : busy ? 0.35 : 1;
     this.startButton.setAlpha(this.settling ? 0.4 : 1);
-    this.serveButton.setAlpha(actionAlpha);
-    this.cookButton.setAlpha(actionAlpha);
-
-    const guideVisible =
-      open && this.day === 1 && this.tutorialHintStage >= 1 && this.tutorialHintStage <= 2 && !this.focusing;
-    this.tutorialBanner.setVisible(guideVisible);
-    if (guideVisible) {
-      this.tutorialBanner.setText(
-        this.tutorialHintStage === 1
-          ? "① 点「招待入座」把客人领进来"
-          : "② 点下方菜名出菜；★是客人想吃的菜",
-      );
-    }
-
-    this.serveButton.setVisible(open);
-    this.cookButton.setVisible(open);
+    this.cultivationButton.setAlpha(this.settling ? 0.4 : 1);
     this.rightFrame.setVisible(open);
     this.closedBackdrop.setVisible(!open);
     this.closedFloorText
@@ -201,13 +151,10 @@ export class HudMethods {
 
     this.staffButton.setText("伙计");
     this.bankButton.setText("灵石商行");
-    this.cultivationButton.setText("修行 · 境界");
     this.helpButton.setText("玩法");
     this.recordButton.setText("账簿");
     this.saveButton.setText("存档");
 
-    this.serveButton.setText("招待入座");
-    this.cookButton.setText("动手烹饪");
 
     const purchasePriceLabel = this.purchasePrice(open);
     if (this.playerPurchasing && open) {
@@ -217,7 +164,7 @@ export class HudMethods {
           (this.playerPurchasing.startedAt + this.playerPurchasing.duration - this.time.now) / 1000,
         ),
       );
-      this.purchaseButton.setLabel(`急购中… ${left}s（暂停招待/烹饪）`);
+      this.purchaseButton.setLabel(`急购中… ${left}s`);
     } else {
       this.purchaseButton.setLabel(
         open
@@ -253,34 +200,34 @@ export class HudMethods {
       if (!visual) return;
       visual.bg.setFillStyle(this.boothColor(booth.state), 1);
 
-      // 雅座上的操作进度：上座与烹饪共用一条，颜色区分玩家/伙计
+      // 雅座上的操作进度：领座、烹饪、传菜共用一条
       let fraction = 0;
-      let color = COLOR_PLAYER;
-      if (booth.state === "seating") {
-        const progress =
-          this.playerSeat?.boothIndex === i
-            ? this.playerSeat
-            : ([...this.staffRt.values()].find((rt) => rt.seat?.boothIndex === i)?.seat ?? null);
-        if (progress) {
-          fraction = (time - progress.startedAt) / progress.duration;
-          color = this.playerSeat === progress ? COLOR_PLAYER : COLOR_STAFF;
-        }
+      if (booth.state === "seating" || booth.state === "serving") {
+        const task = [...this.staffRt.values()].find((rt) => rt.task?.boothIndex === i && rt.task.kind !== "cook")?.task;
+        if (task) fraction = (time - task.startedAt) / Math.max(1, task.duration);
       } else if (booth.state === "cooking") {
         fraction = (time - booth.cookStartedAt) / Math.max(1, booth.cookDoneAt - booth.cookStartedAt);
-        color = booth.cookingDriver === "player" ? COLOR_PLAYER : COLOR_STAFF;
       }
       const showBar = this.gameState === "open" && booth.floor === this.activeFloor && fraction > 0;
       visual.barBg.setVisible(showBar);
       visual.barFill.setVisible(showBar);
       if (showBar) {
         visual.barFill.width = visual.barBg.width * Phaser.Math.Clamp(fraction, 0, 1);
-        visual.barFill.setFillStyle(color, 1);
+        visual.barFill.setFillStyle(COLOR_STAFF, 1);
       }
     });
   }
 
   boothColor(this: TavernScene, state: BoothState): number {
-    return { empty: 0x3a3a3a, seating: 0x8a6d3b, awaitingCook: 0x7a5a2a, cooking: 0xc97a2a, dining: 0x4a7a3a }[state];
+    return {
+      empty: 0x3a3a3a,
+      seating: 0x8a6d3b,
+      awaitingCook: 0x7a5a2a,
+      cooking: 0xc97a2a,
+      awaitingServe: 0xb08a2a,
+      serving: 0x9a8a3a,
+      dining: 0x4a7a3a,
+    }[state];
   }
 
   log(this: TavernScene, text: string) {

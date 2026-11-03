@@ -47,7 +47,7 @@ export class MenuOverlayMethods {
         108,
         booking && bookingDish
           ? `常客 ${booking.name} 已在路上 · 想吃 ${bookingDish}（上菜单 +50%）`
-          : "至少选一道菜才能开张；营业中可按顺序轮转，也可在出菜行指定",
+          : "至少选一道菜才能开张；客人想吃的菜在菜单上才端得对，否则按菜单轮转",
         { fontSize: "18px", color: booking && bookingDish ? "#e0c060" : "#999999" },
       ),
     );
@@ -94,7 +94,7 @@ export class MenuOverlayMethods {
         }),
       );
       layer.add(
-        this.add.text(x + 12, 244, `赏 ${option.rewardCoins} 灵石 · ${option.rewardCultivation} 修为`, {
+        this.add.text(x + 12, 244, `赏 ${option.rewardCoins} 灵石`, {
           fontSize: "16px",
           color: selected ? "#e0c060" : "#999999",
         }),
@@ -110,7 +110,7 @@ export class MenuOverlayMethods {
       this.add.text(
         40,
         268,
-        `三日之约：已连达 ${this.goalStreak}/${GOAL_STREAK_TARGET} 天 · 满 ${GOAL_STREAK_TARGET} 天赏 ${streakBonus.coins} 灵石 + ${streakBonus.cultivation} 修为`,
+        `三日之约：已连达 ${this.goalStreak}/${GOAL_STREAK_TARGET} 天 · 满 ${GOAL_STREAK_TARGET} 天赏 ${streakBonus.coins} 灵石`,
         { fontSize: "16px", color: this.goalStreak > 0 ? "#c8b8a0" : "#8a7a62" },
       ),
     );

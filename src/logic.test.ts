@@ -18,14 +18,9 @@ import {
   REALMS,
   applyEvent,
   getAchievements,
-  getAscensionPriceMultiplier,
-  getAscensionStartCoins,
-  getAscensionStartInventory,
-  getAscensionStartLevel,
   FLOOR_UNLOCKS,
   MAX_FLOORS,
   getBoothCount,
-  getCultivationGain,
   getFloorBoothCount,
   getFloorPriceMultiplier,
   getFloorRent,
@@ -52,14 +47,10 @@ import {
   pickPatronKind,
   pickPatronName,
   pickRandomEvent,
-  getPlayerDuration,
   getPurchaseDiscount,
   getPurchaseDuration,
   getPurchasePrice,
   getRealmIndex,
-  getRealmPlayerSpeedFactor,
-  getRealmPriceMultiplier,
-  getRealmStaffSpeedFactor,
   getSignUpgradeCost,
   getRepGain,
   getRepLevel,
@@ -73,6 +64,8 @@ import {
   REP_LOSS,
   getSpecialPrice,
   getStaffDuration,
+  getWalkSpeed,
+  createShopkeeper,
   getCookQuality,
   getHireCost,
   getStaffCap,
@@ -196,11 +189,23 @@ describe("员工", () => {
   });
 
   it("属性越高越快、做得越好", () => {
-    const player = getPlayerDuration(2000, 0, 0, 1);
     expect(getStaffDuration(1, 2000, 0, 0, 1)).toBeCloseTo(3200);
-    expect(getStaffDuration(10, 2000, 0, 0, 1)).toBeLessThan(player);
+    expect(getStaffDuration(10, 2000, 0, 0, 1)).toBeLessThan(2000);
+    expect(getWalkSpeed(1)).toBeCloseTo(168.75);
+    expect(getWalkSpeed(10)).toBeGreaterThan(400);
     expect(getCookQuality(1)).toBeCloseTo(0.885);
     expect(getCookQuality(10)).toBeCloseTo(1.2);
+  });
+
+  it("掌柜：三项 4 星，默认烹饪、跑堂、采买全勾", () => {
+    const k = createShopkeeper();
+    expect(k.id).toBe(0);
+    expect(k.stars).toEqual({ seat: 4, cook: 4, buy: 4 });
+    expect(k.jobs).toEqual([
+      { job: "cook", on: true },
+      { job: "seat", on: true },
+      { job: "buy", on: true },
+    ]);
   });
 
   it("旧存档按岗位迁移，只勾原岗位", () => {
@@ -320,15 +325,6 @@ describe("顾客到店与破产阈值", () => {
   });
 });
 
-describe("操作耗时", () => {
-  it("玩家耗时受装潢缩短但不低于下限", () => {
-    expect(getPlayerDuration(1200, 120, 300, 1)).toBe(1200);
-    expect(getPlayerDuration(1200, 120, 300, 3)).toBeLessThan(1200);
-    expect(getPlayerDuration(1200, 120, 300, 999)).toBe(300);
-  });
-
-});
-
 describe("菜品与昼夜", () => {
   it("菜品按等级解锁且售价/耗时为正", () => {
     expect(DISHES[0].unlockLevel).toBe(1);
@@ -412,21 +408,18 @@ describe("食客类型与口味", () => {
     for (const o of options) {
       expect(o.target).toBeGreaterThan(0);
       expect(o.rewardCoins).toBeGreaterThan(0);
-      expect(o.rewardCultivation).toBeGreaterThan(0);
     }
     expect(getDailyGoalOptions(1, 4)[0].target).toBeGreaterThan(options[0].target);
     expect(getDailyRent(1)).toBe(12);
     expect(getDailyRent(4)).toBeGreaterThan(getDailyRent(1));
   });
 
-  it("三日之约奖励随等级提高，满三天有额外灵石与修为", () => {
+  it("三日之约奖励随等级提高，满三天有额外灵石", () => {
     expect(GOAL_STREAK_TARGET).toBe(3);
     const level1 = getStreakBonus(1);
     const level4 = getStreakBonus(4);
     expect(level1.coins).toBeGreaterThan(0);
-    expect(level1.cultivation).toBeGreaterThan(0);
     expect(level4.coins).toBeGreaterThan(level1.coins);
-    expect(level4.cultivation).toBeGreaterThanOrEqual(level1.cultivation);
   });
 
   it("每七天一次灯会，目标赏 ×1.5", () => {
@@ -477,29 +470,23 @@ describe("随机事件", () => {
 
   it("事件池整体期望为正，单次损失有上限", () => {
     const totalWeight = RANDOM_EVENTS.reduce((sum, e) => sum + e.weight, 0);
-    const ev = (key: "coins" | "ingredients" | "cultivation") =>
+    const ev = (key: "coins" | "ingredients") =>
       RANDOM_EVENTS.reduce((sum, e) => sum + e[key] * e.weight, 0) / totalWeight;
     expect(ev("coins")).toBeGreaterThan(0);
     expect(ev("ingredients")).toBeGreaterThan(0);
-    expect(ev("cultivation")).toBeGreaterThan(0);
     for (const event of RANDOM_EVENTS) {
       expect(event.coins).toBeGreaterThanOrEqual(-4);
       expect(event.ingredients).toBeGreaterThanOrEqual(-2);
-      expect(event.cultivation).toBeGreaterThanOrEqual(0);
     }
   });
 
-  it("结算后灵材与修为不为负，灵石可扣成欠款", () => {
+  it("结算后灵材不为负，灵石可扣成欠款", () => {
     const wind = RANDOM_EVENTS.find((e) => e.id === "wind")!;
-    expect(applyEvent(wind, { coins: 10, ingredients: 1, cultivation: 5 })).toEqual({
-      coins: 10,
-      ingredients: 0,
-      cultivation: 5,
-    });
+    expect(applyEvent(wind, { coins: 10, ingredients: 1 })).toEqual({ coins: 10, ingredients: 0 });
     const thief = RANDOM_EVENTS.find((e) => e.id === "thief")!;
-    expect(applyEvent(thief, { coins: 3, ingredients: 2, cultivation: 0 }).coins).toBe(-1);
+    expect(applyEvent(thief, { coins: 3, ingredients: 2 }).coins).toBe(-1);
     const rain = RANDOM_EVENTS.find((e) => e.id === "rain")!;
-    expect(applyEvent(rain, { coins: 0, ingredients: 0, cultivation: 0 }).ingredients).toBe(3);
+    expect(applyEvent(rain, { coins: 0, ingredients: 0 }).ingredients).toBe(3);
   });
 });
 
@@ -511,7 +498,6 @@ describe("每日目标", () => {
     for (const goal of goals) {
       expect(goal.target).toBeGreaterThan(0);
       expect(goal.rewardCoins).toBeGreaterThan(0);
-      expect(goal.rewardCultivation).toBeGreaterThan(0);
     }
     expect(getDailyGoal(1, 5).target).toBeGreaterThan(getDailyGoal(1, 1).target);
     expect(getDailyGoal(1, 5).rewardCoins).toBeGreaterThan(getDailyGoal(1, 1).rewardCoins);
@@ -548,7 +534,6 @@ describe("每日目标", () => {
     expect(near.met).toBe(false);
     expect(near.partial).toBe(true);
     expect(near.coins).toBeGreaterThan(0);
-    expect(near.cultivation).toBeGreaterThan(0);
     const far = getGoalPayout(goal, { served: 0, revenue: 0, wishes: 0 });
     expect(far.partial).toBe(false);
     expect(far.coins).toBe(0);
@@ -644,9 +629,7 @@ describe("天气与开市利是", () => {
     const day1 = getDailyGift(1, 1);
     const week = getDailyGift(GIFT_STREAK_CAP, 1);
     expect(day1.coins).toBeGreaterThan(0);
-    expect(day1.cultivation).toBeGreaterThan(0);
     expect(week.coins).toBeGreaterThan(day1.coins);
-    expect(week.cultivation).toBeGreaterThan(day1.cultivation);
     expect(week.ingredients).toBeGreaterThan(0);
     expect(getDailyGift(99, 1).coins).toBe(week.coins);
     expect(getDailyGift(3, 5).coins).toBeGreaterThan(getDailyGift(3, 1).coins);
@@ -671,59 +654,9 @@ describe("修为与境界", () => {
     expect(getNextRealm(1000)).toBeNull();
   });
 
-  it("境界加成在对应境界开启后单调不降", () => {
-    const last = REALMS.length - 1;
-    expect(getRealmPriceMultiplier(0)).toBe(1);
-    expect(getRealmPriceMultiplier(1)).toBeGreaterThan(1);
-    expect(getRealmPriceMultiplier(last)).toBeGreaterThan(getRealmPriceMultiplier(1));
-    expect(getRealmPlayerSpeedFactor(0)).toBe(1);
-    expect(getRealmPlayerSpeedFactor(2)).toBeLessThan(1);
-    expect(getRealmStaffSpeedFactor(0)).toBe(1);
-    expect(getRealmStaffSpeedFactor(5)).toBeLessThan(1);
-  });
-
-  it("只有亲自下厨得修为，伙计出菜不得修为", () => {
-    expect(getCultivationGain(true)).toBe(2);
-    expect(getCultivationGain(false)).toBe(0);
-  });
-
-  it("每次飞升留一重仙缘，售价永久提高且无负数副作用", () => {
-    expect(getAscensionPriceMultiplier(0)).toBe(1);
-    expect(getAscensionPriceMultiplier(1)).toBeCloseTo(1.1);
-    expect(getAscensionPriceMultiplier(3)).toBeCloseTo(1.3);
-    expect(getAscensionPriceMultiplier(-5)).toBe(1);
-    expect(getAscensionPriceMultiplier(2.9)).toBeCloseTo(1.2);
-  });
-
-  it("境界速度加成会缩短操作耗时，且仍受下限约束", () => {
-    const normal = getPlayerDuration(1200, 0, 300, 1);
-    expect(getPlayerDuration(1200, 0, 300, 1, 0.9)).toBeLessThan(normal);
-    expect(getPlayerDuration(100, 0, 300, 1, 0.9)).toBe(300);
-  });
 });
 
 describe("飞升开局与跨周目账簿", () => {
-  it("多周目开局资源线性增长，负数按 0 重处理", () => {
-    expect(getAscensionStartCoins(0)).toBe(20);
-    expect(getAscensionStartCoins(1)).toBe(40);
-    expect(getAscensionStartCoins(5)).toBe(120);
-    expect(getAscensionStartInventory(0)).toBe(8);
-    expect(getAscensionStartInventory(1)).toBe(10);
-    expect(getAscensionStartInventory(5)).toBe(18);
-    expect(getAscensionStartCoins(-3)).toBe(20);
-    expect(getAscensionStartInventory(-3)).toBe(8);
-  });
-
-  it("每 3 重仙缘提高新周目开局酒楼等级", () => {
-    expect(getAscensionStartLevel(0)).toBe(1);
-    expect(getAscensionStartLevel(2)).toBe(1);
-    expect(getAscensionStartLevel(3)).toBe(2);
-    expect(getAscensionStartLevel(5)).toBe(2);
-    expect(getAscensionStartLevel(6)).toBe(3);
-    expect(getAscensionStartLevel(30)).toBe(11);
-    expect(getAscensionStartLevel(-2)).toBe(1);
-  });
-
   it("账簿累加、保留单日最高与历史最高境界", () => {
     const first = updateMeta(EMPTY_META, {
       served: 9,

@@ -39,30 +39,14 @@ export const GAME = {
     firstDayFewerPatrons: 1,
     /** 用膳时长（毫秒），吃完离店结算 */
     diningMs: 4500,
-    /** 入座后留给玩家亲手出菜的优先窗口（毫秒），之后伙计才接手 */
-    cookPriorityMs: 1500,
   },
 
-  /** 招待 / 烹饪耗时（玩家基准，伙计再乘伙计倍率） */
+  /** 烹饪耗时（菜品基础耗时再乘掌勺人的厨艺倍率） */
   timing: {
-    /** 招待入座基础耗时（毫秒） */
-    seatBaseMs: 1900,
-    /** 酒楼每升一级，入座耗时缩短（毫秒） */
-    seatShrinkPerLevelMs: 190,
-    /** 入座耗时最短（毫秒） */
-    seatFloorMs: 480,
     /** 酒楼每升一级，烹饪耗时缩短（毫秒）；基础耗时见各菜品 */
     cookShrinkPerLevelMs: 200,
     /** 烹饪耗时最短（毫秒） */
     cookFloorMs: 500,
-  },
-
-  /** 玩家连续命中口味的连击 */
-  combo: {
-    /** 每连一次售价加成（0.05 = +5%） */
-    step: 0.05,
-    /** 最多连几次 */
-    max: 5,
   },
 
   /**
@@ -199,11 +183,15 @@ export const GAME = {
   },
 
   /**
-   * 员工。每人有三项属性（1–10 星），对应三项工作：
-   *   身法 → 招待速度；厨艺 → 烹饪速度与质量；精明 → 采买折扣。
+   * 员工（含掌柜）。每人有三项属性（1–10 星），对应三项工作：
+   *   身法 → 跑堂（领座、传菜）的走路速度；厨艺 → 烹饪速度与质量；精明 → 采买折扣。
    * 谁都能做任何工作，属性低只是慢、做得差。
    */
   staff: {
+    /** 掌柜：新档初始三项属性（星）；不能辞退、不领工资、不占雇人名额 */
+    shopkeeperStars: 4,
+    /** 跑堂走路速度 = walkSpeed ÷ 耗时倍率（像素/秒）；1 星约 170，10 星约 440 */
+    walkSpeed: 270,
     /** 可雇人数上限 = capBase + ⌊酒楼等级 / capLevelsPerSlot⌋ */
     capBase: 2,
     capLevelsPerSlot: 2,
@@ -223,7 +211,7 @@ export const GAME = {
     /** 日薪 = wageBase + wagePerStar × 总星数（四舍五入），属性成长后自动涨薪 */
     wageBase: 5,
     wagePerStar: 0.6,
-    /** 耗时倍率 = speedAtOneStar × speedPerStar^(属性 − 1)；1 星 1.6 倍玩家耗时，10 星约 0.62 倍 */
+    /** 耗时倍率 = speedAtOneStar × speedPerStar^(属性 − 1)；烹饪耗时与走路速度都用它（1 星 1.6 倍，10 星约 0.62 倍） */
     speedAtOneStar: 1.6,
     speedPerStar: 0.9,
     /** 烹饪质量（售价倍率）= qualityBase + qualityPerStar × 厨艺；1 星 ×0.885，10 星 ×1.2 */
@@ -232,7 +220,7 @@ export const GAME = {
     /** 采购折扣 = 精明 × buyDiscountPerStar，最多 buyDiscountCap（多人勾采买时取精明最高者） */
     buyDiscountPerStar: 0.05,
     buyDiscountCap: 0.5,
-    /** 每完成几次某项工作，对应属性 +1 星（采买每补一次货算一次） */
+    /** 每完成几次某项工作，对应属性 +1 星（领座、传菜、起锅、补货各算一次） */
     workPerStar: 20,
     /** 采买自动补货目标 = base + perLevel × 酒楼等级 */
     buyerTargetStockBase: 10,
@@ -257,11 +245,6 @@ export const GAME = {
     rewardCoinsPerLevel: 3,
     /** 收入目标额外多给的赏金 */
     revenueGoalExtraCoins: 4,
-    /** 基础修为 = rewardCultivationBase + ⌊等级 / rewardCultivationLevelsPerStep⌋ */
-    rewardCultivationBase: 1,
-    rewardCultivationLevelsPerStep: 3,
-    /** 口味目标额外多给的修为 */
-    wishGoalExtraCultivation: 1,
     /** 赏金另加当日菜品收入的这个比例 */
     revenueBonusRatio: 0.15,
     /** 达到目标的这个比例给半赏 */
@@ -273,9 +256,6 @@ export const GAME = {
     /** 三日之约赏金 = streakCoinsBase + streakCoinsPerLevel × 等级 */
     streakCoinsBase: 20,
     streakCoinsPerLevel: 5,
-    /** 三日之约修为 = streakCultivationBase + ⌊等级 / streakCultivationLevelsPerStep⌋ */
-    streakCultivationBase: 2,
-    streakCultivationLevelsPerStep: 4,
   },
 
   /** 灯会 */
@@ -286,8 +266,6 @@ export const GAME = {
     extraPatrons: 3,
     /** 目标赏金倍率 */
     goalCoinMultiplier: 1.5,
-    /** 目标修为额外 + */
-    goalExtraCultivation: 1,
   },
 
   /** 天气（每天按本机日期轮换一种，纯装饰）。visual 天气粒子：0 晴 1 灵雾 2 落英 3 夜雨。 */
@@ -306,52 +284,26 @@ export const GAME = {
     coinsBase: 15,
     coinsPerStreakDay: 5,
     coinsPerLevel: 2,
-    /** 修为 = 1 + ⌊连续天数 / cultivationStreakStep⌋ */
-    cultivationStreakStep: 3,
     /** 连续满几天起送灵材 */
     ingredientsFromStreak: 3,
     /** 送多少灵材 */
     ingredients: 2,
   },
 
-  /** 修为 */
-  cultivation: {
-    /** 亲自下厨每道菜 + */
-    perPersonalDish: 2,
-    /** 亲自下厨且命中口味额外 + */
-    wishHitBonus: 1,
-    /** 亲自下厨给稀客额外 + */
-    rareBonus: 1,
-  },
-
   /**
-   * 境界。cultivation 突破门槛（递增，首项为 0），perk 说明文字。
-   * 下面每项都写「到这一重时生效的值」，后面的境界覆盖前面的（不叠加）：
-   * priceMultiplier 售价倍率，playerSpeed 玩家耗时倍率，staffSpeed 伙计耗时倍率，
-   * closingIngredients 打烊时凭空得灵材。
+   * 修为子系统（本期只占位，玩法待设计）：经营不产出修为，境界只用于在修为页只读显示。
+   * cultivation 为突破门槛（递增，首项为 0）。
    */
   realms: [
-    { name: "炼气", cultivation: 0, perk: "初入仙途", priceMultiplier: 1, playerSpeed: 1, staffSpeed: 1, closingIngredients: 0 },
-    { name: "筑基", cultivation: 30, perk: "菜品售价 +10%", priceMultiplier: 1.1, playerSpeed: 1, staffSpeed: 1, closingIngredients: 0 },
-    { name: "金丹", cultivation: 80, perk: "玩家操作速度 +10%", priceMultiplier: 1.1, playerSpeed: 0.9, staffSpeed: 1, closingIngredients: 0 },
-    { name: "元婴", cultivation: 160, perk: "心境空明（加成待重做）", priceMultiplier: 1.1, playerSpeed: 0.9, staffSpeed: 1, closingIngredients: 0 },
-    { name: "化神", cultivation: 280, perk: "打烊时自动领悟 3 灵材", priceMultiplier: 1.1, playerSpeed: 0.9, staffSpeed: 1, closingIngredients: 3 },
-    { name: "炼虚", cultivation: 450, perk: "伙计操作速度 +10%", priceMultiplier: 1.1, playerSpeed: 0.9, staffSpeed: 0.9, closingIngredients: 3 },
-    { name: "合体", cultivation: 700, perk: "菜品售价 +20%", priceMultiplier: 1.2, playerSpeed: 0.9, staffSpeed: 0.9, closingIngredients: 3 },
-    { name: "大乘", cultivation: 1000, perk: "菜品售价 +30%", priceMultiplier: 1.3, playerSpeed: 0.9, staffSpeed: 0.9, closingIngredients: 3 },
+    { name: "炼气", cultivation: 0 },
+    { name: "筑基", cultivation: 30 },
+    { name: "金丹", cultivation: 80 },
+    { name: "元婴", cultivation: 160 },
+    { name: "化神", cultivation: 280 },
+    { name: "炼虚", cultivation: 450 },
+    { name: "合体", cultivation: 700 },
+    { name: "大乘", cultivation: 1000 },
   ],
-
-  /** 飞升（每次飞升得 1 重仙缘） */
-  ascension: {
-    /** 每重仙缘售价 + */
-    priceBonus: 0.1,
-    /** 每重仙缘开局灵石 + */
-    startCoinBonus: 20,
-    /** 每重仙缘开局灵材 + */
-    startIngredientBonus: 2,
-    /** 每几重仙缘，开局酒楼等级 +1 */
-    levelEvery: 3,
-  },
 
   /** 灵石商行 */
   bank: {
@@ -375,19 +327,17 @@ export const GAME = {
     maxPerSession: 4,
     /** 几点以后不再触发（戌初 = 19）；触发时刻随机落在开门到这个时刻之间 */
     lastHour: 19,
-    /** coins/ingredients/cultivation 可为负；weight 抽取权重 */
+    /** coins/ingredients 可为负；weight 抽取权重 */
     pool: [
-      { id: "rain", text: "灵雨润田，后厨凭空多出一筐灵材", kind: "good", coins: 0, ingredients: 3, cultivation: 0, weight: 2 },
-      { id: "immortal", text: "一位过路仙长尝了口小菜，留下几块灵石", kind: "good", coins: 6, ingredients: 0, cultivation: 0, weight: 2 },
-      { id: "guidance", text: "仙人指路，你在灶火间窥见一丝道韵", kind: "good", coins: 0, ingredients: 0, cultivation: 3, weight: 2 },
-      { id: "tip", text: "食客吃得尽兴，多留了一份赏钱", kind: "good", coins: 5, ingredients: 0, cultivation: 0, weight: 2 },
-      { id: "oldfriend", text: "旧友来访，叙旧之余留下一壶灵酒", kind: "good", coins: 3, ingredients: 0, cultivation: 2, weight: 1 },
-      { id: "crane", text: "仙鹤衔芝落在檐角，赠你一味灵材与一段感悟", kind: "good", coins: 0, ingredients: 4, cultivation: 6, weight: 1 },
-      { id: "beggar", text: "小妖讨食，你舍了一味灵材，换得它口中一段修行心得", kind: "mixed", coins: 0, ingredients: -1, cultivation: 4, weight: 2 },
-      { id: "wind", text: "妖风过境，吹散了后厨晾着的一味灵材", kind: "bad", coins: 0, ingredients: -2, cultivation: 0, weight: 1 },
-      { id: "thief", text: "蟊贼光顾，柜上少了几块灵石", kind: "bad", coins: -4, ingredients: 0, cultivation: 0, weight: 1 },
-      { id: "mishap", text: "灶台走了水，赔了些灵石与灵材", kind: "bad", coins: -3, ingredients: -1, cultivation: 0, weight: 1 },
-    ] as { id: string; text: string; kind: "good" | "bad" | "mixed"; coins: number; ingredients: number; cultivation: number; weight: number }[],
+      { id: "rain", text: "灵雨润田，后厨凭空多出一筐灵材", kind: "good", coins: 0, ingredients: 3, weight: 2 },
+      { id: "immortal", text: "一位过路仙长尝了口小菜，留下几块灵石", kind: "good", coins: 6, ingredients: 0, weight: 2 },
+      { id: "tip", text: "食客吃得尽兴，多留了一份赏钱", kind: "good", coins: 5, ingredients: 0, weight: 2 },
+      { id: "oldfriend", text: "旧友来访，叙旧之余留下一壶灵酒", kind: "good", coins: 3, ingredients: 0, weight: 1 },
+      { id: "crane", text: "仙鹤衔芝落在檐角，赠你一味灵材", kind: "good", coins: 0, ingredients: 4, weight: 1 },
+      { id: "wind", text: "妖风过境，吹散了后厨晾着的一味灵材", kind: "bad", coins: 0, ingredients: -2, weight: 1 },
+      { id: "thief", text: "蟊贼光顾，柜上少了几块灵石", kind: "bad", coins: -4, ingredients: 0, weight: 1 },
+      { id: "mishap", text: "灶台走了水，赔了些灵石与灵材", kind: "bad", coins: -3, ingredients: -1, weight: 1 },
+    ] as { id: string; text: string; kind: "good" | "bad"; coins: number; ingredients: number; weight: number }[],
   },
 };
 

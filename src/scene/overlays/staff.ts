@@ -2,7 +2,7 @@
 import Phaser from "phaser";
 import { playSfx } from "../../audio";
 import { GAME } from "../../config";
-import { JOBS, JOB_NAMES, STAT_NAMES, getHireCost, getStaffCap, getStaffWage, getTotalStars, moveJobUp, rollCandidate } from "../../logic";
+import { getHireCost, getStaffCap, getStaffWage, getTotalStars, JOB_NAMES, JOBS, moveJobUp, rollCandidate, SHOPKEEPER_ID, STAT_NAMES } from "../../logic";
 import type { Job } from "../../logic";
 import { SCREEN_H, SCREEN_W, XIAN_FONT } from "../constants";
 import type { TavernScene } from "../TavernScene";
@@ -62,7 +62,7 @@ export class StaffOverlayMethods {
     const layer = this.staffOverlayLayer("伙计");
     const cap = getStaffCap(this.level);
     layer.add(
-      this.add.text(40, 108, `${this.staffSummaryHint()}\n属性越契合越好：身法→招待快 · 厨艺→烹饪快且售价高 · 精明→采购便宜`, {
+      this.add.text(40, 108, `${this.staffSummaryHint()}\n属性越契合越好：身法→跑堂（领座、传菜）走得快 · 厨艺→烹饪快且售价高 · 精明→采购便宜`, {
         fontSize: "15px",
         color: "#e0c060",
         wordWrap: { width: 640 },
@@ -73,29 +73,37 @@ export class StaffOverlayMethods {
       this.buildRecruitOverlay();
     });
 
-    if (this.employees.length === 0) {
+    this.workforce().forEach((e, i) => {
+      const y = 184 + i * 118;
+      const keeper = e.id === SHOPKEEPER_ID;
       layer.add(
-        this.add.text(360, 400, "还没有伙计，点右上「招聘」雇第一位", { fontSize: "20px", color: "#888888" }).setOrigin(0.5),
+        this.add
+          .rectangle(40, y, 640, 112, keeper ? 0x2a2418 : 0x1e2636)
+          .setOrigin(0, 0)
+          .setStrokeStyle(1, keeper ? 0x8a6a3a : 0x3a4660),
       );
-    }
-    this.employees.forEach((e, i) => {
-      const y = 184 + i * 136;
-      layer.add(this.add.rectangle(40, y, 640, 126, 0x1e2636).setOrigin(0, 0).setStrokeStyle(1, 0x3a4660));
-      layer.add(this.add.text(56, y + 10, e.name, { fontSize: "22px", color: "#ffffff" }));
-      layer.add(this.add.text(170, y + 15, `日薪 ${getStaffWage(e)} 灵石`, { fontSize: "16px", color: "#bbbbbb" }));
-      const confirming = this.pendingFireId === e.id;
-      this.addChip(layer, confirming ? 548 : 590, y + 8, confirming ? "确认辞退" : "辞退", confirming ? "#8a2a2a" : "#4a2a2a", () => {
-        if (confirming) this.fireStaff(e);
-        else this.pendingFireId = e.id;
-        this.buildStaffOverlay();
-      });
-      JOBS.forEach((job, k) => this.addStarBar(layer, 56 + k * 210, y + 46, job, e.stars[job]));
+      layer.add(this.add.text(56, y + 8, e.name, { fontSize: "22px", color: keeper ? "#ffe6a8" : "#ffffff" }));
+      layer.add(
+        this.add.text(170, y + 13, keeper ? "不领工资 · 不能辞退" : `日薪 ${getStaffWage(e)} 灵石`, {
+          fontSize: "16px",
+          color: "#bbbbbb",
+        }),
+      );
+      if (!keeper) {
+        const confirming = this.pendingFireId === e.id;
+        this.addChip(layer, confirming ? 548 : 590, y + 6, confirming ? "确认辞退" : "辞退", confirming ? "#8a2a2a" : "#4a2a2a", () => {
+          if (confirming) this.fireStaff(e);
+          else this.pendingFireId = e.id;
+          this.buildStaffOverlay();
+        });
+      }
+      JOBS.forEach((job, k) => this.addStarBar(layer, 56 + k * 210, y + 40, job, e.stars[job]));
       e.jobs.forEach((slot, k) => {
         const x = 56 + k * 210;
         this.addChip(
           layer,
           x,
-          y + 78,
+          y + 68,
           `${slot.on ? "✓" : "　"} ${k + 1}.${JOB_NAMES[slot.job]}`,
           slot.on ? "#3f6a3f" : "#3a3a3a",
           () => {
@@ -105,7 +113,7 @@ export class StaffOverlayMethods {
           slot.on ? "#ffffff" : "#888888",
         );
         if (k > 0) {
-          this.addChip(layer, x + 128, y + 78, "↑", "#33405a", () => {
+          this.addChip(layer, x + 128, y + 68, "↑", "#33405a", () => {
             moveJobUp(e, k);
             this.onRosterChanged();
           });

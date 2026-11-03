@@ -1,12 +1,17 @@
-// 员工：角色生成与站位、按工作顺序派活、成长、雇佣/辞退/工资。
+// 员工（含掌柜）：角色生成与站位、按工作顺序派活、成长、雇佣/辞退/工资。
 import { playSfx } from "../audio";
-import { JOBS, JOB_NAMES, STAT_NAMES, getHireCost, getStaffCap, getStaffWage, getTotalStars, recordWork } from "../logic";
+import { JOBS, JOB_NAMES, SHOPKEEPER_ID, STAT_NAMES, getHireCost, getStaffCap, getStaffWage, getTotalStars, recordWork } from "../logic";
 import type { Employee, Job } from "../logic";
 import { Character } from "./Character";
-import { COOK_HOME, COOK_PRIORITY_MS, HAWKER_HOME, SERVER_HOME } from "./constants";
+import { COOK_HOME, HAWKER_HOME, SERVER_HOME } from "./constants";
 import type { TavernScene } from "./TavernScene";
 
 export class StaffMethods {
+  /** 店里干活的全部人手：掌柜排第一，后面是雇来的伙计。 */
+  workforce(this: TavernScene): Employee[] {
+    return [this.shopkeeper, ...this.employees];
+  }
+
   firstJob(this: TavernScene, e: Employee): Job | null {
     return e.jobs.find((j) => j.on)?.job ?? null;
   }
@@ -15,14 +20,17 @@ export class StaffMethods {
   staffHome(this: TavernScene, e: Employee): { x: number; y: number } {
     const job = this.firstJob(e);
     const base = job === "seat" ? SERVER_HOME : job === "cook" ? COOK_HOME : HAWKER_HOME;
-    const sameArea = this.employees.filter((o) => this.firstJob(o) === job);
+    const sameArea = this.workforce().filter((o) => this.firstJob(o) === job);
     return { x: base.x + Math.max(0, sameArea.indexOf(e)) * 26, y: base.y };
   }
 
-  /** 按当前名单重建员工角色；只在打烊时调用（营业中名单锁定）。 */
+  /** 按当前名单重建伙计角色（掌柜用玩家角色）；只在打烊时调用（营业中名单锁定）。 */
   rebuildStaffChars(this: TavernScene) {
-    this.staffRt.forEach((rt) => rt.char.destroy());
+    this.staffRt.forEach((rt, id) => {
+      if (id !== SHOPKEEPER_ID) rt.char.destroy();
+    });
     this.staffRt.clear();
+    this.staffRt.set(SHOPKEEPER_ID, { char: this.playerChar, task: null, floor: 0 });
     for (const e of this.employees) {
       const job = this.firstJob(e);
       const look = job === "seat" ? "server" : job === "cook" ? "cook" : "hawker";
@@ -31,16 +39,19 @@ export class StaffMethods {
       const char = new Character(this, home.x, home.y, color, 0x2b2b2b, false, look);
       char.displayName = e.name;
       char.setVisible(false);
-      this.staffRt.set(e.id, { char, seat: null, cookingBooth: null });
+      this.staffRt.set(e.id, { char, task: null, floor: 0 });
     }
+    const home = this.staffHome(this.shopkeeper);
+    this.playerChar.teleportTo(home.x, home.y);
   }
 
+  /** 雇来的伙计的角色（不含掌柜）。 */
   staffChars(this: TavernScene): Character[] {
-    return [...this.staffRt.values()].map((rt) => rt.char);
+    return this.employees.flatMap((e) => this.staffRt.get(e.id)?.char ?? []);
   }
 
   employeeById(this: TavernScene, id: number | null): Employee | undefined {
-    return id === null ? undefined : this.employees.find((e) => e.id === id);
+    return id === null ? undefined : this.workforce().find((e) => e.id === id);
   }
 
   /** 记一次工作，涨星时写进见闻录。 */
@@ -48,41 +59,43 @@ export class StaffMethods {
     if (recordWork(e, job)) this.log(`${e.name}${JOB_NAMES[job]}熟了手，${STAT_NAMES[job]}升到 ${e.stars[job]} 星`);
   }
 
-  /** 空闲员工按自己的工作顺序，从上往下取第一件能做的事。采买只在打烊时做。 */
-  assignStaffWork(this: TavernScene, time: number) {
-    for (const e of this.employees) {
-      const rt = this.staffRt.get(e.id);
-      if (!rt || rt.seat || rt.cookingBooth !== null) continue;
-      for (const { job, on } of e.jobs) {
-        if (!on) continue;
-        if (job === "seat" && this.startSeat("staff", e)) break;
-        if (job === "cook" && this.staffTryCook(e, time)) break;
+  /** 空闲的人按自己的工作顺序，从上往下取第一件能做的事。跑堂先传菜再领座；采买只在打烊时做。 */
+  assignStaffWork(this: TavernScene) {
+    const team = this.workforce();
+    // 没人勾跑堂时人人兜底，避免客人卡在门口、菜凉在灶台上
+    const noRunner = !team.some((e) => e.jobs.some((j) => j.job === "seat" && j.on));
+    const jobsOf = (e: Employee) => {
+      const jobs = e.jobs.filter((j) => j.on).map((j) => j.job);
+      if (noRunner) jobs.push("seat");
+      return jobs;
+    };
+    // 按顺位一轮轮派：先让把这项排第一的人接，同一顺位里属性高的先接——专门的厨子不会被掌柜抢走活
+    for (let rank = 0; rank < JOBS.length + 1; rank++) {
+      const idle = team
+        .filter((e) => !this.staffRt.get(e.id)?.task && jobsOf(e)[rank] !== undefined)
+        .sort((a, b) => b.stars[jobsOf(b)[rank]] - a.stars[jobsOf(a)[rank]]);
+      for (const e of idle) {
+        if (this.staffRt.get(e.id)?.task) continue;
+        const job = jobsOf(e)[rank];
+        if (job === "seat") this.startServe(e) || this.startSeat(e);
+        else if (job === "cook") this.startCook(e);
       }
     }
   }
 
-  staffTryCook(this: TavernScene, e: Employee, time: number): boolean {
-    const menu = this.getMenuDishes();
-    const next = menu.length ? menu[this.dishCursor % menu.length] : null;
-    if (!next) return false;
-    const index = this.booths.findIndex(
-      (booth) => booth.state === "awaitingCook" && booth.floor === this.activeFloor && time - booth.awaitingSince >= COOK_PRIORITY_MS,
-    );
-    return index !== -1 && this.startCook(this.booths[index], index, "staff", undefined, e);
-  }
-
-  /** 勾了采买的员工里精明最高的那位，决定采购折扣；没人勾为 null。 */
+  /** 勾了采买的人里精明最高的那位，决定采购折扣；没人勾为 null。 */
   bestBuyer(this: TavernScene): Employee | null {
-    const buyers = this.employees.filter((e) => e.jobs.some((j) => j.job === "buy" && j.on));
+    const buyers = this.workforce().filter((e) => e.jobs.some((j) => j.job === "buy" && j.on));
     return buyers.reduce<Employee | null>((best, e) => (!best || e.stars.buy > best.stars.buy ? e : best), null);
   }
 
-  /** 一句话说明当前分工：每项工作有几人在做，没人做的环节要玩家补位。 */
+  /** 一句话说明当前分工：每项工作有几人在做，没人做菜时提醒营业会卡住。 */
   staffSummaryHint(this: TavernScene): string {
-    const count = (job: Job) => this.employees.filter((e) => e.jobs.some((j) => j.job === job && j.on)).length;
+    const count = (job: Job) => this.workforce().filter((e) => e.jobs.some((j) => j.job === job && j.on)).length;
     const parts = JOBS.map((job) => `${JOB_NAMES[job]} ${count(job)} 人`).join(" · ");
-    const missing = (["seat", "cook"] as const).filter((job) => count(job) === 0).map((job) => JOB_NAMES[job]);
-    return missing.length ? `${parts}（${missing.join("、")}没人做，需你亲自动手）` : parts;
+    if (count("cook") === 0) return `${parts}（没人做菜，客人会一直等）`;
+    if (count("seat") === 0) return `${parts}（没人跑堂，由所有人兜底）`;
+    return parts;
   }
 
   hireStaff(this: TavernScene, c: Employee) {
@@ -111,8 +124,9 @@ export class StaffMethods {
     this.log(`雇到${c.name}，去伙计页安排分工`);
   }
 
-  /** 打烊时辞退：当天不付工资，也不给遣散费。 */
+  /** 打烊时辞退：当天不付工资，也不给遣散费。掌柜不能辞退。 */
   fireStaff(this: TavernScene, e: Employee) {
+    if (e.id === SHOPKEEPER_ID) return;
     this.employees = this.employees.filter((o) => o !== e);
     this.pendingFireId = null;
     this.rebuildStaffChars();
@@ -122,7 +136,7 @@ export class StaffMethods {
     this.log(`辞退了${e.name}`);
   }
 
-  /** 按当前属性结算当日工资；可以扣成负数，负数表示欠款。 */
+  /** 按当前属性结算伙计当日工资（掌柜不领）；可以扣成负数，负数表示欠款。 */
   settleWages(this: TavernScene): { name: string; stars: number; wage: number }[] {
     const details = this.employees.map((e) => ({ name: e.name, stars: getTotalStars(e), wage: getStaffWage(e) }));
     const total = details.reduce((sum, d) => sum + d.wage, 0);

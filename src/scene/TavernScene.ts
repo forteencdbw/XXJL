@@ -1,11 +1,11 @@
 // 主场景：字段（全部场景状态）、create/update 入口；方法按功能拆在 scene/ 其他文件。
 import Phaser from "phaser";
-import { DISHES, EMPTY_META, STARTING_COINS, STARTING_INVENTORY, getDailyWeather, localDateKey } from "../logic";
+import { createShopkeeper, DISHES, EMPTY_META, getDailyWeather, localDateKey, STARTING_COINS, STARTING_INVENTORY } from "../logic";
 import type { DailyGoal, Employee, MetaStats, WeatherDef } from "../logic";
 import { Character } from "./Character";
 import { ProgressButton } from "./ProgressButton";
 import { AUTOSAVE_MS, CAMERA_CLOSED_X, SCREEN_H, USE_VECTOR_TITLE } from "./constants";
-import type { Booth, BoothVisual, GameState, PurchaseProgress, QueuedPatron, RegularGuest, SeatProgress, StaffRuntime, TapText } from "./types";
+import type { Booth, BoothVisual, GameState, PurchaseProgress, QueuedPatron, RegularGuest, StaffRuntime, TapText } from "./types";
 import { TextureMethods } from "./textures";
 import { TitleMethods } from "./title";
 import { SaveMethods } from "./save";
@@ -43,6 +43,9 @@ export class TavernScene extends Phaser.Scene {
   signLevel = 0;
   booths: Booth[] = [];
   queue: QueuedPatron[] = [];
+  /** 掌柜：玩家在店里的化身，按分工自动干活，不能辞退、不领工资。 */
+  shopkeeper: Employee = createShopkeeper();
+  /** 雇来的伙计（不含掌柜）。 */
   employees: Employee[] = [];
   candidates: Employee[] = [];
   candidatesDay = 0;
@@ -83,11 +86,9 @@ export class TavernScene extends Phaser.Scene {
   stockLost = 0;
   /** 门口排满而流失的客人数，单独提示，避免玩家只看到总流失。 */
   queueLost = 0;
-  sessionCultivation = 0;
   goalAnnounced = false;
   day = 1;
   ascensions = 0;
-  ascending = false;
   suppressSave = false;
   sessionGoal: DailyGoal | null = null;
   /** 当天目标在进入这一天时锁定，之后升级装潢不会临时抬高目标。 */
@@ -98,11 +99,9 @@ export class TavernScene extends Phaser.Scene {
     partial: boolean;
     progress: number;
     rewardCoins: number;
-    rewardCultivation: number;
     streakCount: number;
     streakComplete: boolean;
     streakCoins: number;
-    streakCultivation: number;
   } | null = null;
   goalStreak = 0;
   /** 本机日期与当日天气：跨天时在开店前刷新。 */
@@ -110,13 +109,8 @@ export class TavernScene extends Phaser.Scene {
   weather: WeatherDef = getDailyWeather(localDateKey());
   lastGiftDate?: string;
   giftStreak = 0;
-  lastGift: { streak: number; coins: number; cultivation: number; ingredients: number } | null =
-    null;
-  /** 玩家连续命中口味的次数，上错菜清零；伙计出菜不影响。 */
-  combo = 0;
+  lastGift: { streak: number; coins: number; ingredients: number } | null = null;
 
-  playerSeat: SeatProgress | null = null;
-  playerCookingBooth: number | null = null;
   playerPurchasing: PurchaseProgress | null = null;
 
   // 视觉对象
@@ -138,14 +132,11 @@ export class TavernScene extends Phaser.Scene {
   rightFrame!: Phaser.GameObjects.Container;
   closedBackdrop!: Phaser.GameObjects.Image;
   closedFloorText!: Phaser.GameObjects.Text;
-  tutorialBanner!: Phaser.GameObjects.Text;
   playerGender: "male" | "female" = "male";
 
   coinsText!: Phaser.GameObjects.Text;
   inventoryText!: Phaser.GameObjects.Text;
   levelText!: Phaser.GameObjects.Text;
-  realmText!: Phaser.GameObjects.Text;
-  cultivationText!: Phaser.GameObjects.Text;
   goalText!: Phaser.GameObjects.Text;
   queueText!: Phaser.GameObjects.Text;
   sessionText!: Phaser.GameObjects.Text;
@@ -155,7 +146,6 @@ export class TavernScene extends Phaser.Scene {
   chronicleText!: Phaser.GameObjects.Text;
   weatherBadge!: Phaser.GameObjects.Text;
   clockText!: Phaser.GameObjects.Text;
-  comboBadge!: Phaser.GameObjects.Text;
   boothVisuals: BoothVisual[] = [];
 
   /** 当天每位客人 / 每个随机事件的触发时刻（相对开门的现实毫秒，升序）。 */
@@ -177,10 +167,6 @@ export class TavernScene extends Phaser.Scene {
   navTitle!: Phaser.GameObjects.Text;
   navCardObjects: (Phaser.GameObjects.Text | Phaser.GameObjects.Rectangle)[] = [];
   bankButton!: TapText;
-  serveButton!: TapText;
-  cookButton!: Phaser.GameObjects.Text;
-  dishChipLabel!: Phaser.GameObjects.Text;
-  dishChips: TapText[] = [];
   purchaseButton!: ProgressButton;
   upgradeButton!: TapText;
   cultivationButton!: TapText;
@@ -216,7 +202,6 @@ export class TavernScene extends Phaser.Scene {
   sparkles: Phaser.GameObjects.Arc[] = [];
   fireflyCount = 0;
   lastHintAt = -9999;
-  tutorialHintStage = 0;
   staffNotice = "";
   staffNoticeGood = true;
 
@@ -249,7 +234,6 @@ export class TavernScene extends Phaser.Scene {
     this.time.addEvent({ delay: 700, loop: true, callback: () => this.emitCookingSteam() });
     this.time.addEvent({ delay: 1100, loop: true, callback: () => this.emitFirefly() });
     this.time.addEvent({ delay: 5600, loop: true, callback: () => this.ambientBark() });
-    this.time.addEvent({ delay: 520, loop: true, callback: () => this.emitQi() });
     this.time.addEvent({ delay: 700, loop: true, callback: () => this.emitWeather() });
     this.time.addEvent({ delay: 900, loop: true, callback: () => this.emitInteriorMote() });
     this.time.addEvent({ delay: 2600, loop: true, callback: () => this.idleTwitch() });

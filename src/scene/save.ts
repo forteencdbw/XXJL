@@ -1,5 +1,5 @@
 // 存档：序列化、新周目存档、读档清洗与旧档迁移。
-import { DISHES, EMPTY_META, STARTING_COINS, getAscensionStartCoins, getAscensionStartInventory, getAscensionStartLevel, getRealmIndex, migrateLegacyStaff, sanitizeEmployees } from "../logic";
+import { DISHES, EMPTY_META, SHOPKEEPER_ID, STARTING_COINS, STARTING_INVENTORY, createShopkeeper, getRealmIndex, migrateLegacyStaff, sanitizeEmployees } from "../logic";
 import { SAVE_KEY } from "./constants";
 import type { SaveData } from "./types";
 import type { TavernScene } from "./TavernScene";
@@ -16,6 +16,7 @@ export class SaveMethods {
       stoveLevel: this.stoveLevel,
       signLevel: this.signLevel,
       reputation: this.reputation,
+      shopkeeper: this.shopkeeper,
       employees: this.employees,
       candidates: this.candidates,
       candidatesDay: this.candidatesDay,
@@ -39,7 +40,7 @@ export class SaveMethods {
   }
 
   save(this: TavernScene) {
-    if (this.ascending || this.suppressSave || this.gameState === "bankrupt") return;
+    if (this.suppressSave || this.gameState === "bankrupt") return;
     if (this.gameState === "open" && !this.settling) return;
     this.writeSave(this.buildSaveData());
   }
@@ -52,17 +53,18 @@ export class SaveMethods {
     }
   }
 
-  /** 新周目存档：飞升后保留仙缘与形象，其余归零。 */
+  /** 新周目存档（破产重开）：保留仙缘数值与形象，其余归零；仙缘加成随修为子系统停用。 */
   freshSave(this: TavernScene, ascensions: number): SaveData {
-    const startLevel = getAscensionStartLevel(ascensions);
+    const startLevel = 1;
     return {
       v: 2,
-      coins: getAscensionStartCoins(ascensions),
-      inventory: getAscensionStartInventory(ascensions),
+      coins: STARTING_COINS,
+      inventory: STARTING_INVENTORY,
       level: startLevel,
       stoveLevel: 0,
       signLevel: 0,
       reputation: 0,
+      shopkeeper: createShopkeeper(),
       employees: [],
       candidates: [],
       candidatesDay: 0,
@@ -116,6 +118,9 @@ export class SaveMethods {
       this.day = Math.max(1, Math.floor(num(data.day, 1)));
       this.ascensions = Math.max(0, Math.floor(num(data.ascensions, 0)));
       this.playerGender = data.playerGender === "female" ? "female" : "male";
+      // 旧档没有掌柜：按新档掌柜补上；身份字段以代码为准，防止被改成可辞退的伙计
+      const keeper = sanitizeEmployees([data.shopkeeper])[0] ?? createShopkeeper();
+      this.shopkeeper = { ...keeper, id: SHOPKEEPER_ID, name: "掌柜" };
       // 旧固定岗位制存档没有 employees：按原岗位等级迁移成员工
       this.employees =
         data.employees === undefined ? migrateLegacyStaff(data.staffLevel) : sanitizeEmployees(data.employees);
@@ -157,7 +162,6 @@ export class SaveMethods {
               label: goal.label,
               target: Math.max(1, Math.floor(num(goal.target, 1))),
               rewardCoins: count(goal.rewardCoins),
-              rewardCultivation: count(goal.rewardCultivation),
             }
           : null;
       this.regulars = (Array.isArray(data.regulars) ? data.regulars : [])

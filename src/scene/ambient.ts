@@ -104,30 +104,6 @@ export class AmbientMethods {
     chars[Math.floor(Math.random() * chars.length)]?.twitch();
   }
 
-  /** 玩家亲自下厨/招待时，身周升起灵气微光。 */
-  emitQi(this: TavernScene) {
-    if (this.gameState !== "open" || this.settling) return;
-    if (this.playerCookingBooth === null && this.playerSeat === null) return;
-    const p = this.playerChar;
-    const dot = this.add
-      .circle(
-        p.x + Phaser.Math.Between(-16, 16),
-        p.y - Phaser.Math.Between(6, 38),
-        Phaser.Math.FloatBetween(1.2, 2.6),
-        Math.random() < 0.3 ? 0xffe08a : 0x9fe8ff,
-        0.85,
-      )
-      .setDepth(19);
-    this.tweens.add({
-      targets: dot,
-      y: dot.y - Phaser.Math.Between(24, 46),
-      alpha: 0,
-      duration: 720,
-      ease: "Sine.easeOut",
-      onComplete: () => dot.destroy(),
-    });
-  }
-
   spawnSteam(this: TavernScene, x: number, y: number, alpha = 0.26) {
     const puff = this.add.circle(x, y, Phaser.Math.Between(3, 5), 0xe8e8e8, alpha).setDepth(4);
     this.tweens.add({

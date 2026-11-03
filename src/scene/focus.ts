@@ -225,8 +225,6 @@ export class FocusMethods {
       this.coinsText,
       this.inventoryText,
       this.queueText,
-      this.realmText,
-      this.cultivationText,
       this.goalText,
       this.sessionText,
       this.reputationText,
@@ -235,19 +233,14 @@ export class FocusMethods {
       this.chronicleText,
       this.weatherBadge,
       this.clockText,
-      this.comboBadge,
       this.sfxButton,
       this.startButton,
-      this.serveButton,
-      this.cookButton,
-      this.dishChipLabel,
-      ...this.dishChips,
+      this.cultivationButton,
       ...this.floorTabs.flatMap((tab) => [tab.bg, tab.label, tab.sub]),
     ];
     ui.forEach((obj) => obj.setVisible(!hidden));
     this.purchaseButton.setVisible(!hidden);
     // 营业中（含收尾结算）没有开始按钮；特写/结算恢复界面时别把它带回来
     if (this.gameState === "open") this.startButton.setVisible(false);
-    this.tutorialBanner.setVisible(false);
   }
 }
