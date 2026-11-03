@@ -1,0 +1,56 @@
+# 代码地图
+
+Phaser 3 + TypeScript 竖屏经营游戏。领域词汇见根目录 `GLOSSARY.md`，设计决策见 `docs/adr/`。
+
+## 分层
+
+| 文件 | 职责 |
+|---|---|
+| `config.ts` | **所有玩法数值**（`GAME`）与加载校验。调数值只改这里。 |
+| `logic.ts` | 纯规则函数，不依赖 Phaser/DOM，`logic.test.ts` 覆盖。读 `config.ts`。 |
+| `main.ts` | 入口：校验配置后启动 Phaser。 |
+| `scene/` | 唯一的 Phaser 场景 `TavernScene`，按功能拆成多个文件（见下）。 |
+| `audio.ts` / `pixel.ts` / `savecode.ts` / `debug.ts` | 音效、像素角色贴图、存档导出码、开发调试面板（按 P）。 |
+
+## scene/ 的组织方式
+
+`TavernScene` 是一个大类，所有场景状态都是它的字段，集中声明在 `scene/TavernScene.ts`。
+方法按功能分在各文件里，每个文件导出一个 `XxxMethods` 类，方法首参写 `this: TavernScene`，
+因此方法体里照常用 `this.字段` / `this.其他方法()`。`TavernScene.ts` 末尾把这些类合并进
+`TavernScene` 的类型和原型（重名会在启动时报错）。
+
+- **加新方法**：放进对应功能文件的 `XxxMethods` 类里，首参 `this: TavernScene`。
+- **加新功能文件**：导出 `XxxMethods`，再在 `TavernScene.ts` 的 import、`interface TavernScene extends …` 和 mixin 列表里各加一处。
+- **加新状态字段**：只在 `TavernScene.ts` 的类里声明（不要写 `private`，其他文件要访问）。
+
+## 想改什么，看哪个文件
+
+| 想改 | 文件 |
+|---|---|
+| 场景状态字段、`create` 启动顺序、`update` 每帧分派 | `scene/TavernScene.ts` |
+| 布局坐标、屏幕尺寸、玩法常量别名 | `scene/constants.ts` |
+| 雅座/排队食客/存档结构等类型 | `scene/types.ts` |
+| 小人外观、动画、气泡、走路 | `scene/Character.ts` |
+| 底栏带进度条的大按钮 | `scene/ProgressButton.ts` |
+| 营业中每帧推进、开张、打烊结算（工资/还贷/目标/破产）、天色 | `scene/session.ts` |
+| 招待入座、烹饪、紧急采购（玩家与员工共用） | `scene/production.ts` |
+| 员工派活顺序、站位、成长、雇佣/辞退/工资 | `scene/staff.ts` |
+| 食客生成、进场方式、常客、随机事件 | `scene/patrons.ts` |
+| 境界/价格/修为/天时/利是在场景侧的换算，菜单列表 | `scene/rules.ts` |
+| 存档读写、旧档迁移 | `scene/save.ts` |
+| 底栏与导航卡搭建、镜头拖拽、二级页面关闭 | `scene/ui.ts` |
+| 每帧 HUD 文字、按钮状态、雅座进度条、见闻录/提示 | `scene/hud.ts` |
+| 楼层切换、雅座视觉与布局 | `scene/floors.ts` |
+| 酒楼内外景像素画、窗、灯笼、猫 | `scene/world.ts` |
+| 程序生成贴图（水墨标题、菜品等） | `scene/textures.ts` |
+| 标题画面、选性别、开场过场 | `scene/title.ts` |
+| 浮字、连击、突破、庆祝、碰杯、事件提示 | `scene/fx.ts` |
+| 天气粒子、灵气、蒸汽、闲聊等常驻氛围 | `scene/ambient.ts` |
+| 点人物弹出的人物卡 | `scene/focus.ts` |
+| 选菜单页 | `scene/overlays/menu.ts` |
+| 营造页（扩建/起楼/灶台/门幡） | `scene/overlays/build.ts` |
+| 伙计页与招聘页 | `scene/overlays/staff.ts` |
+| 修行页与飞升 | `scene/overlays/cultivation.ts` |
+| 灵石商行 | `scene/overlays/bank.ts` |
+| 结算弹窗、破产弹窗 | `scene/overlays/settlement.ts` |
+| 玩法说明、账簿、存档导入导出 | `scene/overlays/info.ts` |
