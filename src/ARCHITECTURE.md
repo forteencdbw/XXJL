@@ -31,9 +31,8 @@ Phaser 3 + TypeScript 竖屏经营游戏。领域词汇见根目录 `GLOSSARY.md
 | 布局坐标、屏幕尺寸、玩法常量别名 | `scene/constants.ts` |
 | 雅座/排队食客/存档结构等类型 | `scene/types.ts` |
 | 小人外观、动画、气泡、走路 | `scene/Character.ts` |
-| 底栏带进度条的大按钮 | `scene/ProgressButton.ts` |
 | 营业时钟与时辰、营业中每帧推进、开张、打烊结算（工资/还贷/目标/破产）、天色 | `scene/session.ts` |
-| 员工（含掌柜）领座、烹饪、传菜、走路耗时，紧急采购 | `scene/production.ts` |
+| 员工（含掌柜）领座、烹饪、传菜、走路耗时，打烊采购 | `scene/production.ts` |
 | 员工派活顺序、站位、成长、雇佣/辞退/工资 | `scene/staff.ts` |
 | 食客生成、进场方式、常客、随机事件 | `scene/patrons.ts` |
 | 价格/天气/利是在场景侧的换算，菜单列表 | `scene/rules.ts` |

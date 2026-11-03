@@ -1,8 +1,8 @@
-// 产线：员工（含掌柜）领座、烹饪、传菜，以及紧急采购。
+// 产线：员工（含掌柜）领座、烹饪、传菜，以及打烊采购。
 import Phaser from "phaser";
 import { playSfx } from "../audio";
 import { GAME } from "../config";
-import { DISHES, getCookQuality, getPurchaseDuration, getStaffDuration, getStoveSpeedFactor, getWalkSpeed, isRarePatron } from "../logic";
+import { DISHES, getCookQuality, getStaffDuration, getStoveSpeedFactor, getWalkSpeed, isRarePatron } from "../logic";
 import type { Employee } from "../logic";
 import { ACTOR_Y, COOK_FLOOR_MS, COOK_SPOT, COOK_TAVERN_SHRINK_PER_LEVEL_MS, DOOR_X, FLOOR_Y, PURCHASE_AMOUNT } from "./constants";
 import type { StaffRuntime } from "./types";
@@ -12,11 +12,6 @@ import type { TavernScene } from "./TavernScene";
 const LEAD_GAP = 36;
 
 export class ProductionMethods {
-  /** 急购在途时不能再下单。 */
-  isPlayerBusy(this: TavernScene): boolean {
-    return this.playerPurchasing !== null;
-  }
-
   /** 按身法换算的走路耗时（毫秒）。 */
   walkMs(this: TavernScene, e: Employee, fromX: number, toX: number): number {
     return (Math.abs(toX - fromX) / getWalkSpeed(e.stars.seat)) * 1000;
@@ -167,7 +162,7 @@ export class ProductionMethods {
       this.sessionLost += 1;
       this.pendingRepLoss += 1;
       this.log(`灵材不足，${guest}没吃上菜便离开了`);
-      this.showHint("灵材不足，客人走了——赶紧急购");
+      this.showHint("灵材不足，客人走了——下次先多备货");
       return false;
     }
 
@@ -271,29 +266,15 @@ export class ProductionMethods {
     }
   }
 
-  /** 玩家点采购：打烊瞬间到货；营业中走紧急采购（翻倍价、要等货）。灵石不足时赊账，费用照扣。 */
+  /** 打烊时采购：瞬间到货。灵石不足时赊账，费用照扣。 */
   startPurchase(this: TavernScene) {
-    if (this.settling) return;
-    const emergency = this.gameState === "open";
-    const price = this.purchasePrice(emergency);
-
-    if (this.isPlayerBusy()) return;
+    if (this.settling || this.gameState === "open") return;
+    const price = this.purchasePrice();
     const credit = this.coins < price;
     this.coins -= price;
     this.displayedCoins = this.coins;
-
-    if (!emergency) {
-      this.inventory += PURCHASE_AMOUNT;
-      this.log(`${credit ? "灵石不足，赊账采购灵材" : "采购灵材"} +${PURCHASE_AMOUNT}`);
-      this.save();
-      return;
-    }
-    this.playerPurchasing = {
-      startedAt: this.time.now,
-      duration: Math.round(getPurchaseDuration(this.level) * GAME.purchase.emergencyDurationScale),
-      amount: PURCHASE_AMOUNT,
-    };
+    this.inventory += PURCHASE_AMOUNT;
+    this.log(`${credit ? "灵石不足，赊账采购灵材" : "采购灵材"} +${PURCHASE_AMOUNT}`);
     this.save();
-    this.log(credit ? "灵石不足，赊账紧急采购下单（价格翻倍），等货中" : "紧急采购下单（价格翻倍），等货中");
   }
 }

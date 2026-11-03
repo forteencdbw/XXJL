@@ -13,10 +13,6 @@ export const TABLE_COUNT_BASE = C.tavern.groundFloorBaseBooths;
 export const STARTING_COINS = C.start.coins;
 export const STARTING_INVENTORY = C.start.ingredients;
 export const PURCHASE_COST = C.purchase.cost;
-export const PURCHASE_TIME_MS = C.purchase.emergencyTimeMs;
-export const PURCHASE_EMERGENCY_MULTIPLIER = C.purchase.emergencyPriceMultiplier;
-export const PURCHASE_TAVERN_SHRINK_PER_LEVEL_MS = C.purchase.emergencyShrinkPerLevelMs;
-export const PURCHASE_FLOOR_MS = C.purchase.emergencyFloorMs;
 export const UPGRADE_BASE_COST = C.tavern.upgradeBaseCost;
 export const UPGRADE_COST_MULTIPLIER = C.tavern.upgradeCostMultiplier;
 export const LOAN_PERIODS = C.bank.periods;
@@ -724,9 +720,8 @@ export function getPurchaseDiscount(buyStars: number): number {
   return Math.min(S.buyDiscountCap, S.buyDiscountPerStar * Math.max(buyStars, 0));
 }
 
-export function getPurchasePrice(buyStars: number, emergency: boolean): number {
-  const base = PURCHASE_COST * (emergency ? PURCHASE_EMERGENCY_MULTIPLIER : 1);
-  return Math.max(1, Math.round(base * (1 - getPurchaseDiscount(buyStars))));
+export function getPurchasePrice(buyStars: number): number {
+  return Math.max(1, Math.round(PURCHASE_COST * (1 - getPurchaseDiscount(buyStars))));
 }
 
 /** 新员工默认勾选全部工作，按属性从高到低排序（同分按 招待/烹饪/采买）。 */
@@ -808,11 +803,6 @@ export function sanitizeEmployees(raw: unknown): Employee[] {
         jobs,
       };
     });
-}
-
-export function getPurchaseDuration(tavernLevel: number): number {
-  const shrink = (tavernLevel - 1) * PURCHASE_TAVERN_SHRINK_PER_LEVEL_MS;
-  return Math.max(PURCHASE_FLOOR_MS, PURCHASE_TIME_MS - shrink);
 }
 
 /** 每期应还金额：剩余本息按剩余期数均摊并向上取整，末期自然补齐。 */

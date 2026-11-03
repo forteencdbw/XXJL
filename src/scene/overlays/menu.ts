@@ -253,7 +253,7 @@ export class MenuOverlayMethods {
       );
     }
 
-    const buyPrice = this.purchasePrice(false);
+    const buyPrice = this.purchasePrice();
     const buy = this.add
       .text(40, 1056, `备货 +${PURCHASE_AMOUNT}（${buyPrice} 灵石）`, {
         fontSize: "20px",

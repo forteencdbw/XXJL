@@ -239,7 +239,7 @@ export class FocusMethods {
       ...this.floorTabs.flatMap((tab) => [tab.bg, tab.label, tab.sub]),
     ];
     ui.forEach((obj) => obj.setVisible(!hidden));
-    this.purchaseButton.setVisible(!hidden);
+    this.purchaseButton.setVisible(!hidden && this.gameState !== "open");
     // 营业中（含收尾结算）没有开始按钮；特写/结算恢复界面时别把它带回来
     if (this.gameState === "open") this.startButton.setVisible(false);
   }

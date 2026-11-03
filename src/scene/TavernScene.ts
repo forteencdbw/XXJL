@@ -3,9 +3,8 @@ import Phaser from "phaser";
 import { createShopkeeper, DISHES, EMPTY_META, getDailyWeather, localDateKey, STARTING_COINS, STARTING_INVENTORY } from "../logic";
 import type { DailyGoal, Employee, MetaStats, WeatherDef } from "../logic";
 import { Character } from "./Character";
-import { ProgressButton } from "./ProgressButton";
 import { AUTOSAVE_MS, CAMERA_CLOSED_X, SCREEN_H, USE_VECTOR_TITLE } from "./constants";
-import type { Booth, BoothVisual, GameState, PurchaseProgress, QueuedPatron, RegularGuest, StaffRuntime, TapText } from "./types";
+import type { Booth, BoothVisual, GameState, QueuedPatron, RegularGuest, StaffRuntime, TapText } from "./types";
 import { TextureMethods } from "./textures";
 import { TitleMethods } from "./title";
 import { SaveMethods } from "./save";
@@ -111,8 +110,6 @@ export class TavernScene extends Phaser.Scene {
   giftStreak = 0;
   lastGift: { streak: number; coins: number; ingredients: number } | null = null;
 
-  playerPurchasing: PurchaseProgress | null = null;
-
   // 视觉对象
   skyRect!: Phaser.GameObjects.Rectangle;
   sunMoon!: Phaser.GameObjects.Arc;
@@ -121,7 +118,6 @@ export class TavernScene extends Phaser.Scene {
   stars: Phaser.GameObjects.Arc[] = [];
   tavernGfx!: Phaser.GameObjects.Graphics;
   interiorGfx!: Phaser.GameObjects.Graphics;
-  uiObjects: { obj: { x: number; setScrollFactor(v: number): unknown }; baseX: number }[] = [];
 
   playerChar!: Character;
   playerLabel!: Phaser.GameObjects.Text;
@@ -167,7 +163,7 @@ export class TavernScene extends Phaser.Scene {
   navTitle!: Phaser.GameObjects.Text;
   navCardObjects: (Phaser.GameObjects.Text | Phaser.GameObjects.Rectangle)[] = [];
   bankButton!: TapText;
-  purchaseButton!: ProgressButton;
+  purchaseButton!: TapText;
   upgradeButton!: TapText;
   cultivationButton!: TapText;
   helpButton!: TapText;
@@ -265,10 +261,6 @@ export class TavernScene extends Phaser.Scene {
   /** 窗户（随时间变色），单独保存以便 updateSky 调整。 */
   windowViews: Phaser.GameObjects.Rectangle[] = [];
 
-  registerUi = (obj: { x: number; setScrollFactor(v: number): unknown }, baseX: number) => {
-    obj.setScrollFactor(0);
-    this.uiObjects.push({ obj, baseX });
-  };
 
   update(time: number) {
     if (this.gameState === "bankrupt") return;
@@ -279,7 +271,6 @@ export class TavernScene extends Phaser.Scene {
       this.tickOpenSession(time);
     }
 
-    this.tickPurchase(time);
     if (this.gameState === "closed") this.tickClosedProcurement();
 
     this.updateSky(time);

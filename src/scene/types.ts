@@ -69,9 +69,6 @@ export interface StaffTask extends OpProgress {
   kind: "seat" | "cook" | "serve";
   boothIndex: number;
 }
-export interface PurchaseProgress extends OpProgress {
-  amount: number;
-}
 /** 员工在营业中的临时状态，不进存档。 */
 export interface StaffRuntime {
   char: Character;

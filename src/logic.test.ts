@@ -48,7 +48,6 @@ import {
   pickPatronName,
   pickRandomEvent,
   getPurchaseDiscount,
-  getPurchaseDuration,
   getPurchasePrice,
   getRealmIndex,
   getSignUpgradeCost,
@@ -229,23 +228,15 @@ describe("员工", () => {
 });
 
 describe("采购", () => {
-  it("营业中紧急采购翻倍，精明提供折扣", () => {
-    expect(getPurchasePrice(0, false)).toBe(5);
-    expect(getPurchasePrice(0, true)).toBe(10);
-    expect(getPurchasePrice(1, false)).toBe(5); // 5 * 0.95 = 4.75 → 5
-    expect(getPurchasePrice(4, false)).toBeLessThan(getPurchasePrice(0, false));
+  it("精明提供采买折扣", () => {
+    expect(getPurchasePrice(0)).toBe(5);
+    expect(getPurchasePrice(1)).toBe(5); // 5 * 0.95 = 4.75 → 5
+    expect(getPurchasePrice(4)).toBeLessThan(getPurchasePrice(0));
   });
 
   it("折扣有上限，价格不低于 1", () => {
     expect(getPurchaseDiscount(100)).toBe(0.5);
-    expect(getPurchasePrice(100, true)).toBe(5); // 10 * 0.5
-    expect(getPurchasePrice(100, false)).toBeGreaterThanOrEqual(1);
-  });
-
-  it("紧急采购耗时随装潢缩短但不低于下限", () => {
-    expect(getPurchaseDuration(1)).toBe(15000);
-    expect(getPurchaseDuration(5)).toBeLessThan(getPurchaseDuration(1));
-    expect(getPurchaseDuration(1000)).toBeGreaterThanOrEqual(3000);
+    expect(getPurchasePrice(100)).toBe(3); // 5 * 0.5
   });
 });
 

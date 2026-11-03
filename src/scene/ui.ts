@@ -2,7 +2,6 @@
 import Phaser from "phaser";
 import { loadAudioSettings, playSfx, setSfxMuted } from "../audio";
 import { NIGHT_COLOR } from "../logic";
-import { ProgressButton } from "./ProgressButton";
 import { SCREEN_H, SCREEN_W, STATUS_BAR_H, XIAN_FONT } from "./constants";
 import type { TapText } from "./types";
 import type { TavernScene } from "./TavernScene";
@@ -172,7 +171,7 @@ export class UiMethods {
 
 
     // 通用按钮：底部固定
-    this.purchaseButton = new ProgressButton(this, 16, 1186, 200, 80, () => this.startPurchase(), this.registerUi);
+    this.purchaseButton = this.addUiButton(16, 1186, () => this.startPurchase(), { x: 14, y: 26 }, 6);
     this.startButton = this.addUiButton(222, 1186, () => this.onStartButton(), { x: 12, y: 28 }, 6, "20px");
     // 修为子系统入口：营业、打烊都在
     this.cultivationButton = this.addUiButton(560, 1186, () => this.buildCultivationOverlay(), { x: 30, y: 28 }, 6, "22px");

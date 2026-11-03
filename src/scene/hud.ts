@@ -1,8 +1,7 @@
 // 每帧刷新的 HUD：状态栏文字、按钮状态、雅座进度条、见闻录与提示。
 import Phaser from "phaser";
 import { playSfx } from "../audio";
-import { GAME } from "../config";
-import { DISHES, getGoalProgress, getNextRepThreshold, getPurchaseDuration, getRepLevelInfo, getTotalBoothCount, isRarePatron } from "../logic";
+import { DISHES, getGoalProgress, getNextRepThreshold, getRepLevelInfo, getTotalBoothCount, isRarePatron } from "../logic";
 import { CHRONICLE_MAX_LINES, COLOR_STAFF, PURCHASE_AMOUNT, SCREEN_W, XIAN_FONT } from "./constants";
 import type { BoothState } from "./types";
 import type { TavernScene } from "./TavernScene";
@@ -49,11 +48,8 @@ export class HudMethods {
       this.sessionText.setText("已打烊");
       this.goalText.setText("");
     } else if (open && this.sessionGoal) {
-      const busyLabel = this.playerPurchasing ? "急购中" : "";
       this.sessionText.setText(
-        `已服务 ${this.sessionServed}/${this.patronsTotal} · ${this.sessionRevenue}灵石${
-          busyLabel ? ` · 掌柜${busyLabel}` : ""
-        }`,
+        `已服务 ${this.sessionServed}/${this.patronsTotal} · ${this.sessionRevenue}灵石`,
       );
       const progress = getGoalProgress(this.sessionGoal, {
         served: this.sessionServed,
@@ -147,7 +143,8 @@ export class HudMethods {
     this.refreshFloorTabs();
     // 菜单/店铺面板打开时也收起事务卡，避免透明卡片的命中区压到面板按钮上
     this.setClosedNavVisible(this.gameState === "closed" && !this.overlay);
-    this.purchaseButton.setVisible(true);
+    // 营业中没有任何手动按钮；采购只在打烊时出现
+    this.purchaseButton.setVisible(!open);
 
     this.staffButton.setText("伙计");
     this.bankButton.setText("灵石商行");
@@ -156,22 +153,7 @@ export class HudMethods {
     this.saveButton.setText("存档");
 
 
-    const purchasePriceLabel = this.purchasePrice(open);
-    if (this.playerPurchasing && open) {
-      const left = Math.max(
-        0,
-        Math.ceil(
-          (this.playerPurchasing.startedAt + this.playerPurchasing.duration - this.time.now) / 1000,
-        ),
-      );
-      this.purchaseButton.setLabel(`急购中… ${left}s`);
-    } else {
-      this.purchaseButton.setLabel(
-        open
-          ? `急购 +${PURCHASE_AMOUNT}（${purchasePriceLabel} 灵石，约 ${Math.round((getPurchaseDuration(this.level) * GAME.purchase.emergencyDurationScale) / 1000)}s）`
-          : `备货 +${PURCHASE_AMOUNT}（${purchasePriceLabel} 灵石）`,
-      );
-    }
+    this.purchaseButton.setText(`备货 +${PURCHASE_AMOUNT}（${this.purchasePrice()} 灵石）`);
     this.upgradeButton.setText(`营造 Lv${this.level}`);
   }
 
@@ -188,12 +170,6 @@ export class HudMethods {
   }
 
   renderProgress(this: TavernScene, time: number) {
-
-    const playerPurchaseFraction = this.playerPurchasing
-      ? (time - this.playerPurchasing.startedAt) / this.playerPurchasing.duration
-      : 0;
-    this.purchaseButton.setProgress(playerPurchaseFraction, 0);
-    this.purchaseButton.setEnabled(!this.isPlayerBusy() && !this.settling);
 
     this.booths.forEach((booth, i) => {
       const visual = this.boothVisuals[i];

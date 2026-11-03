@@ -111,22 +111,13 @@ export class SessionMethods {
     }
   }
 
-  tickPurchase(this: TavernScene, time: number) {
-    if (this.playerPurchasing && time >= this.playerPurchasing.startedAt + this.playerPurchasing.duration) {
-      this.inventory += this.playerPurchasing.amount;
-      this.log(`采购到货 +${this.playerPurchasing.amount} 灵材`);
-      this.playerPurchasing = null;
-      this.save();
-    }
-  }
-
   tickClosedProcurement(this: TavernScene) {
     const buyer = this.bestBuyer();
     if (!buyer) return;
     // 酒楼越大，备货目标越高，避免高等级时 10 份存货撑不过一局
     const target = PURCHASE_TARGET_STOCK + this.level * GAME.staff.buyerTargetStockPerLevel;
     if (this.inventory >= target) return;
-    const price = this.purchasePrice(false);
+    const price = this.purchasePrice();
     let bought = 0;
     while (this.inventory < target && this.coins >= price) {
       this.coins -= price;
@@ -372,11 +363,6 @@ export class SessionMethods {
     this.clearFocusCard();
     this.setFocusUiHidden(false);
     this.settling = true;
-    if (this.playerPurchasing) {
-      this.inventory += this.playerPurchasing.amount;
-      this.log(`打烊，采购的灵材到店 +${this.playerPurchasing.amount}`);
-      this.playerPurchasing = null;
-    }
     this.staffRt.forEach((rt) => {
       rt.task = null;
       rt.char.setCarrying(false);
@@ -399,8 +385,7 @@ export class SessionMethods {
       level: this.level,
     });
     this.updateBankruptStreak();
-    // 结算/破产期间锁定副屏，避免重复结算或误买
-    this.purchaseButton.setEnabled(false);
+    // 结算/破产期间锁定副屏，避免重复结算
     this.startButton.setAlpha(0.4);
     // 镜头暂留营业视角，等玩家在结算面板点「打烊」后再拉远过渡
     if (this.gameState === "bankrupt") {

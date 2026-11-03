@@ -29,8 +29,8 @@ export class RuleMethods {
   }
 
   /** 采购价含采买员工的精明折扣。 */
-  purchasePrice(this: TavernScene, emergency: boolean): number {
-    return getPurchasePrice(this.bestBuyer()?.stars.buy ?? 0, emergency);
+  purchasePrice(this: TavernScene): number {
+    return getPurchasePrice(this.bestBuyer()?.stars.buy ?? 0);
   }
 
   /** 一桌离店时的成交价：菜品价 × 身份 × 楼层 × 口味 × 烹饪质量。 */

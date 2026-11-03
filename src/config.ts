@@ -170,16 +170,6 @@ export const GAME = {
     cost: 5,
     /** 一次采购得多少灵材 */
     amount: 5,
-    /** 营业中紧急采购耗时（毫秒） */
-    emergencyTimeMs: 15000,
-    /** 酒楼每升一级，紧急采购耗时缩短（毫秒） */
-    emergencyShrinkPerLevelMs: 300,
-    /** 紧急采购耗时最短（毫秒） */
-    emergencyFloorMs: 3000,
-    /** 实际等待 = 上面三项算出的耗时 × 这个倍率（默认约 9 秒） */
-    emergencyDurationScale: 0.6,
-    /** 紧急采购价格倍率 */
-    emergencyPriceMultiplier: 2,
   },
 
   /**
