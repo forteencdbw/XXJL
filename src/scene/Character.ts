@@ -794,7 +794,7 @@ export class Character extends Phaser.GameObjects.Container {
     this.lastLine = text;
     const scene = this.scene;
     const bubble = scene.add
-      .text(this.x, this.y - 200, text, {
+      .text(this.x, this.y, text, {
         fontSize: "20px",
         color: tone === "cold" ? "#d8e8ff" : "#2a1f14",
         backgroundColor: tone === "cold" ? "#2a3448" : "#f3e6cf",
@@ -823,7 +823,8 @@ export class Character extends Phaser.GameObjects.Container {
       const view = scene.cameras.main.worldView;
       const margin = Math.min(120, view.width * 0.22);
       const bx = Phaser.Math.Clamp(this.x, view.x + margin, view.right - margin);
-      bubble.setPosition(bx, this.y - 200 + rise.y).setVisible(this.visible);
+      // 尾巴尖落在头顶上方一点（耐心条在 -50，避开它）
+      bubble.setPosition(bx, this.y - 58 - 8 - bubble.height / 2 + rise.y).setVisible(this.visible);
       tail.setPosition(bx, bubble.y + bubble.height / 2 - 2).setVisible(this.visible);
     };
     follow();

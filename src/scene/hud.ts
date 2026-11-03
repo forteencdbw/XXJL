@@ -11,7 +11,8 @@ export class HudMethods {
   refreshHud(this: TavernScene) {
     if (this.focusing) return;
     const open = this.gameState === "open";
-    this.playerLabel.setVisible(open);
+    // 掌柜说话时气泡就在头顶，先收起「掌柜」名牌
+    this.playerLabel.setVisible(open && !this.playerChar.isSpeaking());
     if (open) this.playerLabel.setPosition(this.playerChar.x, this.playerChar.y - 120);
 
     this.coinsText.setText(`灵石：${this.displayedCoins}`);
