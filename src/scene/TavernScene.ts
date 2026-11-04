@@ -1,6 +1,6 @@
 // 主场景：字段（全部场景状态）、create/update 入口；方法按功能拆在 scene/ 其他文件。
 import Phaser from "phaser";
-import { createShopkeeper, DISHES, EMPTY_META, getDailyWeather, localDateKey, STARTING_COINS, STARTING_INVENTORY } from "../logic";
+import { createShopkeeper, DISHES, getNightDurationMs, getSessionDurationMs, EMPTY_META, getDailyWeather, localDateKey, STARTING_COINS, STARTING_INVENTORY } from "../logic";
 import type { DailyGoal, Employee, MetaStats, WeatherDef } from "../logic";
 import { Character } from "./Character";
 import { AUTOSAVE_MS, CAMERA_CLOSED_X, SCREEN_H, USE_VECTOR_TITLE } from "./constants";
@@ -73,6 +73,8 @@ export class TavernScene extends Phaser.Scene {
   /** 累计冻结的现实毫秒：场景时钟 = 现实时间 − 冻结时长。 */
   pausedMs = 0;
   lastRawTime = 0;
+  /** 时间倍速（Debug 用）：场景时钟、计时器与补间一起加快。 */
+  timeSpeed = 1;
   /** 夜修从这一刻起算（场景时钟）；默认很早，即新档直接处在天明。 */
   nightStartedAt = -1e12;
   /** 本次天明是否已弹过开张提醒。 */
@@ -219,9 +221,12 @@ export class TavernScene extends Phaser.Scene {
     const clock = this.time;
     this.events.off(Phaser.Scenes.Events.UPDATE, clock.update, clock);
     this.events.on(Phaser.Scenes.Events.UPDATE, (t: number, d: number) => {
-      if (this.worldPaused) this.pausedMs += t - this.lastRawTime;
+      const dt = t - this.lastRawTime;
+      // 冻结时把这段现实时间记成停顿；倍速时反过来让场景时钟多走
+      if (this.worldPaused) this.pausedMs += dt;
+      else this.pausedMs -= dt * (this.timeSpeed - 1);
       this.lastRawTime = t;
-      clock.update(t - this.pausedMs, d);
+      clock.update(t - this.pausedMs, d * this.timeSpeed);
     });
     const hadSave = this.loadSave();
     this.ensureGlowTexture();
@@ -273,6 +278,22 @@ export class TavernScene extends Phaser.Scene {
             this.coins += n;
             this.refreshHud();
           },
+          skipDay: () => {
+            if (this.gameState !== "open" || this.settling) return this.showHint("只有营业中才能跳到打烊");
+            // 时钟拨到子初：没到的客人不来了，店里的客人照常走完再结算
+            this.sessionStartedAt = Math.min(this.sessionStartedAt, this.time.now - getSessionDurationMs());
+          },
+          skipNight: () => {
+            if (this.gameState !== "closed" || this.isDawn()) return this.showHint("只有夜修中才能跳到天明");
+            this.nightStartedAt = this.time.now - getNightDurationMs();
+          },
+          toggleSpeed: () => {
+            this.timeSpeed = this.timeSpeed === 1 ? 10 : 1;
+            this.tweens.timeScale = this.timeSpeed;
+            this.showHint(`时间倍速 ×${this.timeSpeed}`);
+            return this.timeSpeed;
+          },
+          speed: () => this.timeSpeed,
         }),
       );
     }
