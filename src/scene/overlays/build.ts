@@ -109,6 +109,7 @@ export class BuildOverlayMethods {
 
     this.addOverlayClose(layer, 660);
     this.overlay = layer;
+    this.setWorldPaused(true);
   }
 
   buildFloor(this: TavernScene) {
@@ -191,7 +192,6 @@ export class BuildOverlayMethods {
     this.coins -= cost;
     this.displayedCoins = this.coins;
     this.signLevel += 1;
-    this.drawTavern(this.tavernGfx, this.lastLit);
     this.save();
     playSfx("upgrade");
     this.log(`门面挂上新幡（招客效果待重做）`);

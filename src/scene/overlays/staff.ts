@@ -123,6 +123,7 @@ export class StaffOverlayMethods {
 
     this.addOverlayClose(layer, 1150);
     this.overlay = layer;
+    this.setWorldPaused(true);
   }
 
   onRosterChanged(this: TavernScene) {
@@ -197,5 +198,6 @@ export class StaffOverlayMethods {
     });
     this.addOverlayClose(layer, 1150);
     this.overlay = layer;
+    this.setWorldPaused(true);
   }
 }

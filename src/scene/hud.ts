@@ -1,7 +1,8 @@
 // 每帧刷新的 HUD：状态栏文字、按钮状态、雅座进度条、见闻录与提示。
 import Phaser from "phaser";
 import { playSfx } from "../audio";
-import { DISHES, getGoalProgress, getNextRepThreshold, getRepLevelInfo, getTotalBoothCount, isRarePatron } from "../logic";
+import { DISHES, getGoalProgress, getNextRepThreshold, getRepLevelInfo, getNightDurationMs, getTotalBoothCount, isRarePatron } from "../logic";
+import { GAME } from "../config";
 import { CHRONICLE_MAX_LINES, COLOR_STAFF, PURCHASE_AMOUNT, SCREEN_W, XIAN_FONT } from "./constants";
 import type { BoothState } from "./types";
 import type { TavernScene } from "./TavernScene";
@@ -71,20 +72,19 @@ export class HudMethods {
       }
     } else {
       const goal = this.currentDayGoal();
-      // 打烊页：奖励明细留给菜单目标卡，HUD 只留日期、天气与目标，避免长行压到画面
+      // 夜修：奖励明细留给菜单目标卡，HUD 只留日期、天气与目标，避免长行压到画面
       this.sessionText.setText(`第 ${this.day} 日 · 天气：${this.weather.name} · ${goal.label}`);
-      this.goalText.setText("");
-      // 事务面板标题常驻回访提示：今天还没领利是就写「待领」，领过则显示连续天数
+      // 状态栏常驻回访提示：今天还没领利是就写「待领」，领过则显示连续天数
       const giftPending = this.lastGiftDate !== this.todayKey;
-      this.navTitle.setText(
-        giftPending ? "掌柜事务 · 今日利是待领" : this.giftStreak > 0 ? `掌柜事务 · 连开 ${this.giftStreak} 天` : "掌柜事务",
-      );
-      this.navTitle.setColor(giftPending ? "#ffd98a" : "#e0c9a0");
+      this.goalText.setText(giftPending ? "今日利是待领" : this.giftStreak > 0 ? `连开 ${this.giftStreak} 天` : "");
+      this.goalText.setColor(giftPending ? "#ffd98a" : "#a89472");
+      const left = Math.ceil((getNightDurationMs() - this.nightElapsed()) / GAME.session.nightMsPerQuarter);
+      this.navTitle.setText(this.isDawn() ? "" : `夜修中 · 距天明还有 ${left} 刻`);
     }
     this.chronicleText.setText(
       this.chronicleLines.map((line) => (line.length > 34 ? `${line.slice(0, 33)}…` : line)).join("\n"),
     );
-    // 营业中把常驻日志与声音开关收起：给主画面让位，日志在打烊视图里看
+    // 营业中把常驻日志与声音开关收起：给主画面让位，日志在夜修视图里看
     this.chronicleText.setVisible(!open);
     this.sfxButton.setVisible(!open);
     const showWeather = open && !this.settling;
@@ -130,21 +130,16 @@ export class HudMethods {
     });
 
     this.startButton.setText("开始营业");
+    this.startButton.setVisible(this.gameState === "closed" && this.isDawn() && !this.overlay);
+    this.cultivationButton.setVisible(open);
 
     this.startButton.setAlpha(this.settling ? 0.4 : 1);
     this.cultivationButton.setAlpha(this.settling ? 0.4 : 1);
     this.rightFrame.setVisible(open);
     this.closedBackdrop.setVisible(!open);
-    this.closedFloorText
-      .setVisible(!open)
-      .setText(
-        ["一层 · 散座", "二层 · 雅座", "三层 · 仙门包间"][this.floorsBuilt] ?? "一层 · 散座",
-      );
     this.refreshFloorTabs();
     // 菜单/店铺面板打开时也收起事务卡，避免透明卡片的命中区压到面板按钮上
     this.setClosedNavVisible(this.gameState === "closed" && !this.overlay);
-    // 营业中没有任何手动按钮；采购只在打烊时出现
-    this.purchaseButton.setVisible(!open);
 
     this.staffButton.setText("伙计");
     this.bankButton.setText("灵石商行");
@@ -153,7 +148,7 @@ export class HudMethods {
     this.saveButton.setText("存档");
 
 
-    this.purchaseButton.setText(`备货 +${PURCHASE_AMOUNT}（${this.purchasePrice()} 灵石）`);
+    this.purchaseButton.sub?.setText(`+${PURCHASE_AMOUNT} · ${this.purchasePrice()} 灵石`);
     this.upgradeButton.setText(`营造 Lv${this.level}`);
   }
 

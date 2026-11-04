@@ -151,6 +151,22 @@ export function getSessionDurationMs(): number {
   return hourToMs(C.session.closeHour - C.session.openHour);
 }
 
+/** 夜修共几刻：子初打烊到次日辰正开门。 */
+export function getNightQuarters(): number {
+  return ((24 - C.session.closeHour + C.session.openHour) * 60) / MINUTES_PER_QUARTER;
+}
+
+/** 夜修的现实毫秒数。 */
+export function getNightDurationMs(): number {
+  return getNightQuarters() * C.session.nightMsPerQuarter;
+}
+
+/** 夜修已过现实毫秒 → 几点几分（从打烊时刻起算，可超过 24 点，按刻取整，到开门封顶）。 */
+export function getNightClockMinutes(elapsedMs: number): number {
+  const quarters = Math.min(getNightQuarters(), Math.floor(Math.max(0, elapsedMs) / C.session.nightMsPerQuarter));
+  return C.session.closeHour * 60 + quarters * MINUTES_PER_QUARTER;
+}
+
 /** 营业已过现实毫秒 → 当天几点几分（分钟数，按刻取整，到打烊时刻封顶）。 */
 export function getClockMinutes(elapsedMs: number): number {
   const quarters = Math.floor(Math.max(0, elapsedMs) / C.session.msPerQuarter);

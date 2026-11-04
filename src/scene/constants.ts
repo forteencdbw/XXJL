@@ -32,10 +32,23 @@ export const XIAN_FONT = '"KaiTi","STKaiti","Kaiti SC","Noto Serif SC",serif';
 export const USE_VECTOR_TITLE = false;
 export const CARD_W = 600;
 
-export const EXTERIOR_X = -2000;
 export const CAMERA_OPEN_X = 60;
 export const CAMERA_CLOSED_X = -2000;
-export const TAVERN_W = 360;
+/** 夜修时副屏的上沿，以及顶部那一条（距天明 / 开始营业）的中线。 */
+export const NIGHT_PANEL_Y = 966;
+export const NIGHT_STRIP_Y = NIGHT_PANEL_Y + 40;
+/** 夜修时掌柜在法坛正中打坐的位置（角色锚点，脚底再往下约 54px）。 */
+export const NIGHT_SEAT = { x: CAMERA_CLOSED_X, y: 806 };
+/** 伙计在掌柜身后的座位：相对掌柜的偏移，前排四个、后排三个。 */
+export const NIGHT_STAFF_SEATS = [
+  { dx: -110, dy: -58 },
+  { dx: 110, dy: -58 },
+  { dx: -230, dy: -58 },
+  { dx: 230, dy: -58 },
+  { dx: -170, dy: -110 },
+  { dx: 170, dy: -110 },
+  { dx: 0, dy: -110 },
+];
 export const SKY_TRANSITION_MS = 2000;
 
 export const FLOOR_Y = 1010;

@@ -28,5 +28,6 @@ export class CultivationOverlayMethods {
     );
     this.addOverlayClose(layer, 1150);
     this.overlay = layer;
+    this.setWorldPaused(true);
   }
 }

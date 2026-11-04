@@ -2,8 +2,8 @@
 import Phaser from "phaser";
 import { playSfx } from "../audio";
 import { GAME } from "../config";
-import { BANKRUPT_STREAK, DISHES, formatClock, gainReputation, getArrivalSchedule, getClockMinutes, getDailyGoal, getDailyGoalOptions, getDailyRent, getEventSchedule, getFestivalGoalMultiplier, getFloorRent, getGoalPayout, getLoanDue, getRepLevelInfo, getSessionDurationMs, getShichen, getStreakBonus, GOAL_STREAK_TARGET, isFestivalDay, loseReputation, NIGHT_COLOR, REP_GAIN_RARE, REP_GAIN_SERVED, skyColorAt, updateMeta } from "../logic";
-import { ACTOR_Y, CAMERA_CLOSED_X, CAMERA_OPEN_X, FLOOR_Y, MAX_EVENTS_PER_SESSION, PURCHASE_AMOUNT, PURCHASE_TARGET_STOCK, ROUND_END_DELAY_MS, SCREEN_H, SCREEN_W, SKY_TRANSITION_MS } from "./constants";
+import { BANKRUPT_STREAK, DISHES, formatClock, gainReputation, getArrivalSchedule, getClockMinutes, getDailyGoal, getDailyGoalOptions, getDailyRent, getEventSchedule, getFestivalGoalMultiplier, getNightClockMinutes, getNightDurationMs, getNightQuarters, getFloorRent, getGoalPayout, getLoanDue, getRepLevelInfo, getSessionDurationMs, getShichen, getStreakBonus, GOAL_STREAK_TARGET, isFestivalDay, loseReputation, NIGHT_COLOR, REP_GAIN_RARE, REP_GAIN_SERVED, skyColorAt, updateMeta } from "../logic";
+import { ACTOR_Y, CAMERA_CLOSED_X, CAMERA_OPEN_X, FLOOR_Y, MAX_EVENTS_PER_SESSION, PURCHASE_AMOUNT, PURCHASE_TARGET_STOCK, ROUND_END_DELAY_MS, SCREEN_H, SCREEN_W, SKY_TRANSITION_MS, XIAN_FONT } from "./constants";
 import type { TavernScene } from "./TavernScene";
 
 export class SessionMethods {
@@ -132,19 +132,86 @@ export class SessionMethods {
     }
   }
 
+  // ===== 夜修 =====
+  /** 夜修已走的毫秒（场景时钟，随暂停冻结），到天明封顶。 */
+  nightElapsed(this: TavernScene): number {
+    return Phaser.Math.Clamp(this.time.now - this.nightStartedAt, 0, getNightDurationMs());
+  }
+
+  isDawn(this: TavernScene): boolean {
+    return this.nightElapsed() >= getNightDurationMs();
+  }
+
+  /** 打烊结算后进入夜修：时钟从子初走起，掌柜与伙计到法坛打坐。 */
+  enterNight(this: TavernScene) {
+    this.nightStartedAt = this.time.now;
+    this.dawnPrompted = false;
+    this.seatForNight();
+    this.save();
+  }
+
+  /** 走到辰正弹一次开张提醒；页面或特写开着时等它们关掉再弹。 */
+  tickNight(this: TavernScene) {
+    if (this.dawnPrompted || !this.isDawn() || this.overlay || this.transitioning || this.focusing) return;
+    this.dawnPrompted = true;
+    this.showDawnPopup();
+  }
+
+  showDawnPopup(this: TavernScene) {
+    const { panel, left } = this.buildPopupCard(250, 110);
+    playSfx("upgrade");
+    panel.add(
+      this.add.text(left, 30, "天亮了，该开张了", { fontSize: "34px", color: "#ffe6a8", fontFamily: XIAN_FONT }),
+    );
+    panel.add(
+      this.add.text(left, 86, `第 ${this.day} 日 · 辰正 · 天气：${this.weather.name}`, {
+        fontSize: "18px",
+        color: "#c8b8a0",
+      }),
+    );
+    const start = this.add
+      .text(0, 170, "开始营业", {
+        fontSize: "28px",
+        color: "#f5e6c8",
+        backgroundColor: "#8a2a22",
+        padding: { x: 48, y: 16 },
+        fontFamily: XIAN_FONT,
+      })
+      .setOrigin(0.5)
+      .setInteractive({ useHandCursor: true })
+      .on("pointerup", () => {
+        playSfx("click");
+        this.destroyOverlay();
+        this.openMenu();
+      });
+    this.expandHitArea(start, 14);
+    panel.add(start);
+  }
+
   // ===== 昼夜 =====
   updateSky(this: TavernScene, time: number) {
     let t = 1;
-    let lit = false;
+    // 夜修的破晓进度：寅初（3 点）起天色渐亮，辰正全亮
+    let dawnK = 0;
     if (this.gameState === "open") {
       const elapsed = time - this.sessionStartedAt;
       t = Phaser.Math.Clamp(elapsed / getSessionDurationMs(), 0, 1);
-      lit = true;
-    } else if (this.gameState === "selectingMenu") {
-      t = 1;
+    } else {
+      const quarter = this.nightElapsed() / GAME.session.nightMsPerQuarter;
+      const brighten = getNightQuarters() - (GAME.session.openHour - 3) * 4;
+      dawnK = Phaser.Math.Clamp((quarter - brighten) / (getNightQuarters() - brighten), 0, 1);
     }
 
     let color = this.gameState === "open" ? skyColorAt(t) : NIGHT_COLOR;
+    if (dawnK > 0) {
+      const mixed = Phaser.Display.Color.Interpolate.ColorWithColor(
+        Phaser.Display.Color.IntegerToColor(NIGHT_COLOR),
+        Phaser.Display.Color.IntegerToColor(skyColorAt(0)),
+        100,
+        dawnK * 100,
+      );
+      color = Phaser.Display.Color.GetColor(mixed.r, mixed.g, mixed.b);
+    }
     // 营业开始后的入场过渡：夜晚 → 清晨
     if (this.gameState === "open") {
       const elapsed = time - this.sessionStartedAt;
@@ -157,7 +224,7 @@ export class SessionMethods {
       }
     }
     this.skyRect.setFillStyle(color, 1);
-    const showStars = this.gameState !== "open" || t > 0.8;
+    const showStars = this.gameState !== "open" ? dawnK < 0.6 : t > 0.8;
     this.stars.forEach((star) => star.setVisible(showStars));
     // 室内窗户透出的天光与外面同步；打烊时窗户只剩余夜色
     if (this.windowViews.length) {
@@ -179,7 +246,8 @@ export class SessionMethods {
       this.sunMoon.setFillStyle(t > 0.82 ? 0xdfe6ff : 0xffe8a0, 1);
       this.sunMoon.setRadius(t > 0.82 ? 26 : 34);
     } else {
-      this.sunMoon.setPosition(SCREEN_W - 140, 170);
+      // 月亮随夜修西沉，天明前落到山后
+      this.sunMoon.setPosition(SCREEN_W - 140 - dawnK * 120, 170 + dawnK * 420);
       this.sunMoon.setFillStyle(0xdfe6ff, 1);
       this.sunMoon.setRadius(26);
     }
@@ -194,18 +262,12 @@ export class SessionMethods {
         .setFillStyle(color, 1);
       this.moonHalo.setPosition(this.sunMoon.x, this.sunMoon.y);
     }
-
-    // 夜晚时酒楼窗内透出灯火
-    if (lit !== this.lastLit) {
-      this.lastLit = lit;
-      this.drawTavern(this.tavernGfx, lit);
-    }
   }
 
   // ===== 回合 =====
   onStartButton(this: TavernScene) {
     if (this.settling || this.transitioning) return;
-    if (this.gameState === "closed") this.openMenu();
+    if (this.gameState === "closed" && this.isDawn()) this.openMenu();
   }
 
   /** 营业时钟走到子初（打烊时刻）。 */
@@ -216,7 +278,10 @@ export class SessionMethods {
   /** 状态栏最右的时辰：营业中按刻跳，收尾停在子初。 */
   clockLabel(this: TavernScene): string {
     if (this.gameState === "selectingMenu") return `${getShichen(GAME.session.openHour * 60)}时 · 待开张`;
-    if (this.gameState !== "open") return `${getShichen(GAME.session.closeHour * 60)}时 · 打烊`;
+    if (this.gameState !== "open") {
+      const minutes = getNightClockMinutes(this.nightElapsed());
+      return this.isDawn() ? `${formatClock(minutes)} · 天明` : `${formatClock(minutes)} · 夜修`;
+    }
     const minutes = getClockMinutes(this.time.now - this.sessionStartedAt);
     if (this.isClosingTime(this.time.now) && !this.settling) return `${formatClock(minutes)} · 收尾`;
     return formatClock(minutes);
@@ -271,6 +336,8 @@ export class SessionMethods {
         rt.task = null;
         rt.floor = 0;
         rt.char.setCarrying(false);
+        rt.char.setMeditating(false);
+        rt.char.setDepth(20);
         const h = this.staffHome(e);
         rt.char.teleportTo(h.x, h.y);
       }
@@ -401,7 +468,7 @@ export class SessionMethods {
     this.sessionText.setText("已打烊");
   }
 
-  /** 从内部视角淡出到黑屏，切到打烊视角后再淡入。 */
+  /** 从内部视角淡出到黑屏，切到夜修视图后再淡入。 */
   transitionToClosedView(this: TavernScene) {
     if (this.transitioning) return;
     this.stopCelebration();
@@ -413,6 +480,7 @@ export class SessionMethods {
       this.settling = false;
       cam.centerOn(CAMERA_CLOSED_X, SCREEN_H / 2);
       cam.setZoom(1);
+      this.enterNight();
       this.positionUi(false);
       cam.fadeIn(450, 0, 0, 0);
       this.transitioning = false;

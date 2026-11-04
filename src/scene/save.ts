@@ -1,5 +1,5 @@
 // 存档：序列化、新周目存档、读档清洗与旧档迁移。
-import { DISHES, EMPTY_META, SHOPKEEPER_ID, STARTING_COINS, STARTING_INVENTORY, createShopkeeper, getRealmIndex, migrateLegacyStaff, sanitizeEmployees } from "../logic";
+import { DISHES, EMPTY_META, SHOPKEEPER_ID, STARTING_COINS, STARTING_INVENTORY, createShopkeeper, getNightDurationMs, getRealmIndex, migrateLegacyStaff, sanitizeEmployees } from "../logic";
 import { SAVE_KEY } from "./constants";
 import type { SaveData } from "./types";
 import type { TavernScene } from "./TavernScene";
@@ -29,6 +29,8 @@ export class SaveMethods {
       ascensions: this.ascensions,
       selectedDishIds: [...this.selectedDishIds],
       playerGender: this.playerGender,
+      // 营业中（含结算弹窗）不算夜修；夜里记下走到哪，刷新后接着走
+      nightMs: this.gameState === "open" ? 0 : this.nightElapsed(),
       meta: this.meta,
       dailyGoal: this.dailyGoal,
       regulars: this.regulars,
@@ -77,6 +79,8 @@ export class SaveMethods {
       ascensions,
       selectedDishIds: DISHES.filter((d) => d.unlockLevel <= startLevel).map((d) => d.id),
       playerGender: this.playerGender,
+      // 新周目从第 1 日辰正开张，不先过夜
+      nightMs: getNightDurationMs(),
       meta: this.meta,
       goalStreak: 0,
       lastGiftDate: this.lastGiftDate,
@@ -118,6 +122,8 @@ export class SaveMethods {
       this.day = Math.max(1, Math.floor(num(data.day, 1)));
       this.ascensions = Math.max(0, Math.floor(num(data.ascensions, 0)));
       this.playerGender = data.playerGender === "female" ? "female" : "male";
+      // 旧档没有夜修进度：按天明处理，读档即可开张
+      this.nightStartedAt = this.time.now - Math.min(getNightDurationMs(), count(num(data.nightMs, getNightDurationMs())));
       // 旧档没有掌柜：按新档掌柜补上；身份字段以代码为准，防止被改成可辞退的伙计
       const keeper = sanitizeEmployees([data.shopkeeper])[0] ?? createShopkeeper();
       this.shopkeeper = { ...keeper, id: SHOPKEEPER_ID, name: "掌柜" };

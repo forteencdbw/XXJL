@@ -22,6 +22,8 @@ Phaser 3 + TypeScript 竖屏经营游戏。领域词汇见根目录 `GLOSSARY.md
 - **加新方法**：放进对应功能文件的 `XxxMethods` 类里，首参 `this: TavernScene`。
 - **加新功能文件**：导出 `XxxMethods`，再在 `TavernScene.ts` 的 import、`interface TavernScene extends …` 和 mixin 列表里各加一处。
 - **加新状态字段**：只在 `TavernScene.ts` 的类里声明（不要写 `private`，其他文件要访问）。
+- **计时一律用 `this.time.now`（场景时钟）或 `this.time` 计时器、`this.tweens` 补间**：子系统页面打开时它们一起冻结（见 `TavernScene.create` 与 `setWorldPaused`）。不要用 `Date.now()` 或 `update` 传入的现实时间。
+- **加新子系统页面**：`this.overlay = layer` 之后调 `this.setWorldPaused(true)`；`destroyOverlay` 会自动恢复。
 
 ## 想改什么，看哪个文件
 
@@ -31,17 +33,17 @@ Phaser 3 + TypeScript 竖屏经营游戏。领域词汇见根目录 `GLOSSARY.md
 | 布局坐标、屏幕尺寸、玩法常量别名 | `scene/constants.ts` |
 | 雅座/排队食客/存档结构等类型 | `scene/types.ts` |
 | 小人外观、动画、气泡、走路 | `scene/Character.ts` |
-| 营业时钟与时辰、营业中每帧推进、开张、打烊结算（工资/还贷/目标/破产）、天色 | `scene/session.ts` |
+| 营业时钟与时辰、营业中每帧推进、开张、打烊结算（工资/还贷/目标/破产）、夜修时钟与天明提醒、天色 | `scene/session.ts` |
 | 员工（含掌柜）领座、烹饪、传菜、走路耗时，打烊采购 | `scene/production.ts` |
-| 员工派活顺序、站位、成长、雇佣/辞退/工资 | `scene/staff.ts` |
+| 员工派活顺序、站位、夜修打坐座位、成长、雇佣/辞退/工资 | `scene/staff.ts` |
 | 食客生成、进场方式、常客、随机事件 | `scene/patrons.ts` |
 | 价格/天气/利是在场景侧的换算，菜单列表 | `scene/rules.ts` |
 | 存档读写、旧档迁移 | `scene/save.ts` |
-| 底栏与导航卡搭建、镜头拖拽、二级页面关闭 | `scene/ui.ts` |
+| 副屏按钮与夜修事务卡搭建、镜头拖拽、二级页面关闭、子系统暂停（`setWorldPaused`） | `scene/ui.ts` |
 | 每帧 HUD 文字、按钮状态、雅座进度条、见闻录/提示 | `scene/hud.ts` |
 | 楼层切换、雅座视觉与布局 | `scene/floors.ts` |
-| 酒楼内外景像素画、窗、灯笼、猫 | `scene/world.ts` |
-| 程序生成贴图（水墨标题、菜品等） | `scene/textures.ts` |
+| 酒楼内景像素画、窗、灯笼、猫 | `scene/world.ts` |
+| 程序生成贴图（水墨标题、夜修法坛、菜品等） | `scene/textures.ts` |
 | 标题画面、选性别、开场过场 | `scene/title.ts` |
 | 浮字、庆祝、碰杯、事件提示 | `scene/fx.ts` |
 | 天气粒子、灵气、蒸汽、闲聊等常驻氛围 | `scene/ambient.ts` |

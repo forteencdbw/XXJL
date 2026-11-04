@@ -21,6 +21,8 @@ export const GAME = {
   session: {
     /** 营业时钟：现实多少毫秒走一刻（游戏内 15 分钟） */
     msPerQuarter: 4000,
+    /** 夜修时钟：现实多少毫秒走一刻；从打烊（子初）走到次日开门（辰正），走满才能开张 */
+    nightMsPerQuarter: 4000,
     /** 几点开门（辰正 = 8） */
     openHour: 8,
     /** 几点打烊（子初 = 23）；到点后不再来客，店里客人走完即结算 */
@@ -372,6 +374,7 @@ export function validateConfig(cfg: GameConfig): string[] {
   if (!(se.openHour < cfg.events.lastHour && cfg.events.lastHour <= se.closeHour))
     errors.push("events.lastHour 要在 session.openHour 与 closeHour 之间");
   if (se.msPerQuarter < 100) errors.push("session.msPerQuarter 至少 100 毫秒");
+  if (se.nightMsPerQuarter < 100) errors.push("session.nightMsPerQuarter 至少 100 毫秒");
   for (const [path, v] of [
     ["regulars.returnChance", cfg.regulars.returnChance],
     ["dailyGoal.partialThreshold", cfg.dailyGoal.partialThreshold],

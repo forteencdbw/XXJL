@@ -289,7 +289,7 @@ export class MenuOverlayMethods {
     layer.add(start);
 
     const cancel = this.add
-      .text(430, 1120, "先不打烊，返回", {
+      .text(430, 1120, "返回", {
         fontSize: "20px",
         color: "#cccccc",
         backgroundColor: "#333333",

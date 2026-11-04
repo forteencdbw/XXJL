@@ -34,6 +34,7 @@ export class InfoOverlayMethods {
       "掌柜和伙计按「伙计」页的勾选与顺序自动干活；你负责排人、选菜单和备货。",
       "营业中可左右拖动画面，查看门外排队与空地。",
       "营业从辰正到子初，按刻计时，不能提前打烊；本机每天第一次开店领「开市利是」，连续越久赏越多。",
+      "打烊后入夜修：掌柜与伙计在法坛打坐，到辰正天亮才能开张；打开任何页面时时间暂停。",
       "客人想吃的菜在今日菜单上才端得对：端对 +50%，端错只付半价。",
       "「修为」子系统还在筹备，敬请期待。",
       "每天一个目标，达成有额外灵石；连亏 5 日破产。",
@@ -51,6 +52,7 @@ export class InfoOverlayMethods {
     });
     this.addOverlayClose(layer, 650, "知道了，去营生");
     this.overlay = layer;
+    this.setWorldPaused(true);
   }
 
   /** 二级页面：账簿。跨周目累计数据、本机最高记录与成就。 */
@@ -111,12 +113,18 @@ export class InfoOverlayMethods {
 
     this.addOverlayClose(layer, 740);
     this.overlay = layer;
+    this.setWorldPaused(true);
   }
 
   /** 导出/导入存档。用浏览器原生输入框承载长文本（Phaser 没有文本输入控件）。 */
   openSaveDialog(this: TavernScene, mode: "export" | "import") {
     document.getElementById("save-dialog")?.remove();
+    this.setWorldPaused(true);
     const overlay = document.createElement("div");
+    const close = () => {
+      overlay.remove();
+      this.setWorldPaused(false);
+    };
     overlay.id = "save-dialog";
     overlay.style.cssText =
       "position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.82);display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;font-family:system-ui,sans-serif;";
@@ -193,12 +201,12 @@ export class InfoOverlayMethods {
     button(mode === "export" ? "导入存档" : "导出存档", false, () =>
       this.openSaveDialog(mode === "export" ? "import" : "export"),
     );
-    button("关闭", false, () => overlay.remove());
+    button("关闭", false, close);
 
     panel.append(title, hint, textarea, status, row);
     overlay.appendChild(panel);
     overlay.addEventListener("click", (event) => {
-      if (event.target === overlay) overlay.remove();
+      if (event.target === overlay) close();
     });
     document.body.appendChild(overlay);
     if (mode === "export") {

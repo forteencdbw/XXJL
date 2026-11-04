@@ -249,8 +249,8 @@ export class FloorMethods {
     });
     const queueVisible = open && this.activeFloor === 0;
     this.queue.forEach((patron) => patron.char.setVisible(queueVisible));
-    // 掌柜和伙计在哪层就只在哪层露面
-    this.staffRt.forEach((rt) => rt.char.setVisible(open && rt.floor === this.activeFloor));
+    // 营业中掌柜和伙计在哪层就只在哪层露面；夜里都在法坛打坐
+    this.staffRt.forEach((rt) => rt.char.setVisible(!open || rt.floor === this.activeFloor));
   }
 
   switchFloor(this: TavernScene, floor: number) {

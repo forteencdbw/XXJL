@@ -555,7 +555,7 @@ export class TextureMethods {
     tex.setFilter(Phaser.Textures.FilterMode.NEAREST);
   }
 
-  /** 打烊页的像素酒楼：夜空、山、门窗、灯笼，替掉平滑矢量立面。 */
+  /** 夜修视图背景：酒楼后方的法坛。天空留空，透出随夜修推进变色的实时天空；酒楼只在右缘露出一条。 */
   ensureClosedInkTexture(this: TavernScene) {
     if (this.textures.exists("ink-closed")) return;
     const W = 360;
@@ -567,22 +567,7 @@ export class TextureMethods {
       c.fillStyle = col;
       c.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h));
     };
-    c.fillStyle = "#070b14";
-    c.fillRect(0, 0, W, H);
-    for (let i = 0; i < 6500; i++) {
-      const a = Math.random();
-      px(Math.random() * W, Math.random() * 420, 1, 1, a > 0.9 ? "#2a3a50" : a > 0.65 ? "#122032" : "#0b1421");
-    }
-    for (let i = 0; i < 30; i++) px(Math.random() * W, Math.random() * 220, 1, 1, "#6a7a8a");
-    // 月
-    for (let y = -16; y <= 16; y++) {
-      for (let x = -16; x <= 16; x++) {
-        if (x * x + y * y <= 256) px(292 + x, 86 + y, 1, 1, "#f2e6c2");
-        else if (x * x + y * y <= 400 && Math.random() < 0.25) px(292 + x, 86 + y, 1, 1, "#2a3a4c");
-      }
-    }
-    // 山
-    const tri = (pts: [number, number][], col: string, edge: string) => {
+    const tri = (pts: [number, number][], col: string, edge?: string) => {
       const ys = pts.map((p) => p[1]);
       for (let y = Math.floor(Math.min(...ys)); y <= Math.max(...ys); y++) {
         const xs: number[] = [];
@@ -597,101 +582,90 @@ export class TextureMethods {
         const x0 = Math.floor(Math.min(...xs));
         const x1 = Math.ceil(Math.max(...xs));
         px(x0, y, Math.max(1, x1 - x0), 1, col);
-        if (Math.random() > 0.6) px(x0, y, 1, 1, edge);
+        if (edge && Math.random() > 0.6) px(x0, y, 1, 1, edge);
       }
     };
-    tri(
-      [
-        [0, 330],
-        [90, 235],
-        [190, 330],
-      ],
-      "#101b2a",
-      "#1c2b3e",
-    );
-    tri(
-      [
-        [130, 340],
-        [250, 225],
-        [380, 340],
-      ],
-      "#0d1724",
-      "#182638",
-    );
-    for (let i = 0; i < 500; i++) {
-      px(Math.random() * W, 315 + Math.random() * 30, 1, 1, Math.random() > 0.5 ? "#1a2838" : "#243448");
+    /** 实心椭圆，按行扫描。 */
+    const ellipse = (cx: number, cy: number, rx: number, ry: number, col: string, top = -Infinity, bottom = Infinity) => {
+      for (let y = Math.max(top, cy - ry); y <= Math.min(bottom, cy + ry); y++) {
+        const half = rx * Math.sqrt(Math.max(0, 1 - ((y - cy) / ry) ** 2));
+        px(cx - half, y, half * 2, 1, col);
+      }
+    };
+    c.clearRect(0, 0, W, H);
+    // 远山（天空留空）
+    tri([[-20, 330], [70, 262], [170, 330]], "#0f1a28", "#1a2a3c");
+    tri([[110, 330], [230, 250], [380, 330]], "#0c1622", "#172536");
+    // 庭院石地
+    px(0, 318, W, H - 318, "#12171d");
+    for (let y = 330; y < H; y += 14) px(0, y, W, 1, "#1a2028");
+    for (let i = 0; i < 900; i++) px(Math.random() * W, 318 + Math.random() * (H - 318), 1, 1, Math.random() > 0.5 ? "#181e26" : "#0c1015");
+    // 竹
+    for (const [bx, top] of [[10, 150], [22, 196]] as const) {
+      px(bx, top, 3, 330 - top, "#101a14");
+      for (let i = 0; i < 5; i++) px(bx - 7, top + 18 + i * 32, 14, 2, "#16241a");
     }
-    // 两层屋檐
-    tri(
-      [
-        [180, 146],
-        [56, 206],
-        [304, 206],
-      ],
-      "#4a201a",
-      "#9a3a2a",
-    );
-    px(48, 204, 34, 4, "#6a2a20");
-    px(278, 204, 34, 4, "#6a2a20");
-    tri(
-      [
-        [180, 138],
-        [82, 188],
-        [278, 188],
-      ],
-      "#2a1411",
-      "#7a2f22",
-    );
-    for (let y = 150; y < 206; y += 5) {
-      const half = Math.floor(((y - 138) / 50) * 98);
-      px(180 - half, y, half * 2, 1, "#5a241a");
+    // 幡：两根旗杆挂长条法幡
+    for (const [x, col] of [[52, "#5a2a3a"], [286, "#2a3a5a"]] as const) {
+      px(x, 120, 3, 250, "#3a2a1a");
+      px(x - 2, 116, 7, 4, "#d9b45a");
+      px(x + 3, 128, 14, 118, col);
+      px(x + 3, 128, 14, 2, "#d9b45a");
+      px(x + 3, 244, 14, 2, "#d9b45a");
+      for (let y = 140; y < 236; y += 14) px(x + 7, y, 6, 6, "#c8a860");
+      for (let i = 0; i < 4; i++) px(x + 4 + i * 4, 246, 2, 10 + (i % 2) * 6, col);
     }
-    // 墙体
-    px(96, 208, 168, 190, "#2a1c14");
-    px(104, 216, 152, 180, "#3a2818");
-    px(96, 208, 12, 190, "#20140d");
-    px(252, 208, 12, 190, "#20140d");
-    px(96, 208, 168, 4, "#5a3a22");
-    // 匾额
-    px(150, 208, 60, 18, "#1a120c");
-    px(153, 211, 54, 12, "#3a2416");
-    px(153, 211, 54, 1, "#d9b45a");
-    px(153, 222, 54, 1, "#d9b45a");
-    for (const gx of [168, 178, 188]) px(gx, 214, 4, 5, "#e8c070");
-    // 窗与暖光
-    for (const wx of [118, 206]) {
-      px(wx, 236, 36, 34, "#3a2a1a");
-      px(wx + 3, 239, 30, 28, "#e0a050");
-      px(wx + 3, 239, 30, 3, "#f4c878");
-      px(wx + 17, 239, 3, 28, "#3a2a1a");
-      px(wx + 3, 252, 30, 2, "#3a2a1a");
-      for (let i = 0; i < 22; i++) px(wx + 2 + Math.random() * 32, 235 - Math.random() * 12, 1, 1, "#5a4a3a");
-      for (let i = 0; i < 18; i++) px(wx + 5 + Math.random() * 26, 242 + Math.random() * 22, 1, 1, "#ffd08a");
+    // 后方香鼎：三足双耳，鼎口冒青烟
+    const dx = 180;
+    px(dx - 34, 296, 68, 4, "#8a7a4a");
+    px(dx - 30, 300, 60, 34, "#5a4a2e");
+    px(dx - 30, 300, 60, 3, "#a8925a");
+    px(dx - 26, 312, 52, 2, "#3a3020");
+    for (const gx of [dx - 18, dx - 4, dx + 10]) px(gx, 318, 8, 6, "#7a6a3e");
+    px(dx - 40, 300, 8, 10, "#5a4a2e");
+    px(dx + 32, 300, 8, 10, "#5a4a2e");
+    for (const lx of [dx - 26, dx - 3, dx + 20]) px(lx, 334, 6, 16, "#4a3c24");
+    for (let i = 0; i < 46; i++) px(dx - 10 + Math.random() * 20 + Math.sin(i) * 8, 220 + Math.random() * 74, 1, 1, "#4a6a6a");
+    // 法坛：椭圆台面 + 前沿石壁 + 两级台阶
+    const cy = 412;
+    ellipse(180, cy + 22, 156, 50, "#1c2028");
+    px(24, cy, 312, 22, "#1c2028");
+    for (let x = 40; x < 330; x += 26) px(x, cy + 4, 1, 50, "#14171d");
+    ellipse(180, cy, 156, 50, "#2c313a");
+    ellipse(180, cy, 150, 46, "#353b46");
+    ellipse(180, cy, 112, 32, "#2e333d");
+    // 符文环：一圈青光点
+    for (let k = 0; k < 64; k++) {
+      const a = (k / 64) * Math.PI * 2;
+      px(180 + Math.cos(a) * 128, cy + Math.sin(a) * 39, 2, 1, k % 4 === 0 ? "#bff4ee" : "#4ab8b0");
     }
-    // 门与台阶
-    px(168, 282, 24, 116, "#160f0a");
-    px(171, 285, 18, 110, "#0b0806");
-    px(165, 396, 30, 5, "#4a3420");
-    px(160, 401, 40, 4, "#3a2818");
-    // 灯笼
-    for (const lx of [78, 282]) {
-      px(lx - 1, 194, 2, 10, "#1a120a");
-      px(lx - 5, 204, 11, 14, "#a02a20");
-      px(lx - 4, 205, 9, 10, "#ff6a3a");
-      px(lx - 2, 206, 4, 6, "#ffd08a");
-      px(lx - 1, 218, 2, 6, "#d9b45a");
-      for (let i = 0; i < 14; i++) px(lx - 10 + Math.random() * 20, 202 + Math.random() * 20, 1, 1, "#6a3a2a");
+    for (let k = 0; k < 8; k++) {
+      const a = (k / 8) * Math.PI * 2 + 0.2;
+      px(180 + Math.cos(a) * 92 - 2, cy + Math.sin(a) * 26 - 1, 5, 3, "#5ad0c4");
     }
-    // 竹与石径
-    for (const [bx, top] of [
-      [36, 230],
-      [326, 214],
-    ] as const) {
-      px(bx, top, 3, 180, "#101a14");
-      for (let i = 0; i < 4; i++) px(bx - 7, top + 22 + i * 34, 14, 2, "#16241a");
+    ellipse(180, cy + 76, 120, 12, "#262a32", cy + 70);
+    ellipse(180, cy + 92, 136, 12, "#20242b", cy + 86);
+    // 石灯
+    for (const lx of [44, 316]) {
+      px(lx - 6, cy - 34, 12, 4, "#4a505a");
+      px(lx - 4, cy - 30, 8, 8, "#2a2e36");
+      px(lx - 2, cy - 28, 4, 4, "#ffd08a");
+      px(lx - 7, cy - 22, 14, 3, "#4a505a");
+      px(lx - 3, cy - 19, 6, 20, "#3a3e46");
     }
-    for (let i = 0; i < 70; i++) px(130 + Math.random() * 100, 404 + Math.random() * 90, 1, 1, "#3a3a30");
-    for (let i = 0; i < 120; i++) px(Math.random() * 360, 500 + Math.random() * 140, 1, 1, "#0a0f16");
+    // 右缘露出的酒楼后墙：一截屋檐、后窗暖光、一盏灯笼
+    tri([[300, 136], [360, 104], [360, 148], [300, 148]], "#2a1411", "#7a2f22");
+    px(296, 146, 64, 5, "#5a241a");
+    px(318, 151, 42, 330, "#2a1c14");
+    px(318, 151, 6, 330, "#20140d");
+    px(334, 210, 26, 30, "#3a2a1a");
+    px(337, 213, 23, 24, "#e0a050");
+    px(337, 213, 23, 3, "#f4c878");
+    px(347, 213, 2, 24, "#3a2a1a");
+    px(330, 150, 2, 12, "#1a120a");
+    px(325, 162, 11, 14, "#a02a20");
+    px(326, 163, 9, 10, "#ff6a3a");
+    px(328, 164, 4, 6, "#ffd08a");
     tex.refresh();
     tex.setFilter(Phaser.Textures.FilterMode.NEAREST);
   }

@@ -4,7 +4,7 @@ import type { DailyGoal, Dish, Employee, MetaStats, PatronKind } from "../logic"
 import { Character } from "./Character";
 
 export type GameState = "closed" | "selectingMenu" | "open" | "bankrupt";
-export type TapText = Phaser.GameObjects.Text & { onTap: () => void };
+export type TapText = Phaser.GameObjects.Text & { onTap: () => void; sub?: Phaser.GameObjects.Text };
 
 /** awaitingServe：菜已出锅放在灶台上等跑堂；serving：跑堂正端着走过来。 */
 export type BoothState = "empty" | "seating" | "awaitingCook" | "cooking" | "awaitingServe" | "serving" | "dining";
@@ -103,6 +103,8 @@ export interface SaveData {
   ascensions: number;
   selectedDishIds: string[];
   playerGender: "male" | "female";
+  /** 夜修已走的毫秒；营业中为 0，旧档没有时按天明。 */
+  nightMs?: number;
   meta: MetaStats;
   regulars?: RegularGuest[];
   /** 当日目标快照：读档后不能因等级变化换目标，否则同一目标会显示两个数。 */

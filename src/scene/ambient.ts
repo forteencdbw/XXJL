@@ -157,6 +157,32 @@ export class AmbientMethods {
     });
   }
 
+  /** 夜修吐息：灵气从四周往打坐的人身上聚，掌柜身边更浓。 */
+  emitNightQi(this: TavernScene) {
+    if (this.gameState !== "closed" || this.focusing) return;
+    this.workforce().forEach((e, i) => {
+      const char = this.staffRt.get(e.id)?.char;
+      if (!char?.visible || (i > 0 && Math.random() < 0.5)) return;
+      const count = i === 0 ? 3 : 1;
+      for (let k = 0; k < count; k++) {
+        const angle = Math.random() * Math.PI * 2;
+        const r = Phaser.Math.Between(46, 80);
+        const dot = this.add
+          .rectangle(char.x + Math.cos(angle) * r, char.y + 10 + Math.sin(angle) * r * 0.5, 2, 2, i === 0 ? 0x9ff4ea : 0xc8e8ff, 0.8)
+          .setDepth(char.depth + 0.5);
+        this.tweens.add({
+          targets: dot,
+          x: char.x + Phaser.Math.Between(-6, 6),
+          y: char.y - 6,
+          alpha: 0,
+          duration: Phaser.Math.Between(1400, 2200),
+          ease: "Sine.easeIn",
+          onComplete: () => dot.destroy(),
+        });
+      }
+    });
+  }
+
   /** 小人偶尔冒一句话：排队、等菜、用膳和伙计各有台词，让画面不只剩数字。 */
   ambientBark(this: TavernScene) {
     if (this.gameState !== "open" || this.settling || this.focusing) return;

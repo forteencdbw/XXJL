@@ -8,7 +8,8 @@ import type { TavernScene } from "./TavernScene";
 export class FocusMethods {
   /** 点人物/桌卡：拉出一张人物卡，而不是裸镜头推近。 */
   focusOnCharacter(this: TavernScene, char: Character) {
-    if (this.gameState !== "open" || this.settling) return;
+    // 营业中与夜修都能点人看；结算、菜单、页面开着时不行
+    if ((this.gameState !== "open" && this.gameState !== "closed") || this.settling || this.overlay) return;
     if (this.focusing && this.focusChar === char) {
       this.returnFromFocus();
       return;
@@ -239,7 +240,6 @@ export class FocusMethods {
       ...this.floorTabs.flatMap((tab) => [tab.bg, tab.label, tab.sub]),
     ];
     ui.forEach((obj) => obj.setVisible(!hidden));
-    this.purchaseButton.setVisible(!hidden && this.gameState !== "open");
     // 营业中（含收尾结算）没有开始按钮；特写/结算恢复界面时别把它带回来
     if (this.gameState === "open") this.startButton.setVisible(false);
   }

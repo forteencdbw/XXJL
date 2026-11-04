@@ -68,6 +68,7 @@ export class BankOverlayMethods {
 
     this.addOverlayClose(layer, 620);
     this.overlay = layer;
+    this.setWorldPaused(true);
   }
 
   /** 灵石商行借贷：到账即加灵石，之后每回合还一期。 */

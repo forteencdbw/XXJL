@@ -3,7 +3,7 @@ import { playSfx } from "../audio";
 import { JOBS, JOB_NAMES, SHOPKEEPER_ID, STAT_NAMES, getHireCost, getStaffCap, getStaffWage, getTotalStars, recordWork } from "../logic";
 import type { Employee, Job } from "../logic";
 import { Character } from "./Character";
-import { COOK_HOME, HAWKER_HOME, SERVER_HOME } from "./constants";
+import { COOK_HOME, HAWKER_HOME, NIGHT_SEAT, NIGHT_STAFF_SEATS, SERVER_HOME } from "./constants";
 import type { TavernScene } from "./TavernScene";
 
 export class StaffMethods {
@@ -43,6 +43,26 @@ export class StaffMethods {
     }
     const home = this.staffHome(this.shopkeeper);
     this.playerChar.teleportTo(home.x, home.y);
+    // 夜里雇人/辞退后，新名单直接到法坛打坐
+    if (this.gameState !== "open") this.seatForNight();
+  }
+
+  /** 夜修：掌柜坐在法坛正中，伙计在身后排成一两排，都盘腿吐息。 */
+  seatForNight(this: TavernScene) {
+    this.workforce().forEach((e, i) => {
+      const rt = this.staffRt.get(e.id);
+      if (!rt) return;
+      const seat = i === 0 ? { dx: 0, dy: 0 } : NIGHT_STAFF_SEATS[i - 1];
+      if (!seat) return;
+      rt.task = null;
+      rt.floor = 0;
+      rt.char.setCarrying(false);
+      rt.char.teleportTo(NIGHT_SEAT.x + seat.dx, NIGHT_SEAT.y + seat.dy);
+      rt.char.setScale(seat.dx > 0 ? -1 : 1, 1);
+      rt.char.setMeditating(true);
+      // 越靠后越低一层，前排压住后排
+      rt.char.setDepth(20 + seat.dy / 100);
+    });
   }
 
   /** 雇来的伙计的角色（不含掌柜）。 */

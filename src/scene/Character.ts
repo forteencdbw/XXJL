@@ -35,6 +35,8 @@ export class Character extends Phaser.GameObjects.Container {
   private bubbleTail?: Phaser.GameObjects.Triangle;
   private dining = false;
   private seated = false;
+  /** 夜修打坐：盘腿、闭目、慢呼吸。 */
+  private meditating = false;
   private mood: "idle" | "waiting" | "dining" | "cold" = "idle";
   private static readonly ART_SCALE = 1.22;
   private pixelImage?: Phaser.GameObjects.Image;
@@ -128,10 +130,15 @@ export class Character extends Phaser.GameObjects.Container {
     this.startIdle();
     const blink = () => {
       if (!this.active || !this.pixelEnabled) return;
+      // 打坐时一直闭着眼，只是隔一会儿再看要不要眨
+      if (this.meditating) {
+        this.scene.time.delayedCall(3000, blink);
+        return;
+      }
       this.pixelBlink = true;
       this.drawPixel();
       this.scene.time.delayedCall(110, () => {
-        if (!this.active) return;
+        if (!this.active || this.meditating) return;
         this.pixelBlink = false;
         this.drawPixel();
         this.scene.time.delayedCall(Phaser.Math.Between(2400, 5200), blink);
@@ -611,11 +618,12 @@ export class Character extends Phaser.GameObjects.Container {
   private startIdle() {
     if (!this.scene || !this.visual?.active) return;
     this.stopIdle();
+    // 打坐吐息比站着的呼吸更深更慢
     this.idleTween = this.scene.tweens.add({
       targets: this.visual,
-      scaleY: Character.ART_SCALE * 1.025,
-      y: -1,
-      duration: Phaser.Math.Between(1200, 1800),
+      scaleY: Character.ART_SCALE * (this.meditating ? 1.05 : 1.025),
+      y: this.meditating ? -2 : -1,
+      duration: this.meditating ? Phaser.Math.Between(2400, 3000) : Phaser.Math.Between(1200, 1800),
       yoyo: true,
       repeat: -1,
       delay: Phaser.Math.Between(0, 900),
@@ -670,6 +678,18 @@ export class Character extends Phaser.GameObjects.Container {
     this.seated = on;
     this.setDepth(on ? 6.2 : 20);
     this.draw();
+  }
+
+  /** 夜修：盘腿而坐、闭目吐息；营业开始时起身。 */
+  setMeditating(on: boolean) {
+    if (this.meditating === on || !this.scene || !this.visual?.active) return;
+    this.meditating = on;
+    this.seated = on;
+    this.dining = false;
+    this.mood = "idle";
+    this.pixelBlink = on;
+    this.draw();
+    this.startIdle();
   }
 
   /** 用膳：收起腿、坐到桌后（桌沿挡住腰腿），再做咀嚼起伏。 */
@@ -746,7 +766,7 @@ export class Character extends Phaser.GameObjects.Container {
 
   /** 偶尔的小动作：点一下头/耸肩，让静止画面里也有活气。 */
   twitch() {
-    if (this.dining || !this.scene || !this.visual?.active) return;
+    if (this.dining || this.meditating || !this.scene || !this.visual?.active) return;
     this.stopIdle();
     this.scene.tweens.add({
       targets: this.visual,

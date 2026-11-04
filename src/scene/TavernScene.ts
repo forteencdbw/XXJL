@@ -68,6 +68,15 @@ export class TavernScene extends Phaser.Scene {
   regularDueToday = false;
 
   gameState: GameState = "closed";
+  /** 子系统页面打开时整个店的时间冻结（场景时钟、计时器、补间）。 */
+  worldPaused = false;
+  /** 累计冻结的现实毫秒：场景时钟 = 现实时间 − 冻结时长。 */
+  pausedMs = 0;
+  lastRawTime = 0;
+  /** 夜修从这一刻起算（场景时钟）；默认很早，即新档直接处在天明。 */
+  nightStartedAt = -1e12;
+  /** 本次天明是否已弹过开张提醒。 */
+  dawnPrompted = false;
   selectedDishIds = new Set<string>();
   dishCursor = 0;
   sessionStartedAt = 0;
@@ -116,7 +125,6 @@ export class TavernScene extends Phaser.Scene {
   moonShadow!: Phaser.GameObjects.Arc;
   moonHalo!: Phaser.GameObjects.Arc;
   stars: Phaser.GameObjects.Arc[] = [];
-  tavernGfx!: Phaser.GameObjects.Graphics;
   interiorGfx!: Phaser.GameObjects.Graphics;
 
   playerChar!: Character;
@@ -166,6 +174,8 @@ export class TavernScene extends Phaser.Scene {
   purchaseButton!: TapText;
   upgradeButton!: TapText;
   cultivationButton!: TapText;
+  /** 夜修副屏里的修为入口（营业中用底栏那颗）。 */
+  nightCultivationButton!: TapText;
   helpButton!: TapText;
   recordButton!: TapText;
   saveButton!: TapText;
@@ -205,6 +215,14 @@ export class TavernScene extends Phaser.Scene {
   }
 
   create() {
+    // 暂停：把场景时钟接到「现实时间 − 冻结时长」上，冻结期间 this.time.now 与计时器都停住
+    const clock = this.time;
+    this.events.off(Phaser.Scenes.Events.UPDATE, clock.update, clock);
+    this.events.on(Phaser.Scenes.Events.UPDATE, (t: number, d: number) => {
+      if (this.worldPaused) this.pausedMs += t - this.lastRawTime;
+      this.lastRawTime = t;
+      clock.update(t - this.pausedMs, d);
+    });
     const hadSave = this.loadSave();
     this.ensureGlowTexture();
     this.ensurePaperTextures();
@@ -232,6 +250,7 @@ export class TavernScene extends Phaser.Scene {
     this.time.addEvent({ delay: 700, loop: true, callback: () => this.emitWeather() });
     this.time.addEvent({ delay: 900, loop: true, callback: () => this.emitInteriorMote() });
     this.time.addEvent({ delay: 2600, loop: true, callback: () => this.idleTwitch() });
+    this.time.addEvent({ delay: 420, loop: true, callback: () => this.emitNightQi() });
     this.events.on("focus-character", (char: Character) => this.focusOnCharacter(char));
     // shortcut: 用 localStorage 存档；接入微信小游戏时换成 wx.setStorageSync / wx.getStorageSync
     addEventListener("beforeunload", () => this.save());
@@ -263,16 +282,20 @@ export class TavernScene extends Phaser.Scene {
   windowViews: Phaser.GameObjects.Rectangle[] = [];
 
 
-  update(time: number) {
+  update() {
     if (this.gameState === "bankrupt") return;
+    // 场景时钟（暂停时冻结），不用 update 传进来的现实时间
+    const time = this.time.now;
     // 覆盖层始终对齐相机可见区域，避免营业↔打烊镜头平移时错位
     if (this.overlay) this.overlay.setPosition(this.cameras.main.scrollX, this.cameras.main.scrollY);
 
-    if (this.gameState === "open" && !this.settling) {
-      this.tickOpenSession(time);
+    if (!this.worldPaused) {
+      if (this.gameState === "open" && !this.settling) this.tickOpenSession(time);
+      if (this.gameState === "closed") {
+        this.tickClosedProcurement();
+        this.tickNight();
+      }
     }
-
-    if (this.gameState === "closed") this.tickClosedProcurement();
 
     this.updateSky(time);
     this.renderProgress(time);
@@ -284,7 +307,6 @@ export class TavernScene extends Phaser.Scene {
     }
   }
 
-  lastLit = false;
 
   coinRollTween: Phaser.Tweens.Tween | null = null;
 }

@@ -11,6 +11,9 @@ import {
   formatClock,
   getArrivalSchedule,
   getClockMinutes,
+  getNightClockMinutes,
+  getNightDurationMs,
+  getNightQuarters,
   getEventSchedule,
   getSessionDurationMs,
   PATRON_KINDS,
@@ -279,6 +282,14 @@ describe("顾客到店与破产阈值", () => {
     expect(getClockMinutes(4000)).toBe(495);
     expect(getClockMinutes(240000)).toBe(23 * 60);
     expect(getClockMinutes(999999)).toBe(23 * 60);
+  });
+
+  it("夜修时钟：子初到辰正共 36 刻，跨零点，到开门封顶", () => {
+    expect(getNightQuarters()).toBe(36);
+    expect(getNightDurationMs()).toBe(144000);
+    expect(formatClock(getNightClockMinutes(0))).toBe("子初");
+    expect(formatClock(getNightClockMinutes(4000 * 4))).toBe("子正");
+    expect(formatClock(getNightClockMinutes(999999))).toBe("辰正");
   });
 
   it("时辰：初/正与刻", () => {
