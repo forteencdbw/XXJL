@@ -1,5 +1,6 @@
 // 点人物弹出人物卡（特写）。
 import Phaser from "phaser";
+import { getRootName } from "../logic";
 import { Character } from "./Character";
 import type { CharacterLook } from "./Character";
 import { SCREEN_H, SCREEN_W, XIAN_FONT } from "./constants";
@@ -30,6 +31,7 @@ export class FocusMethods {
     char.clearBubble();
     this.clearFocusCard();
     const who = char.displayName ?? "人物";
+    const staffMember = this.workforce().find((e) => this.staffRt.get(e.id)?.char === char);
     const line = this.focusLineFor(char);
     const overlay = this.add
       .rectangle(0, 0, SCREEN_W, SCREEN_H, 0x0a0704, 0.78)
@@ -93,7 +95,7 @@ export class FocusMethods {
       .setScrollFactor(0)
       .setDepth(102);
     this.focusRole = this.add
-      .text(360, 634, this.focusRoleLine(spec.look), {
+      .text(360, 634, staffMember ? `${getRootName(staffMember.root)} · ${staffMember.level} 级` : this.focusRoleLine(spec.look), {
         fontSize: "16px",
         color: "#c8b89a",
         fontFamily: XIAN_FONT,

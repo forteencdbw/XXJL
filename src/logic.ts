@@ -6,7 +6,18 @@ export type Job = "seat" | "cook" | "buy";
 export const JOBS: Job[] = ["seat", "cook", "buy"];
 /** 「seat」是跑堂：领座与传菜两件事。 */
 export const JOB_NAMES: Record<Job, string> = { seat: "跑堂", cook: "烹饪", buy: "采买" };
-export const STAT_NAMES: Record<Job, string> = { seat: "身法", cook: "厨艺", buy: "精明" };
+
+/** 五项属性：根骨、神识、机缘各管一项工作，悟性、气感留给修行。 */
+export type Stat = "gengu" | "wuxing" | "shenshi" | "jiyuan" | "qigan";
+export const STATS: Stat[] = ["gengu", "wuxing", "shenshi", "jiyuan", "qigan"];
+export const STAT_NAMES: Record<Stat, string> = { gengu: "根骨", wuxing: "悟性", shenshi: "神识", jiyuan: "机缘", qigan: "气感" };
+export const JOB_STAT: Record<Job, Stat> = { seat: "gengu", cook: "shenshi", buy: "jiyuan" };
+
+/** 五行灵根；火、水、金各对口一项工作，木、土留给功法。 */
+export type RootElement = "metal" | "wood" | "water" | "fire" | "earth";
+export const ELEMENTS: RootElement[] = ["metal", "wood", "water", "fire", "earth"];
+export const ELEMENT_NAMES: Record<RootElement, string> = { metal: "金", wood: "木", water: "水", fire: "火", earth: "土" };
+export const JOB_ELEMENT: Record<Job, RootElement> = { seat: "water", cook: "fire", buy: "metal" };
 
 const C = GAME;
 export const TABLE_COUNT_BASE = C.tavern.groundFloorBaseBooths;
@@ -133,7 +144,7 @@ export function getStaffDuration(
   return Math.max(floor, raw);
 }
 
-/** 跑堂走路速度（像素/秒）：身法越高走得越快。 */
+/** 跑堂走路速度（像素/秒）：根骨越高走得越快。 */
 export function getWalkSpeed(stars: number): number {
   return C.staff.walkSpeed / getStarSpeedFactor(stars);
 }
@@ -680,10 +691,15 @@ export function getAchievements(meta: MetaStats, ascensions: number): Achievemen
 export interface Employee {
   id: number;
   name: string;
-  /** 三项属性（星），按工作对应：seat 身法 / cook 厨艺 / buy 精明。 */
-  stars: Record<Job, number>;
-  /** 每项工作累计完成次数，满 workPerStar 次对应属性 +1 星。 */
-  work: Record<Job, number>;
+  /** 灵根：生成时定下，之后不变。 */
+  root: RootElement[];
+  /** 五项属性（星）。 */
+  stars: Record<Stat, number>;
+  level: number;
+  /** 当前等级已攒的经验。 */
+  exp: number;
+  /** 升级得到、还没加的属性点。 */
+  statPoints: number;
   /** 工作优先级：从上往下，空闲时取第一件能做的；on=false 表示不做这项。 */
   jobs: { job: Job; on: boolean }[];
 }
@@ -693,14 +709,49 @@ const S = C.staff;
 /** 掌柜的员工 id；雇来的伙计从 1 开始。 */
 export const SHOPKEEPER_ID = 0;
 
-/** 新档掌柜：三项同星，默认依次勾选烹饪、跑堂、采买。 */
-export function createShopkeeper(): Employee {
-  const n = S.shopkeeperStars;
+const uniformStars = (n: number) => Object.fromEntries(STATS.map((stat) => [stat, n])) as Record<Stat, number>;
+
+/** 从五行里随机抽 count 种，按金木水火土排好。 */
+function pickElements(count: number, rand: () => number): RootElement[] {
+  const pool = [...ELEMENTS];
+  const picked: RootElement[] = [];
+  while (picked.length < count) picked.push(pool.splice(Math.floor(rand() * pool.length) % pool.length, 1)[0]);
+  return ELEMENTS.filter((el) => picked.includes(el));
+}
+
+/** 按 staff.roots 的权重抽灵根种数，再抽具体五行。 */
+export function rollRoot(rand: () => number): RootElement[] {
+  let left = rand() * S.roots.reduce((sum, tier) => sum + tier.weight, 0);
+  let count = S.roots.findIndex((tier) => (left -= tier.weight) < 0) + 1;
+  if (count === 0) count = S.roots.length;
+  return pickElements(count, rand);
+}
+
+/** 灵根的显示名：火天灵根、木火双灵根、五行杂灵根。 */
+export function getRootName(root: RootElement[]): string {
+  const tier = S.roots[root.length - 1];
+  return `${root.length === ELEMENTS.length ? "五行" : root.map((el) => ELEMENT_NAMES[el]).join("")}${tier.name}`;
+}
+
+/** 这项工作的有效星数：对口属性 + 灵根加成（可超过属性上限）。 */
+export function getRootBonus(e: Pick<Employee, "root">, job: Job): number {
+  return e.root.includes(JOB_ELEMENT[job]) ? S.roots[e.root.length - 1].jobBonus : 0;
+}
+
+export function getEffectiveStars(e: Pick<Employee, "root" | "stars">, job: Job): number {
+  return e.stars[JOB_STAT[job]] + getRootBonus(e, job);
+}
+
+/** 新档掌柜：五项同星、随机灵根，默认依次勾选烹饪、跑堂、采买。 */
+export function createShopkeeper(rand: () => number = Math.random): Employee {
   return {
     id: SHOPKEEPER_ID,
     name: "掌柜",
-    stars: { seat: n, cook: n, buy: n },
-    work: { seat: 0, cook: 0, buy: 0 },
+    root: pickElements(S.shopkeeperRootCount, rand),
+    stars: uniformStars(S.shopkeeperStars),
+    level: 1,
+    exp: 0,
+    statPoints: 0,
     jobs: (["cook", "seat", "buy"] as Job[]).map((job) => ({ job, on: true })),
   };
 }
@@ -710,15 +761,18 @@ export function getStaffCap(tavernLevel: number): number {
 }
 
 export function getTotalStars(e: Pick<Employee, "stars">): number {
-  return e.stars.seat + e.stars.cook + e.stars.buy;
+  return STATS.reduce((sum, stat) => sum + e.stars[stat], 0);
 }
 
-export function getStaffWage(e: Pick<Employee, "stars">): number {
-  return Math.round(S.wageBase + S.wagePerStar * getTotalStars(e));
+/** 灵根身价：种数越少越贵。 */
+const rootWorth = (e: Pick<Employee, "root">) => S.roots[e.root.length - 1].worth;
+
+export function getStaffWage(e: Pick<Employee, "stars" | "root">): number {
+  return Math.round((S.wageBase + S.wagePerStar * getTotalStars(e)) * rootWorth(e));
 }
 
-export function getHireCost(e: Pick<Employee, "stars">): number {
-  return Math.round(S.hireCostBase + S.hireCostPerStar * getTotalStars(e));
+export function getHireCost(e: Pick<Employee, "stars" | "root">): number {
+  return Math.round((S.hireCostBase + S.hireCostPerStar * getTotalStars(e)) * rootWorth(e));
 }
 
 /** 耗时倍率：1 星 1.6 倍玩家耗时，每多 1 星 ×0.9。 */
@@ -726,12 +780,12 @@ export function getStarSpeedFactor(stars: number): number {
   return S.speedAtOneStar * Math.pow(S.speedPerStar, Math.max(1, stars) - 1);
 }
 
-/** 烹饪质量 = 售价倍率，厨艺越高售价越高。 */
+/** 烹饪质量 = 售价倍率，神识越高售价越高。 */
 export function getCookQuality(stars: number): number {
   return S.qualityBase + S.qualityPerStar * Math.max(1, stars);
 }
 
-/** 采购折扣：精明每星 5%，封顶 50%；没有人勾采买时传 0。 */
+/** 采购折扣：机缘每星 5%，封顶 50%；没有人勾采买时传 0。 */
 export function getPurchaseDiscount(buyStars: number): number {
   return Math.min(S.buyDiscountCap, S.buyDiscountPerStar * Math.max(buyStars, 0));
 }
@@ -740,29 +794,45 @@ export function getPurchasePrice(buyStars: number): number {
   return Math.max(1, Math.round(PURCHASE_COST * (1 - getPurchaseDiscount(buyStars))));
 }
 
-/** 新员工默认勾选全部工作，按属性从高到低排序（同分按 招待/烹饪/采买）。 */
-export function defaultJobs(stars: Record<Job, number>): Employee["jobs"] {
-  return [...JOBS].sort((a, b) => stars[b] - stars[a]).map((job) => ({ job, on: true }));
+/** 新员工默认勾选全部工作，按有效星数从高到低排序（同分按 跑堂/烹饪/采买）。 */
+export function defaultJobs(e: Pick<Employee, "root" | "stars">): Employee["jobs"] {
+  return [...JOBS].sort((a, b) => getEffectiveStars(e, b) - getEffectiveStars(e, a)).map((job) => ({ job, on: true }));
 }
 
 /** 随机生成候选人：每项至少 1 星，其余星数逐颗随机分配；rand 返回 [0,1)。 */
 export function rollCandidate(id: number, rand: () => number): Employee {
-  const stars: Record<Job, number> = { seat: 1, cook: 1, buy: 1 };
-  for (let left = S.candidateTotalStars - 3; left > 0; left--) {
-    const open = JOBS.filter((job) => stars[job] < S.maxStars);
+  const stars = uniformStars(1);
+  for (let left = S.candidateTotalStars - STATS.length; left > 0; left--) {
+    const open = STATS.filter((stat) => stars[stat] < S.maxStars);
     if (open.length === 0) break;
     stars[open[Math.floor(rand() * open.length) % open.length]] += 1;
   }
   const name = S.names[Math.floor(rand() * S.names.length) % S.names.length];
-  return { id, name, stars, work: { seat: 0, cook: 0, buy: 0 }, jobs: defaultJobs(stars) };
+  const root = rollRoot(rand);
+  return { id, name, root, stars, level: 1, exp: 0, statPoints: 0, jobs: defaultJobs({ root, stars }) };
 }
 
-/** 记一次工作；攒满次数就涨一星。返回是否涨星。 */
-export function recordWork(e: Employee, job: Job): boolean {
-  e.work[job] += 1;
-  if (e.work[job] < S.workPerStar || e.stars[job] >= S.maxStars) return false;
-  e.work[job] = 0;
-  e.stars[job] += 1;
+/** 从当前等级升下一级要多少经验。 */
+export function getExpToNext(level: number): number {
+  return S.expBase + S.expPerLevel * (level - 1);
+}
+
+/** 干完一件活得 1 点经验；攒够就升级、得属性点。返回是否升级。满级后不再攒。 */
+export function gainExp(e: Employee): boolean {
+  if (e.level >= S.maxLevel) return false;
+  e.exp += 1;
+  if (e.exp < getExpToNext(e.level)) return false;
+  e.exp = 0;
+  e.level += 1;
+  e.statPoints += 1;
+  return true;
+}
+
+/** 花 1 个属性点给某项 +1 星；没点数或已满星时返回 false。 */
+export function spendStatPoint(e: Employee, stat: Stat): boolean {
+  if (e.statPoints <= 0 || e.stars[stat] >= S.maxStars) return false;
+  e.statPoints -= 1;
+  e.stars[stat] += 1;
   return true;
 }
 
@@ -772,39 +842,14 @@ export function moveJobUp(e: Employee, index: number): void {
   [e.jobs[index - 1], e.jobs[index]] = [e.jobs[index], e.jobs[index - 1]];
 }
 
-const LEGACY_JOB = { hawker: "seat", server: "seat", cook: "cook", buyer: "buy" } as const;
-const LEGACY_NAME = { hawker: "迎客", server: "跑堂", cook: "灶上", buyer: "采买" } as const;
-
-/**
- * 旧存档（固定岗位制）迁移：每个已雇岗位转成一名员工，只勾原岗位，
- * 对口属性按原等级折算。迎客的招客效果已拆，按招待处理。
- */
-export function migrateLegacyStaff(levels: Partial<Record<keyof typeof LEGACY_JOB, number>> | undefined): Employee[] {
-  const out: Employee[] = [];
-  for (const role of ["hawker", "server", "cook", "buyer"] as const) {
-    const level = Math.max(0, Math.floor(Number(levels?.[role]) || 0));
-    if (level <= 0) continue;
-    const job = LEGACY_JOB[role];
-    const stars: Record<Job, number> = { seat: S.migrateOtherStars, cook: S.migrateOtherStars, buy: S.migrateOtherStars };
-    stars[job] = Math.min(S.maxStars, level + S.migrateStarOffset);
-    out.push({
-      id: out.length + 1,
-      name: `${LEGACY_NAME[role]}伙计`,
-      stars,
-      work: { seat: 0, cook: 0, buy: 0 },
-      jobs: [job, ...JOBS.filter((j) => j !== job)].map((j) => ({ job: j, on: j === job })),
-    });
-  }
-  return out;
-}
-
 /** 读档清洗：丢掉字段缺失的，数值夹到合法范围。 */
 export function sanitizeEmployees(raw: unknown): Employee[] {
   if (!Array.isArray(raw)) return [];
   const clampStar = (v: unknown) => Math.min(S.maxStars, Math.max(1, Math.floor(Number(v) || 1)));
   const count = (v: unknown) => Math.max(0, Math.floor(Number(v) || 0));
   return raw
-    .filter((e) => e && typeof e.name === "string" && e.stars && Array.isArray(e.jobs))
+    .filter((e) => e && typeof e.name === "string" && e.stars && Array.isArray(e.jobs) && Array.isArray(e.root))
+    .filter((e) => ELEMENTS.some((el) => e.root.includes(el)))
     .map((e, i) => {
       const seen = new Set<Job>();
       const jobs = (e.jobs as { job: Job; on: unknown }[])
@@ -814,8 +859,11 @@ export function sanitizeEmployees(raw: unknown): Employee[] {
       return {
         id: Number.isFinite(e.id) ? Math.floor(e.id) : i + 1,
         name: e.name,
-        stars: { seat: clampStar(e.stars.seat), cook: clampStar(e.stars.cook), buy: clampStar(e.stars.buy) },
-        work: { seat: count(e.work?.seat), cook: count(e.work?.cook), buy: count(e.work?.buy) },
+        root: ELEMENTS.filter((el) => e.root.includes(el)),
+        stars: Object.fromEntries(STATS.map((stat) => [stat, clampStar(e.stars[stat])])) as Record<Stat, number>,
+        level: Math.min(S.maxLevel, Math.max(1, count(e.level))),
+        exp: count(e.exp),
+        statPoints: count(e.statPoints),
         jobs,
       };
     });

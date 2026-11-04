@@ -43,7 +43,7 @@ export const GAME = {
     diningMs: 4500,
   },
 
-  /** 烹饪耗时（菜品基础耗时再乘掌勺人的厨艺倍率） */
+  /** 烹饪耗时（菜品基础耗时再乘掌勺人的神识倍率） */
   timing: {
     /** 酒楼每升一级，烹饪耗时缩短（毫秒）；基础耗时见各菜品 */
     cookShrinkPerLevelMs: 200,
@@ -175,13 +175,27 @@ export const GAME = {
   },
 
   /**
-   * 员工（含掌柜）。每人有三项属性（1–10 星），对应三项工作：
-   *   身法 → 跑堂（领座、传菜）的走路速度；厨艺 → 烹饪速度与质量；精明 → 采买折扣。
+   * 员工（含掌柜）。每人有灵根和五项属性（1–10 星），其中三项对应工作：
+   *   根骨 → 跑堂（领座、传菜）的走路速度；神识 → 烹饪速度与质量；机缘 → 采买折扣。
+   *   悟性、气感留给修行，暂无经营作用。
    * 谁都能做任何工作，属性低只是慢、做得差。
    */
   staff: {
-    /** 掌柜：新档初始三项属性（星）；不能辞退、不领工资、不占雇人名额 */
+    /** 掌柜：新档初始五项属性（星）、灵根种数；不能辞退、不领工资、不占雇人名额 */
     shopkeeperStars: 4,
+    shopkeeperRootCount: 2,
+    /**
+     * 灵根按种数分档（第 1 项 = 1 种，第 5 项 = 5 种）：
+     *   weight 招聘时的出现权重；jobBonus 对口工作多算几星（火→烹饪、水→跑堂、金→采买，可超过 maxStars）；
+     *   worth 工资与雇佣费的身价倍率；maxRealm 修为上限（修为子系统占位，暂不生效）
+     */
+    roots: [
+      { name: "天灵根", weight: 3, jobBonus: 3, worth: 2, maxRealm: "大乘" },
+      { name: "双灵根", weight: 12, jobBonus: 2, worth: 1.4, maxRealm: "合体" },
+      { name: "三灵根", weight: 45, jobBonus: 1, worth: 1, maxRealm: "化神" },
+      { name: "四灵根", weight: 25, jobBonus: 0, worth: 0.85, maxRealm: "元婴" },
+      { name: "杂灵根", weight: 15, jobBonus: 0, worth: 0.85, maxRealm: "金丹" },
+    ],
     /** 跑堂走路速度 = walkSpeed ÷ 耗时倍率（像素/秒）；1 星约 170，10 星约 440 */
     walkSpeed: 270,
     /** 可雇人数上限 = capBase + ⌊酒楼等级 / capLevelsPerSlot⌋ */
@@ -191,35 +205,35 @@ export const GAME = {
     capMax: 7,
     /** 属性上限（星） */
     maxStars: 10,
-    /** 招聘时三项属性总星数（每项至少 1 星，其余随机分配） */
-    candidateTotalStars: 12,
+    /** 招聘时五项属性总星数（每项至少 1 星，其余随机分配） */
+    candidateTotalStars: 18,
     /** 每天刷出几名候选人 */
     candidatesPerDay: 3,
     /** 当场再刷新一次候选人的费用（灵石） */
     refreshCost: 5,
-    /** 雇佣费用 = hireCostBase + hireCostPerStar × 总星数 */
+    /** 雇佣费用 =（hireCostBase + hireCostPerStar × 总星数）× 灵根身价 */
     hireCostBase: 10,
-    hireCostPerStar: 2,
-    /** 日薪 = wageBase + wagePerStar × 总星数（四舍五入），属性成长后自动涨薪 */
+    hireCostPerStar: 1.33,
+    /** 日薪 =（wageBase + wagePerStar × 总星数）× 灵根身价（四舍五入），加点后自动涨薪 */
     wageBase: 5,
-    wagePerStar: 0.6,
+    wagePerStar: 0.4,
     /** 耗时倍率 = speedAtOneStar × speedPerStar^(属性 − 1)；烹饪耗时与走路速度都用它（1 星 1.6 倍，10 星约 0.62 倍） */
     speedAtOneStar: 1.6,
     speedPerStar: 0.9,
-    /** 烹饪质量（售价倍率）= qualityBase + qualityPerStar × 厨艺；1 星 ×0.885，10 星 ×1.2 */
+    /** 烹饪质量（售价倍率）= qualityBase + qualityPerStar × 神识；1 星 ×0.885，10 星 ×1.2 */
     qualityBase: 0.85,
     qualityPerStar: 0.035,
-    /** 采购折扣 = 精明 × buyDiscountPerStar，最多 buyDiscountCap（多人勾采买时取精明最高者） */
+    /** 采购折扣 = 机缘 × buyDiscountPerStar，最多 buyDiscountCap（多人勾采买时取最高者） */
     buyDiscountPerStar: 0.05,
     buyDiscountCap: 0.5,
-    /** 每完成几次某项工作，对应属性 +1 星（领座、传菜、起锅、补货各算一次） */
-    workPerStar: 20,
+    /** 每件活（领座、传菜、起锅、补货）得 1 点经验；升下一级要 expBase + expPerLevel × (当前等级 − 1) 点 */
+    expBase: 10,
+    expPerLevel: 5,
+    /** 等级上限；每升一级得 1 个属性点，由玩家自己加 */
+    maxLevel: 40,
     /** 采买自动补货目标 = base + perLevel × 酒楼等级 */
     buyerTargetStockBase: 10,
     buyerTargetStockPerLevel: 2,
-    /** 旧存档迁移：原岗位对口属性 = 原等级 + migrateStarOffset，其余两项为 migrateOtherStars */
-    migrateStarOffset: 2,
-    migrateOtherStars: 2,
     /** 员工姓名池 */
     names: ["阿福", "小满", "石头", "春桃", "二柱", "秋菱", "长庚", "杏儿", "大勇", "青禾", "铁牛", "莲生", "冬瓜", "小鱼", "阿蛮", "柳芽"],
   },
@@ -384,12 +398,17 @@ export function validateConfig(cfg: GameConfig): string[] {
     if (v > 1) errors.push(`${path} 是比例，不能大于 1（现在是 ${v}）`);
   }
   const st = cfg.staff;
-  if (st.candidateTotalStars < 3 || st.candidateTotalStars > st.maxStars * 3)
-    errors.push(`staff.candidateTotalStars 要在 3 到 ${st.maxStars * 3} 之间`);
+  if (st.candidateTotalStars < 5 || st.candidateTotalStars > st.maxStars * 5)
+    errors.push(`staff.candidateTotalStars 要在 5 到 ${st.maxStars * 5} 之间`);
+  if (st.roots.length !== 5) errors.push("staff.roots 要正好 5 档（1 到 5 种灵根）");
+  if (!st.roots.some((r) => r.weight > 0)) errors.push("staff.roots 至少一档 weight 大于 0");
+  for (const r of st.roots)
+    if (!cfg.realms.some((realm) => realm.name === r.maxRealm)) errors.push(`staff.roots「${r.name}」的 maxRealm 不是已有境界`);
+  if (st.shopkeeperRootCount < 1 || st.shopkeeperRootCount > 5) errors.push("staff.shopkeeperRootCount 要在 1 到 5 之间");
   if (st.capMax < 1 || st.capMax > 7) errors.push("staff.capMax 要在 1 到 7 之间（伙计页一屏最多放 7 人）");
-  if (st.workPerStar < 1) errors.push("staff.workPerStar 至少为 1");
+  if (st.expBase < 1) errors.push("staff.expBase 至少为 1");
+  if (st.maxLevel < 1) errors.push("staff.maxLevel 至少为 1");
   if (st.candidatesPerDay < 1) errors.push("staff.candidatesPerDay 至少为 1");
-  if (st.migrateStarOffset + 4 > st.maxStars) errors.push("staff.migrateStarOffset 太大：4 级伙计迁移后会超过 maxStars");
   if (cfg.tavern.floorPriceMultipliers.length < 3) errors.push("tavern.floorPriceMultipliers 需要 3 项（1F/2F/3F）");
   if (cfg.tavern.floorPatienceMultipliers.length < 3) errors.push("tavern.floorPatienceMultipliers 需要 3 项（1F/2F/3F）");
   return errors;

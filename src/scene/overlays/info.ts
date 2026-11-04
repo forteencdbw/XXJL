@@ -32,6 +32,8 @@ export class InfoOverlayMethods {
       "营业前：采购灵材、雇伙计并安排分工、营造升级、选菜单，然后「开始营业」。",
       "营业中：门口排队 → 跑堂领座 → 掌勺做菜 → 跑堂传菜 → 用膳结账。",
       "掌柜和伙计按「伙计」页的勾选与顺序自动干活；你负责排人、选菜单和备货。",
+      "每人有灵根和五项属性：根骨管跑堂、神识管烹饪、机缘管采买；火、水、金灵根分别让烹饪、跑堂、采买多算几星。",
+      "干活攒经验，升级得属性点，打烊或夜修时到「伙计」页点人物加点。",
       "营业中可左右拖动画面，查看门外排队与空地。",
       "营业从辰正到子初，按刻计时，不能提前打烊；本机每天第一次开店领「开市利是」，连续越久赏越多。",
       "打烊后入夜修：掌柜与伙计在法坛打坐，到辰正天亮才能开张；打开任何页面时时间暂停。",
@@ -138,7 +140,7 @@ export class InfoOverlayMethods {
     hint.textContent =
       mode === "export"
         ? "复制整段导出码保存。换设备或清空浏览器后，在这里选「导入存档」恢复。"
-        : "粘贴 LS2. 开头的导出码。导入会覆盖本机当前进度。";
+        : "粘贴 LS3. 开头的导出码。导入会覆盖本机当前进度。";
     hint.style.cssText = "font-size:14px;color:#bbbbbb;line-height:1.5;margin-bottom:10px;";
     const textarea = document.createElement("textarea");
     textarea.value = mode === "export" ? encodeSaveCode(this.buildSaveData()) : "";
@@ -184,7 +186,7 @@ export class InfoOverlayMethods {
     } else {
       button("确认导入", true, () => {
         const data = decodeSaveCode(textarea.value);
-        if (!data || typeof data !== "object" || (data as { v?: unknown }).v !== 2) {
+        if (!data || typeof data !== "object" || (data as { v?: unknown }).v !== 3) {
           status.textContent = "导出码无效或版本不匹配";
           return;
         }

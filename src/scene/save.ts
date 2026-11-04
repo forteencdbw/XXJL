@@ -1,5 +1,5 @@
-// 存档：序列化、新周目存档、读档清洗与旧档迁移。
-import { DISHES, EMPTY_META, SHOPKEEPER_ID, STARTING_COINS, STARTING_INVENTORY, createShopkeeper, getNightDurationMs, getRealmIndex, migrateLegacyStaff, sanitizeEmployees } from "../logic";
+// 存档：序列化、新周目存档、读档清洗。未上线前改结构就升版本号，旧档直接作废。
+import { DISHES, EMPTY_META, SHOPKEEPER_ID, STARTING_COINS, STARTING_INVENTORY, createShopkeeper, getNightDurationMs, getRealmIndex, sanitizeEmployees } from "../logic";
 import { SAVE_KEY } from "./constants";
 import type { SaveData } from "./types";
 import type { TavernScene } from "./TavernScene";
@@ -9,7 +9,7 @@ export class SaveMethods {
   /** 只存经营进度与选择；营业中不落盘——中途刷新等于放弃本局，避免带着收益跳过工资与还账。 */
   buildSaveData(this: TavernScene): SaveData {
     return {
-      v: 2,
+      v: 3,
       coins: this.coins,
       inventory: this.inventory,
       level: this.level,
@@ -59,14 +59,15 @@ export class SaveMethods {
   freshSave(this: TavernScene, ascensions: number): SaveData {
     const startLevel = 1;
     return {
-      v: 2,
+      v: 3,
       coins: STARTING_COINS,
       inventory: STARTING_INVENTORY,
       level: startLevel,
       stoveLevel: 0,
       signLevel: 0,
       reputation: 0,
-      shopkeeper: createShopkeeper(),
+      // 灵根是掌柜本人的，破产重开也不变
+      shopkeeper: { ...createShopkeeper(), root: this.shopkeeper.root },
       employees: [],
       candidates: [],
       candidatesDay: 0,
@@ -95,7 +96,7 @@ export class SaveMethods {
       const raw = localStorage.getItem(SAVE_KEY);
       if (!raw) return false;
       const data = JSON.parse(raw) as Partial<SaveData>;
-      if (data.v !== 2) return false;
+      if (data.v !== 3) return false;
       const num = (value: unknown, fallback: number) =>
         typeof value === "number" && Number.isFinite(value) ? value : fallback;
       const count = (value: unknown) => Math.max(0, Math.floor(num(value, 0)));
@@ -113,23 +114,16 @@ export class SaveMethods {
           ? data.lastGiftDate
           : undefined;
       this.giftStreak = count(data.giftStreak);
-      // 旧存档没有 floorsBuilt：按等级免费补楼；新存档以实际建成为准
-      const autoFloors = this.level >= 6 ? 2 : this.level >= 3 ? 1 : 0;
-      this.floorsBuilt =
-        data.floorsBuilt === undefined
-          ? autoFloors
-          : Math.max(0, Math.min(autoFloors, Math.floor(num(data.floorsBuilt, 0))));
+      const maxFloors = this.level >= 6 ? 2 : this.level >= 3 ? 1 : 0;
+      this.floorsBuilt = Math.min(maxFloors, count(data.floorsBuilt));
       this.day = Math.max(1, Math.floor(num(data.day, 1)));
       this.ascensions = Math.max(0, Math.floor(num(data.ascensions, 0)));
       this.playerGender = data.playerGender === "female" ? "female" : "male";
-      // 旧档没有夜修进度：按天明处理，读档即可开张
       this.nightStartedAt = this.time.now - Math.min(getNightDurationMs(), count(num(data.nightMs, getNightDurationMs())));
-      // 旧档没有掌柜：按新档掌柜补上；身份字段以代码为准，防止被改成可辞退的伙计
+      // 身份字段以代码为准，防止导出码把掌柜改成可辞退的伙计
       const keeper = sanitizeEmployees([data.shopkeeper])[0] ?? createShopkeeper();
       this.shopkeeper = { ...keeper, id: SHOPKEEPER_ID, name: "掌柜" };
-      // 旧固定岗位制存档没有 employees：按原岗位等级迁移成员工
-      this.employees =
-        data.employees === undefined ? migrateLegacyStaff(data.staffLevel) : sanitizeEmployees(data.employees);
+      this.employees = sanitizeEmployees(data.employees);
       this.candidates = sanitizeEmployees(data.candidates);
       this.candidatesDay = count(data.candidatesDay);
       const maxId = Math.max(0, ...[...this.employees, ...this.candidates].map((e) => e.id));

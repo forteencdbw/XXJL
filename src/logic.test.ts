@@ -72,9 +72,15 @@ import {
   getHireCost,
   getStaffCap,
   getTotalStars,
-  migrateLegacyStaff,
   moveJobUp,
-  recordWork,
+  gainExp,
+  getEffectiveStars,
+  getExpToNext,
+  getRootName,
+  rollRoot,
+  spendStatPoint,
+  defaultJobs,
+  STATS,
   rollCandidate,
   sanitizeEmployees,
   getStaffWage,
@@ -142,26 +148,61 @@ describe("员工", () => {
     return () => values[i++ % values.length];
   };
 
-  it("候选人每项至少 1 星，总星数固定", () => {
+  it("候选人每项至少 1 星，总星数固定，1 级 0 经验", () => {
     for (const r of [0, 0.34, 0.67, 0.99]) {
       const e = rollCandidate(1, seq(r, 0.5, 0.1));
-      expect(getTotalStars(e)).toBe(12);
-      expect(Math.min(e.stars.seat, e.stars.cook, e.stars.buy)).toBeGreaterThanOrEqual(1);
-      expect(Math.max(e.stars.seat, e.stars.cook, e.stars.buy)).toBeLessThanOrEqual(10);
+      expect(getTotalStars(e)).toBe(18);
+      expect(Math.min(...STATS.map((s) => e.stars[s]))).toBeGreaterThanOrEqual(1);
+      expect(Math.max(...STATS.map((s) => e.stars[s]))).toBeLessThanOrEqual(10);
+      expect([e.level, e.exp, e.statPoints]).toEqual([1, 0, 0]);
+      expect(e.jobs.every((j) => j.on)).toBe(true);
     }
   });
 
-  it("默认勾选全部工作，属性高的排前面", () => {
-    const e = rollCandidate(1, () => 0.4); // 全部星落在 cook
-    expect(e.stars.cook).toBe(10);
-    expect(e.jobs[0]).toEqual({ job: "cook", on: true });
-    expect(e.jobs.every((j) => j.on)).toBe(true);
+  it("灵根：按权重抽种数，不重复，种数越少越罕见", () => {
+    const counts = [0, 0, 0, 0, 0];
+    let x = 0.123;
+    const rand = () => (x = (x * 9301 + 0.49297) % 1);
+    for (let i = 0; i < 5000; i++) {
+      const root = rollRoot(rand);
+      expect(new Set(root).size).toBe(root.length);
+      counts[root.length - 1] += 1;
+    }
+    expect(counts[0]).toBeLessThan(counts[1]);
+    expect(counts[1]).toBeLessThan(counts[2]);
+    expect(counts[2]).toBe(Math.max(...counts));
+    expect(rollRoot(() => 0)).toHaveLength(1);
+    expect(rollRoot(() => 0.999)).toHaveLength(5);
   });
 
-  it("工资与雇佣费随总星数涨", () => {
-    const e = rollCandidate(1, () => 0);
-    expect(getStaffWage(e)).toBe(Math.round(5 + 0.6 * 12));
-    expect(getHireCost(e)).toBe(10 + 2 * 12);
+  it("灵根显示名", () => {
+    expect(getRootName(["fire"])).toBe("火天灵根");
+    expect(getRootName(["wood", "fire"])).toBe("木火双灵根");
+    expect(getRootName(["metal", "wood", "water", "fire", "earth"])).toBe("五行杂灵根");
+  });
+
+  it("对口灵根让工作多算几星，种数越少加得越多，可超过 10 星", () => {
+    const stars = { gengu: 5, wuxing: 1, shenshi: 10, jiyuan: 3, qigan: 1 };
+    expect(getEffectiveStars({ root: ["fire"], stars }, "cook")).toBe(13);
+    expect(getEffectiveStars({ root: ["wood", "fire"], stars }, "cook")).toBe(12);
+    expect(getEffectiveStars({ root: ["wood", "fire"], stars }, "seat")).toBe(5);
+    expect(getEffectiveStars({ root: ["metal", "water", "fire"], stars }, "buy")).toBe(4);
+    expect(getEffectiveStars({ root: ["metal", "wood", "water", "fire"], stars }, "buy")).toBe(3);
+  });
+
+  it("默认工作顺序按有效星数排，灵根也算", () => {
+    const stars = { gengu: 5, wuxing: 1, shenshi: 4, jiyuan: 1, qigan: 1 };
+    expect(defaultJobs({ root: ["earth"], stars })[0].job).toBe("seat");
+    expect(defaultJobs({ root: ["fire"], stars })[0].job).toBe("cook");
+  });
+
+  it("工资与雇佣费随总星数涨，乘灵根身价", () => {
+    const stars = { gengu: 4, wuxing: 4, shenshi: 4, jiyuan: 3, qigan: 3 };
+    const three = { stars, root: ["metal", "wood", "water"] as ("metal" | "wood" | "water")[] };
+    expect(getStaffWage(three)).toBe(Math.round(5 + 0.4 * 18));
+    expect(getHireCost(three)).toBe(Math.round(10 + 1.33 * 18));
+    expect(getStaffWage({ stars, root: ["fire"] })).toBe(Math.round((5 + 0.4 * 18) * 2));
+    expect(getHireCost({ stars, root: ["metal", "wood", "water", "fire", "earth"] })).toBe(Math.round((10 + 1.33 * 18) * 0.85));
   });
 
   it("可雇人数随酒楼等级增长", () => {
@@ -170,15 +211,27 @@ describe("员工", () => {
     expect(getStaffCap(10)).toBe(7);
   });
 
-  it("干满 20 次对口属性 +1 星，封顶 10 星", () => {
+  it("每件活 1 点经验，10、15、20… 升级得属性点，满级不再攒", () => {
     const e = rollCandidate(1, () => 0);
-    const before = e.stars.cook;
-    for (let i = 0; i < 19; i++) expect(recordWork(e, "cook")).toBe(false);
-    expect(recordWork(e, "cook")).toBe(true);
-    expect(e.stars.cook).toBe(before + 1);
-    e.stars.seat = 10;
-    for (let i = 0; i < 25; i++) recordWork(e, "seat");
-    expect(e.stars.seat).toBe(10);
+    expect(getExpToNext(1)).toBe(10);
+    expect(getExpToNext(2)).toBe(15);
+    for (let i = 0; i < 9; i++) expect(gainExp(e)).toBe(false);
+    expect(gainExp(e)).toBe(true);
+    expect([e.level, e.exp, e.statPoints]).toEqual([2, 0, 1]);
+    e.level = 40;
+    expect(gainExp(e)).toBe(false);
+    expect(e.exp).toBe(0);
+  });
+
+  it("加点：花 1 点 +1 星，没点数或满星时不生效", () => {
+    const e = rollCandidate(1, () => 0);
+    e.stars.qigan = 9;
+    expect(spendStatPoint(e, "qigan")).toBe(false);
+    e.statPoints = 2;
+    expect(spendStatPoint(e, "qigan")).toBe(true);
+    expect(e.stars.qigan).toBe(10);
+    expect(spendStatPoint(e, "qigan")).toBe(false);
+    expect(e.statPoints).toBe(1);
   });
 
   it("上移工作顺序", () => {
@@ -199,10 +252,11 @@ describe("员工", () => {
     expect(getCookQuality(10)).toBeCloseTo(1.2);
   });
 
-  it("掌柜：三项 4 星，默认烹饪、跑堂、采买全勾", () => {
+  it("掌柜：五项 4 星、双灵根，默认烹饪、跑堂、采买全勾", () => {
     const k = createShopkeeper();
     expect(k.id).toBe(0);
-    expect(k.stars).toEqual({ seat: 4, cook: 4, buy: 4 });
+    expect(k.stars).toEqual({ gengu: 4, wuxing: 4, shenshi: 4, jiyuan: 4, qigan: 4 });
+    expect(k.root).toHaveLength(2);
     expect(k.jobs).toEqual([
       { job: "cook", on: true },
       { job: "seat", on: true },
@@ -210,21 +264,17 @@ describe("员工", () => {
     ]);
   });
 
-  it("旧存档按岗位迁移，只勾原岗位", () => {
-    const staff = migrateLegacyStaff({ hawker: 0, server: 2, cook: 4, buyer: 1 });
-    expect(staff.map((e) => e.name)).toEqual(["跑堂伙计", "灶上伙计", "采买伙计"]);
-    expect(staff[1].stars).toEqual({ seat: 2, cook: 6, buy: 2 });
-    expect(staff[1].jobs[0]).toEqual({ job: "cook", on: true });
-    expect(staff[1].jobs.filter((j) => j.on)).toHaveLength(1);
-    expect(migrateLegacyStaff(undefined)).toEqual([]);
-  });
-
   it("读档清洗坏数据", () => {
-    const [e] = sanitizeEmployees([
-      { id: 3, name: "阿福", stars: { seat: 99, cook: -1, buy: "x" }, jobs: [{ job: "cook", on: true }, { job: "bad" }] },
+    const [e, ...rest] = sanitizeEmployees([
+      { id: 3, name: "阿福", root: ["fire", "bad", "wood"], level: 999, exp: -2, stars: { gengu: 99, wuxing: -1, shenshi: "x" }, jobs: [{ job: "cook", on: true }, { job: "bad" }] },
       { name: 5 },
+      { name: "没灵根", root: ["bad"], stars: {}, jobs: [] },
     ]);
-    expect(e.stars).toEqual({ seat: 10, cook: 1, buy: 1 });
+    expect(rest).toEqual([]);
+    expect(e.root).toEqual(["wood", "fire"]);
+    expect(e.level).toBe(40);
+    expect(e.exp).toBe(0);
+    expect(e.stars).toEqual({ gengu: 10, wuxing: 1, shenshi: 1, jiyuan: 1, qigan: 1 });
     expect(e.jobs.map((j) => j.job)).toEqual(["cook", "seat", "buy"]);
     expect(e.jobs.map((j) => j.on)).toEqual([true, false, false]);
   });

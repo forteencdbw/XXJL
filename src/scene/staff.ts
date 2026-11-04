@@ -1,6 +1,6 @@
 // 员工（含掌柜）：角色生成与站位、按工作顺序派活、成长、雇佣/辞退/工资。
 import { playSfx } from "../audio";
-import { JOBS, JOB_NAMES, SHOPKEEPER_ID, STAT_NAMES, getHireCost, getStaffCap, getStaffWage, getTotalStars, recordWork } from "../logic";
+import { JOBS, JOB_NAMES, SHOPKEEPER_ID, gainExp, getEffectiveStars, getHireCost, getStaffCap, getStaffWage, getTotalStars } from "../logic";
 import type { Employee, Job } from "../logic";
 import { Character } from "./Character";
 import { COOK_HOME, HAWKER_HOME, NIGHT_SEAT, NIGHT_STAFF_SEATS, SERVER_HOME } from "./constants";
@@ -60,6 +60,7 @@ export class StaffMethods {
       rt.char.teleportTo(NIGHT_SEAT.x + seat.dx, NIGHT_SEAT.y + seat.dy);
       rt.char.setScale(seat.dx > 0 ? -1 : 1, 1);
       rt.char.setMeditating(true);
+      rt.char.setVisible(true);
       // 越靠后越低一层，前排压住后排
       rt.char.setDepth(20 + seat.dy / 100);
     });
@@ -74,9 +75,9 @@ export class StaffMethods {
     return id === null ? undefined : this.workforce().find((e) => e.id === id);
   }
 
-  /** 记一次工作，涨星时写进见闻录。 */
-  staffDidWork(this: TavernScene, e: Employee, job: Job) {
-    if (recordWork(e, job)) this.log(`${e.name}${JOB_NAMES[job]}熟了手，${STAT_NAMES[job]}升到 ${e.stars[job]} 星`);
+  /** 干完一件活得经验，升级时写进见闻录。 */
+  staffDidWork(this: TavernScene, e: Employee) {
+    if (gainExp(e)) this.log(`${e.name}升到 ${e.level} 级，打烊后可去伙计页加点`);
   }
 
   /** 空闲的人按自己的工作顺序，从上往下取第一件能做的事。跑堂先传菜再领座；采买只在打烊时做。 */
@@ -93,7 +94,7 @@ export class StaffMethods {
     for (let rank = 0; rank < JOBS.length + 1; rank++) {
       const idle = team
         .filter((e) => !this.staffRt.get(e.id)?.task && jobsOf(e)[rank] !== undefined)
-        .sort((a, b) => b.stars[jobsOf(b)[rank]] - a.stars[jobsOf(a)[rank]]);
+        .sort((a, b) => getEffectiveStars(b, jobsOf(b)[rank]) - getEffectiveStars(a, jobsOf(a)[rank]));
       for (const e of idle) {
         if (this.staffRt.get(e.id)?.task) continue;
         const job = jobsOf(e)[rank];
@@ -103,10 +104,10 @@ export class StaffMethods {
     }
   }
 
-  /** 勾了采买的人里精明最高的那位，决定采购折扣；没人勾为 null。 */
+  /** 勾了采买的人里机缘有效星数最高的那位，决定采购折扣；没人勾为 null。 */
   bestBuyer(this: TavernScene): Employee | null {
     const buyers = this.workforce().filter((e) => e.jobs.some((j) => j.job === "buy" && j.on));
-    return buyers.reduce<Employee | null>((best, e) => (!best || e.stars.buy > best.stars.buy ? e : best), null);
+    return buyers.reduce<Employee | null>((best, e) => (!best || getEffectiveStars(e, "buy") > getEffectiveStars(best, "buy") ? e : best), null);
   }
 
   /** 一句话说明当前分工：每项工作有几人在做，没人做菜时提醒营业会卡住。 */

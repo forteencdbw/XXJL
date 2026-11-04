@@ -38,7 +38,7 @@ Phaser 3 + TypeScript 竖屏经营游戏。领域词汇见根目录 `GLOSSARY.md
 | 员工派活顺序、站位、夜修打坐座位、成长、雇佣/辞退/工资 | `scene/staff.ts` |
 | 食客生成、进场方式、常客、随机事件 | `scene/patrons.ts` |
 | 价格/天气/利是在场景侧的换算，菜单列表 | `scene/rules.ts` |
-| 存档读写、旧档迁移 | `scene/save.ts` |
+| 存档读写（未上线前改结构就升版本号，旧档作废，不做迁移） | `scene/save.ts` |
 | 副屏按钮与夜修事务卡搭建、镜头拖拽、二级页面关闭、子系统暂停（`setWorldPaused`） | `scene/ui.ts` |
 | 每帧 HUD 文字、按钮状态、雅座进度条、见闻录/提示 | `scene/hud.ts` |
 | 楼层切换、雅座视觉与布局 | `scene/floors.ts` |
@@ -50,7 +50,7 @@ Phaser 3 + TypeScript 竖屏经营游戏。领域词汇见根目录 `GLOSSARY.md
 | 点人物弹出的人物卡 | `scene/focus.ts` |
 | 选菜单页 | `scene/overlays/menu.ts` |
 | 营造页（扩建/起楼/灶台/门幡） | `scene/overlays/build.ts` |
-| 伙计页与招聘页 | `scene/overlays/staff.ts` |
+| 伙计名单、个人详情（加点、分工）、招聘页 | `scene/overlays/staff.ts` |
 | 修为子系统入口（占位） | `scene/overlays/cultivation.ts` |
 | 灵石商行 | `scene/overlays/bank.ts` |
 | 结算弹窗、破产弹窗 | `scene/overlays/settlement.ts` |

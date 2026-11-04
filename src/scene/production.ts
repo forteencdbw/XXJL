@@ -2,7 +2,7 @@
 import Phaser from "phaser";
 import { playSfx } from "../audio";
 import { GAME } from "../config";
-import { DISHES, getCookQuality, getStaffDuration, getStoveSpeedFactor, getWalkSpeed, isRarePatron } from "../logic";
+import { DISHES, getCookQuality, getEffectiveStars, getStaffDuration, getStoveSpeedFactor, getWalkSpeed, isRarePatron } from "../logic";
 import type { Employee } from "../logic";
 import { ACTOR_Y, COOK_FLOOR_MS, COOK_SPOT, COOK_TAVERN_SHRINK_PER_LEVEL_MS, DOOR_X, FLOOR_Y, PURCHASE_AMOUNT } from "./constants";
 import type { StaffRuntime } from "./types";
@@ -12,9 +12,9 @@ import type { TavernScene } from "./TavernScene";
 const LEAD_GAP = 36;
 
 export class ProductionMethods {
-  /** 按身法换算的走路耗时（毫秒）。 */
+  /** 按跑堂的有效星数换算的走路耗时（毫秒）。 */
   walkMs(this: TavernScene, e: Employee, fromX: number, toX: number): number {
-    return (Math.abs(toX - fromX) / getWalkSpeed(e.stars.seat)) * 1000;
+    return (Math.abs(toX - fromX) / getWalkSpeed(getEffectiveStars(e, "seat"))) * 1000;
   }
 
   /** 员工所在楼层与玩家正在看的楼层一致才显示。 */
@@ -96,7 +96,7 @@ export class ProductionMethods {
       booth.awaitingSince = time;
       booth.patronChar?.setSeated(true);
       this.log(`${e.name}领食客入座雅座`);
-      this.staffDidWork(e, "seat");
+      this.staffDidWork(e);
       this.showBoothOrder(index);
     }
     this.sendStaffHome(e, rt);
@@ -169,7 +169,7 @@ export class ProductionMethods {
     const wished = menu.find((dish) => dish.id === booth.patronWish);
     const chosen = wished ?? menu[this.dishCursor++ % menu.length];
     const duration = getStaffDuration(
-      e.stars.cook,
+      getEffectiveStars(e, "cook"),
       chosen.cookMs,
       COOK_TAVERN_SHRINK_PER_LEVEL_MS,
       COOK_FLOOR_MS,
@@ -179,13 +179,13 @@ export class ProductionMethods {
     this.inventory -= 1;
     booth.state = "cooking";
     booth.cookStaffId = e.id;
-    // 厨艺决定这道菜的成色，直接体现在售价上
-    booth.cookQuality = getCookQuality(e.stars.cook);
+    // 神识决定这道菜的成色，直接体现在售价上
+    booth.cookQuality = getCookQuality(getEffectiveStars(e, "cook"));
     booth.currentDish = chosen;
     booth.cookStartedAt = this.time.now;
     booth.cookDoneAt = this.time.now + duration;
     rt.task = { kind: "cook", boothIndex: index, startedAt: this.time.now, duration };
-    this.staffDidWork(e, "cook");
+    this.staffDidWork(e);
     rt.char.walkTo(COOK_SPOT.x, COOK_SPOT.y, Math.min(400, duration), () => rt.char.pulse());
     this.log(`${e.name}烹制${chosen.name}（雅座 ${index + 1}）`);
     return true;
@@ -240,7 +240,7 @@ export class ProductionMethods {
       booth.departAt = time + GAME.session.diningMs;
       booth.patronChar?.setDining(true);
       this.showDiningProp(index);
-      this.staffDidWork(e, "seat");
+      this.staffDidWork(e);
       this.log(`${e.name}把${booth.currentDish?.name ?? "菜"}端上桌，食客开始用膳`);
       // 另一桌正在用膳时，给一次看得见的碰杯，而不是只等随机闲聊
       const other = this.booths.find((b) => b !== booth && b.state === "dining" && b.patronChar);

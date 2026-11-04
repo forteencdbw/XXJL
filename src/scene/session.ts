@@ -124,7 +124,7 @@ export class SessionMethods {
       this.displayedCoins = this.coins;
       this.inventory += PURCHASE_AMOUNT;
       bought += PURCHASE_AMOUNT;
-      this.staffDidWork(buyer, "buy");
+      this.staffDidWork(buyer);
     }
     if (bought > 0) {
       this.displayedCoins = this.coins;

@@ -661,7 +661,8 @@ export class Character extends Phaser.GameObjects.Container {
       look: this.look,
       mood: this.mood,
       dining: this.dining,
-      seated: this.seated,
+      // 打坐不是坐在桌后，人物卡里别画桌沿
+      seated: this.seated && !this.meditating,
     };
   }
 

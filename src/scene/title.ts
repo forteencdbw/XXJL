@@ -1,6 +1,7 @@
 // 标题画面、选性别、开场过场。
 import Phaser from "phaser";
 import { playSfx } from "../audio";
+import { getRootName } from "../logic";
 import { Character } from "./Character";
 import { SCREEN_H, SCREEN_W, XIAN_FONT } from "./constants";
 import type { TavernScene } from "./TavernScene";
@@ -649,6 +650,7 @@ export class TitleMethods {
       { text: "青云镇外，夜雨初歇。", y: 500, delay: 250 },
       { text: "一间旧铺，半炉灵火。", y: 574, delay: 1150 },
       { text: "掌柜，今日开张吗？", y: 682, delay: 2150 },
+      { text: `你的灵根：${getRootName(this.shopkeeper.root)}`, y: 760, delay: 2150 },
     ];
     for (const [i, line] of lines.entries()) {
       const text = this.add

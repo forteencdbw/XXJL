@@ -78,7 +78,7 @@ export interface StaffRuntime {
 }
 
 export interface SaveData {
-  v: 2;
+  v: 3;
   coins: number;
   inventory: number;
   level: number;
@@ -87,14 +87,12 @@ export interface SaveData {
   /** 修仙界对本店的累计印象，决定每天到店人数与稀客比例。 */
   reputation: number;
   employees: Employee[];
-  /** 掌柜（也是员工，不能辞退、不领工资）；旧档没有时按新档掌柜补上。 */
-  shopkeeper?: Employee;
+  /** 掌柜（也是员工，不能辞退、不领工资）。 */
+  shopkeeper: Employee;
   /** 今日招聘候选人与生成它们的天数。 */
   candidates?: Employee[];
   candidatesDay?: number;
   nextStaffId?: number;
-  /** 旧固定岗位制存档的等级，只用于迁移。 */
-  staffLevel?: Partial<Record<"hawker" | "server" | "cook" | "buyer", number>>;
   borrowedIds: string[];
   activeLoans: { name: string; remaining: number; periodsLeft: number }[];
   negativeStreak: number;
@@ -103,8 +101,8 @@ export interface SaveData {
   ascensions: number;
   selectedDishIds: string[];
   playerGender: "male" | "female";
-  /** 夜修已走的毫秒；营业中为 0，旧档没有时按天明。 */
-  nightMs?: number;
+  /** 夜修已走的毫秒；营业中为 0。 */
+  nightMs: number;
   meta: MetaStats;
   regulars?: RegularGuest[];
   /** 当日目标快照：读档后不能因等级变化换目标，否则同一目标会显示两个数。 */
@@ -113,5 +111,5 @@ export interface SaveData {
   /** 最近一次领开市利是的本机日期（YYYY-MM-DD）与连续天数。 */
   lastGiftDate?: string;
   giftStreak?: number;
-  floorsBuilt?: number;
+  floorsBuilt: number;
 }

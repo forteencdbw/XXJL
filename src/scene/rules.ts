@@ -1,5 +1,5 @@
 // 经营规则的场景侧换算：价格、天气、开市利是、菜单；境界只读（修为子系统占位）。
-import { DISHES, getDailyGift, getDailyGoal, getDailySpecial, getDailyWeather, getFloorPriceMultiplier, getGiftStreak, getPostCapPriceBonus, getPurchasePrice, getRealmIndex, getSpecialPrice, getWishPrice, localDateKey } from "../logic";
+import { DISHES, getDailyGift, getDailyGoal, getDailySpecial, getDailyWeather, getEffectiveStars, getFloorPriceMultiplier, getGiftStreak, getPostCapPriceBonus, getPurchasePrice, getRealmIndex, getSpecialPrice, getWishPrice, localDateKey } from "../logic";
 import type { DailyGoal, Dish } from "../logic";
 import type { Booth } from "./types";
 import type { TavernScene } from "./TavernScene";
@@ -28,9 +28,10 @@ export class RuleMethods {
     return getSpecialPrice(this.baseDishPrice(dish), this.currentDailySpecial() === dish.id);
   }
 
-  /** 采购价含采买员工的精明折扣。 */
+  /** 采购价含采买员工的机缘折扣。 */
   purchasePrice(this: TavernScene): number {
-    return getPurchasePrice(this.bestBuyer()?.stars.buy ?? 0);
+    const buyer = this.bestBuyer();
+    return getPurchasePrice(buyer ? getEffectiveStars(buyer, "buy") : 0);
   }
 
   /** 一桌离店时的成交价：菜品价 × 身份 × 楼层 × 口味 × 烹饪质量。 */
