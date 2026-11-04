@@ -172,7 +172,6 @@ export class TavernScene extends Phaser.Scene {
   startButton!: TapText;
   lastAutosaveAt = 0;
 
-  genderButton!: TapText;
   overlay: Phaser.GameObjects.Container | null = null;
   /** 结算面板显示中：产线已停，但视图仍停在营业视角，等玩家点「打烊」再过渡。 */
   settling = false;
@@ -240,6 +239,8 @@ export class TavernScene extends Phaser.Scene {
       if (document.hidden) this.save();
     });
     if (!hadSave) {
+      // 新档要等选定掌柜性别才落盘，否则中途关页面会存下默认性别并就此锁定
+      this.suppressSave = true;
       if (USE_VECTOR_TITLE) this.showTitleScreen();
       else this.showInkPixelTitle();
     }

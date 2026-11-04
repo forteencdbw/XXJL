@@ -53,7 +53,7 @@ export class SaveMethods {
     }
   }
 
-  /** 新周目存档（破产重开）：保留仙缘数值与形象，其余归零；仙缘加成随修为子系统停用。 */
+  /** 新周目存档（破产重开）：保留仙缘数值与掌柜性别，其余归零；仙缘加成随修为子系统停用。 */
   freshSave(this: TavernScene, ascensions: number): SaveData {
     const startLevel = 1;
     return {

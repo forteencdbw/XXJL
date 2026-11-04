@@ -182,27 +182,26 @@ export class UiMethods {
     this.navPanel = this.add.container(0, 0).setScrollFactor(0).setDepth(30);
     this.navPanel.add(
       this.add
-        .rectangle(8, 720, 704, 430, 0x0d0a08, 0.9)
+        .rectangle(8, 824, 704, 326, 0x0d0a08, 0.9)
         .setOrigin(0, 0)
         .setStrokeStyle(2, 0x9a3a2a, 0.55),
     );
     this.navTitle = this.add
-      .text(360, 724, "掌柜事务", {
+      .text(360, 828, "掌柜事务", {
         fontSize: "22px",
         color: "#e0c9a0",
         fontFamily: XIAN_FONT,
       })
       .setOrigin(0.5, 0)
       .setLetterSpacing(6);
-    this.navPanel.add(this.navTitle);    this.navPanel.add(this.add.rectangle(24, 750, 672, 1, 0x8a6a3a, 0.4).setOrigin(0, 0));
-    this.staffButton = this.addNavCard(180, 797, "伙计", "招聘 · 分工 · 日薪", () => {
+    this.navPanel.add(this.navTitle);    this.navPanel.add(this.add.rectangle(24, 854, 672, 1, 0x8a6a3a, 0.4).setOrigin(0, 0));
+    this.staffButton = this.addNavCard(180, 901, "伙计", "招聘 · 分工 · 日薪", () => {
       this.staffNotice = "";
       this.buildStaffOverlay();
     });
-    this.upgradeButton = this.addNavCard(180, 901, "营造 Lv1", "雅座 · 灶台 · 门面", () =>
+    this.upgradeButton = this.addNavCard(180, 1005, "营造 Lv1", "雅座 · 灶台 · 门面", () =>
       this.buildBuildOverlay(),
     );
-    this.genderButton = this.addNavCard(180, 1005, "形象 · 男", "点击切换", () => this.toggleGender());
     this.bankButton = this.addNavCard(180, 1109, "灵石商行", "借贷 · 还账", () => this.buildBankOverlay());
     this.helpButton = this.addNavCard(540, 901, "玩法", "规则与操作", () => this.showHelp(), true);
     this.recordButton = this.addNavCard(540, 1005, "账簿", "累计 · 成就", () => this.buildRecordOverlay(), true);
@@ -364,7 +363,6 @@ export class UiMethods {
       this.staffButton,
       this.bankButton,
       this.upgradeButton,
-      this.genderButton,
       this.helpButton,
       this.recordButton,
       this.saveButton,
@@ -393,10 +391,6 @@ export class UiMethods {
     // 掌柜与伙计的显隐按各自所在楼层，统一在 refreshBoothVisibility 里处理
     this.refreshBoothVisibility();
     this.windowViews.forEach((w) => w.setVisible(isOpen));
-  }
-
-  toggleGender(this: TavernScene) {
-    this.setGender(this.playerGender === "male" ? "female" : "male");
   }
 
   /** 营业视角：玩家可水平拖拽镜头，从厨房左缘一直拖到空地尽头。 */
@@ -433,7 +427,6 @@ export class UiMethods {
     this.playerChar.setBodyColor(gender === "male" ? 0x4a7ab8 : 0xc86a9e);
     this.playerChar.setHairColor(gender === "male" ? 0x2b2b2b : 0x4a2b1a);
     this.playerChar.setLongHair(gender === "female");
-    this.genderButton?.setText(gender === "male" ? "形象 · 男" : "形象 · 女");
   }
 
   destroyOverlay(this: TavernScene) {

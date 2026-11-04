@@ -492,7 +492,7 @@ export class TitleMethods {
     layer.add(this.add.rectangle(0, 0, SCREEN_W, SCREEN_H, 0x000000, 0.97).setOrigin(0, 0).setInteractive());
     layer.add(
       this.add
-        .text(360, 200, "选择你的形象", { fontSize: "30px", color: "#ffe6a8", fontFamily: XIAN_FONT })
+        .text(360, 200, "选择掌柜性别", { fontSize: "30px", color: "#ffe6a8", fontFamily: XIAN_FONT })
         .setOrigin(0.5)
         .setLetterSpacing(4),
     );
@@ -505,12 +505,11 @@ export class TitleMethods {
         })
         .setOrigin(0.5),
     );
+    const cards = new Map<"male" | "female", Phaser.GameObjects.Rectangle>();
     for (const x of [180, 540]) {
-      layer.add(
-        this.add
-          .rectangle(x, 510, 176, 276, 0x1a120c, 0.82)
-          .setStrokeStyle(2, 0x8a6a3a, 0.7),
-      );
+      const card = this.add.rectangle(x, 510, 176, 276, 0x1a120c, 0.82).setStrokeStyle(2, 0x8a6a3a, 0.7);
+      cards.set(x === 180 ? "male" : "female", card);
+      layer.add(card);
       layer.add(
         this.add
           .image(x, 500, "soft-glow")
@@ -546,6 +545,7 @@ export class TitleMethods {
         .setOrigin(0.5),
     );
 
+    let chosen: "male" | "female" | null = null;
     const pick = (x: number, label: string, gender: "male" | "female", color: string) => {
       const btn = this.add
         .text(x, 700, label, {
@@ -557,15 +557,44 @@ export class TitleMethods {
         .setOrigin(0.5)
         .setInteractive({ useHandCursor: true })
         .on("pointerdown", () => {
-          this.setGender(gender);
-          this.save();
-          this.showOpening();
+          playSfx("click");
+          chosen = gender;
+          cards.forEach((card, key) =>
+            key === gender ? card.setStrokeStyle(4, 0xffe6a8, 1) : card.setStrokeStyle(2, 0x8a6a3a, 0.7),
+          );
+          confirm.setAlpha(1);
         });
       layer.add(btn);
       this.expandHitArea(btn, 18);
     };
     pick(180, "男", "male", "#3f5a7a");
     pick(540, "女", "female", "#7a3f5a");
+    const confirm = this.add
+      .text(360, 830, "确认", {
+        fontSize: "28px",
+        color: "#ffe6a8",
+        fontFamily: XIAN_FONT,
+        backgroundColor: "#2a1a12",
+        padding: { x: 56, y: 16 },
+      })
+      .setOrigin(0.5)
+      .setAlpha(0.4)
+      .setInteractive({ useHandCursor: true })
+      .on("pointerdown", () => {
+        if (!chosen) return;
+        playSfx("click");
+        this.setGender(chosen);
+        this.suppressSave = false;
+        this.save();
+        this.showOpening();
+      });
+    layer.add(confirm);
+    this.expandHitArea(confirm, 18);
+    layer.add(
+      this.add
+        .text(360, 900, "选定后，本存档不可更改", { fontSize: "16px", color: "#c8b8a0", fontFamily: XIAN_FONT })
+        .setOrigin(0.5),
+    );
     this.overlay = layer;
   }
 
