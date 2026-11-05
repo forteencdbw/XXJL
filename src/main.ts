@@ -2,7 +2,15 @@
 import Phaser from "phaser";
 import { GAME, validateConfig } from "./config";
 import { TavernScene } from "./scene/TavernScene";
-import { SCREEN_H, SCREEN_W } from "./scene/constants";
+import { SCREEN_H, SCREEN_W, XIAN_FONT } from "./scene/constants";
+
+// Phaser 默认字体 Courier 的中文靠系统字体兜底，量出的字高不含中文字顶，字顶会被裁掉；
+// 全局把默认字体换成楷体（各屏本来用的字体，留有字顶余量）。
+const textFactory = Phaser.GameObjects.GameObjectFactory.prototype;
+const addText = textFactory.text;
+textFactory.text = function (this: Phaser.GameObjects.GameObjectFactory, x, y, text, style) {
+  return addText.call(this, x, y, text, { fontFamily: XIAN_FONT, ...style });
+};
 
 const configErrors = validateConfig(GAME);
 if (configErrors.length > 0) {
