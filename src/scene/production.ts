@@ -3,9 +3,10 @@ import Phaser from "phaser";
 import { playSfx } from "../audio";
 import { GAME } from "../config";
 import { DISHES, getCookQuality, getEffectiveStars, getStaffDuration, getStoveSpeedFactor, getWalkSpeed, isRarePatron } from "../logic";
-import type { Employee } from "../logic";
+import type { Employee, PatronKind } from "../logic";
+import { finishCooking, finishSeating, finishServing, leaveUnserved, nextBoothToCook, nextBoothToServe, seatPatron, startCooking, startServing } from "../booth";
 import { ACTOR_Y, COOK_FLOOR_MS, COOK_SPOT, COOK_TAVERN_SHRINK_PER_LEVEL_MS, DOOR_X, FLOOR_Y, PURCHASE_AMOUNT } from "./constants";
-import type { StaffRuntime } from "./types";
+import type { Booth, StaffRuntime } from "./types";
 import type { TavernScene } from "./TavernScene";
 
 /** 领座时跑堂站在客人前面（桌子在门的左边）的距离。 */
@@ -60,12 +61,8 @@ export class ProductionMethods {
     const patron = this.queue.shift()!;
     patron.char.setPatience(null);
     patron.char.setMood(isRarePatron(patron.kind) ? "cold" : "waiting");
-    booth.state = "seating";
+    seatPatron(booth, patron);
     booth.patronChar = patron.char;
-    booth.patronKind = patron.kind;
-    booth.patronWish = patron.wish;
-    booth.patronName = patron.name;
-    booth.patronRegular = patron.regular;
 
     const char = rt.char;
     const meetX = patron.char.x - LEAD_GAP;
@@ -90,16 +87,27 @@ export class ProductionMethods {
   finishSeat(this: TavernScene, e: Employee, rt: StaffRuntime, time: number) {
     const index = rt.task!.boothIndex;
     const booth = this.booths[index];
-    if (booth?.state === "seating") {
+    if (booth && finishSeating(booth, time)) {
       playSfx("seat");
-      booth.state = "awaitingCook";
-      booth.awaitingSince = time;
       booth.patronChar?.setSeated(true);
       this.log(`${e.name}领食客入座雅座`);
       this.staffDidWork(e);
       this.showBoothOrder(index);
     }
     this.sendStaffHome(e, rt);
+  }
+
+  /** 客人离桌：收起碗筷、站起来走出门（生气时走快些），走到门口消失。 */
+  walkPatronOut(this: TavernScene, booth: Booth, kind: PatronKind | null, angry: boolean) {
+    const leaver = booth.patronChar;
+    booth.patronChar = undefined;
+    booth.diningProp?.destroy();
+    booth.diningProp = undefined;
+    if (!leaver) return;
+    if (this.focusChar === leaver) this.returnFromFocus();
+    leaver.setDining(false);
+    leaver.setSeated(false);
+    this.patronWalk(leaver, kind, 440, angry, () => leaver.destroy());
   }
 
   /** 入座时在桌上方飘出这一桌的订单，避免玩家只看到队列数字变化。 */
@@ -136,30 +144,14 @@ export class ProductionMethods {
     if (this.settling || !rt || rt.task) return false;
     const menu = this.getMenuDishes();
     if (menu.length === 0) return false;
-    let index = -1;
-    this.booths.forEach((booth, i) => {
-      if (booth.state !== "awaitingCook") return;
-      if (index === -1 || booth.awaitingSince < this.booths[index].awaitingSince) index = i;
-    });
+    const index = nextBoothToCook(this.booths);
     if (index === -1) return false;
     const booth = this.booths[index];
     if (this.inventory <= 0) {
-      booth.state = "empty";
+      const who = leaveUnserved(booth);
       this.stockLost += 1;
-      const leaver = booth.patronChar;
-      const guest = booth.patronKind?.name ?? "食客";
-      const leaverKind = booth.patronKind;
-      booth.patronChar = undefined;
-      if (this.focusChar === leaver) this.returnFromFocus();
-      leaver?.setSeated(false);
-      booth.patronKind = null;
-      booth.patronWish = null;
-      booth.patronName = null;
-      booth.patronRegular = false;
-      booth.diningProp?.destroy();
-      booth.diningProp = undefined;
-      booth.awaitingSince = 0;
-      if (leaver) this.patronWalk(leaver, leaverKind, 440, true, () => leaver.destroy());
+      const guest = who?.kind?.name ?? "食客";
+      this.walkPatronOut(booth, who?.kind ?? null, true);
       this.sessionLost += 1;
       this.pendingRepLoss += 1;
       this.log(`灵材不足，${guest}没吃上菜便离开了`);
@@ -178,13 +170,9 @@ export class ProductionMethods {
       getStoveSpeedFactor(this.stoveLevel),
     );
     this.inventory -= 1;
-    booth.state = "cooking";
-    booth.cookStaffId = e.id;
     // 神识决定这道菜的成色，直接体现在售价上
-    booth.cookQuality = getCookQuality(getEffectiveStars(e, "cook"));
-    booth.currentDish = chosen;
-    booth.cookStartedAt = this.time.now;
-    booth.cookDoneAt = this.time.now + duration;
+    const quality = getCookQuality(getEffectiveStars(e, "cook"));
+    startCooking(booth, { dish: chosen, cookId: e.id, quality, now: this.time.now, duration });
     rt.task = { kind: "cook", boothIndex: index, startedAt: this.time.now, duration };
     this.staffDidWork(e);
     rt.char.walkTo(COOK_SPOT.x, COOK_SPOT.y, Math.min(400, duration), () => rt.char.pulse());
@@ -195,9 +183,8 @@ export class ProductionMethods {
   /** 菜做好了：放在灶台上等跑堂，掌勺的人可以接下一道。 */
   finishCook(this: TavernScene, index: number, time: number) {
     const booth = this.booths[index];
+    if (!finishCooking(booth, time)) return;
     playSfx("cook");
-    booth.state = "awaitingServe";
-    booth.readyAt = time;
     this.log(`${booth.currentDish?.name ?? "菜"}出锅，等跑堂传菜`);
     const cook = this.employeeById(booth.cookStaffId);
     const rt = cook && this.staffRt.get(cook.id);
@@ -208,14 +195,10 @@ export class ProductionMethods {
   startServe(this: TavernScene, e: Employee): boolean {
     const rt = this.staffRt.get(e.id);
     if (this.settling || !rt || rt.task) return false;
-    let index = -1;
-    this.booths.forEach((booth, i) => {
-      if (booth.state !== "awaitingServe") return;
-      if (index === -1 || booth.readyAt < this.booths[index].readyAt) index = i;
-    });
+    const index = nextBoothToServe(this.booths);
     if (index === -1) return false;
     const booth = this.booths[index];
-    booth.state = "serving";
+    startServing(booth);
     const char = rt.char;
     const table = this.tablePosition(index);
     const dropX = table.x + LEAD_GAP;
@@ -236,9 +219,7 @@ export class ProductionMethods {
     const index = rt.task!.boothIndex;
     const booth = this.booths[index];
     rt.char.setCarrying(false);
-    if (booth?.state === "serving") {
-      booth.state = "dining";
-      booth.departAt = time + GAME.session.diningMs;
+    if (booth && finishServing(booth, time, GAME.session.diningMs)) {
       booth.patronChar?.setDining(true);
       this.showDiningProp(index);
       this.staffDidWork(e);

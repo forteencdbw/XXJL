@@ -1,17 +1,12 @@
 // 二级页面：营造（雅座扩建、起楼、灶台、门幡）及其购买。
 import { playSfx } from "../../audio";
 import { DISHES, FLOOR_UNLOCKS, MAX_FLOORS, getDailyGoalOptions, getSignUpgradeCost, getStoveSpeedFactor, getStoveUpgradeCost, getTotalBoothCount, getUpgradeCost } from "../../logic";
-import { SCREEN_H, SCREEN_W, XIAN_FONT } from "../constants";
 import type { TavernScene } from "../TavernScene";
 
 export class BuildOverlayMethods {
   /** 二级页面：营造。雅座扩建、灶台专精、门面招幡三条线各花各的钱。 */
   buildBuildOverlay(this: TavernScene) {
-    this.destroyOverlay();
-    const cam = this.cameras.main;
-    const layer = this.add.container(cam.scrollX, cam.scrollY).setDepth(100);
-    layer.add(this.add.rectangle(0, 0, SCREEN_W, SCREEN_H, 0x000000, 0.97).setOrigin(0, 0).setInteractive());
-    layer.add(this.add.text(40, 58, "营造", { fontSize: "36px", color: "#ffe6a8", fontFamily: XIAN_FONT }));
+    const layer = this.openSubsystemPage("营造");
     layer.add(this.add.text(40, 108, "灵石有限，先补当前的短板", { fontSize: "18px", color: "#999999" }));
     const nextFloor = this.floorsBuilt + 1;
     if (nextFloor < MAX_FLOORS) {
@@ -107,9 +102,6 @@ export class BuildOverlayMethods {
       );
     });
 
-    this.addOverlayClose(layer, 660);
-    this.overlay = layer;
-    this.setWorldPaused(true);
   }
 
   buildFloor(this: TavernScene) {

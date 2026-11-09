@@ -608,6 +608,25 @@ export interface MetaDayRecord {
   revenue: number;
 }
 
+/** 状态栏的排队一行：营业中提示满员、下一位多久到、或客人已到齐；nextInMs 为 null 表示名单已走完。 */
+export function getQueueStatus(s: { queued: number; cap: number; open: boolean; nextInMs: number | null }): {
+  text: string;
+  tone: "full" | "next" | "done" | "idle";
+} {
+  const count = `${s.queued}/${s.cap}`;
+  if (!s.open) return { text: `排队：${count}`, tone: "idle" };
+  if (s.queued >= s.cap) return { text: `排队 ${count} · 已满`, tone: "full" };
+  if (s.nextInMs !== null) return { text: `排队 ${count} · 下位 ${Math.max(0, Math.ceil(s.nextInMs / 1000))}s`, tone: "next" };
+  return { text: `排队 ${count} · 客人已到齐`, tone: "done" };
+}
+
+/** 状态栏的今日目标一行：达成后显示 ✓。 */
+export function getGoalStatus(goal: DailyGoal, progress: number): { text: string; reached: boolean } {
+  const reached = progress >= goal.target;
+  const [prefix, unit] = goal.kind === "revenue" ? ["收入", " 灵石"] : ["口味", " 位"];
+  return { text: reached ? "今日目标 ✓" : `${prefix} ${progress}/${goal.target}${unit}`, reached };
+}
+
 export interface MetaStats {
   days: number;
   served: number;

@@ -171,6 +171,9 @@ export class UiMethods {
     // 「开始营业」只在夜修走到辰正后出现，占副屏顶部那一条
     this.startButton = this.addUiButton(360, NIGHT_STRIP_Y, () => this.onStartButton(), { x: 60, y: 14 }, 6, "24px");
     this.startButton.setOrigin(0.5);
+    this.startButton.setStyle({ color: "#f5e6c8", backgroundColor: "#8a2a22" });
+    this.startButton.setText("开始营业");
+    this.startButton.setVisible(false);
     // 营业中副屏只剩修为入口
     this.cultivationButton = this.addUiButton(560, 1186, () => this.buildCultivationOverlay(), { x: 30, y: 28 }, 6, "22px");
     this.cultivationButton.setBackgroundColor("#3a2e4a");
@@ -370,18 +373,11 @@ export class UiMethods {
     }
   }
 
+  /** 切换营业 / 夜修视角时重排场景；按钮与背景的显隐每帧由 refreshHud 决定，这里不设。 */
   positionUi(this: TavernScene, isOpen: boolean) {
-    // 打烊时「开始营业」是主行动；营业中一定跑满到子初，不显示这个按钮
-    this.startButton.setStyle({ color: "#f5e6c8", backgroundColor: "#8a2a22" });
-    // 显隐每帧在 refreshHud 里按「夜修是否到辰正」决定
-    this.startButton.setVisible(false);
     this.relayoutTables();
     this.setFloorTabsVisible(isOpen);
     this.applyFloorLook();
-
-    this.setClosedNavVisible(!isOpen && !this.overlay);
-    this.rightFrame.setVisible(isOpen);
-    this.closedBackdrop.setVisible(!isOpen);
 
     // 掌柜与伙计的显隐按各自所在楼层，统一在 refreshBoothVisibility 里处理
     this.refreshBoothVisibility();
@@ -424,6 +420,22 @@ export class UiMethods {
     this.overlay?.destroy(true);
     this.overlay = null;
     this.setWorldPaused(false);
+  }
+
+  /**
+   * 打开一个子系统页面：清掉旧页，铺黑底、写标题、底部放关闭条，并暂停整个店。
+   * 所有子系统页面都从这里开，「打开子系统就暂停」只在这一处保证；菜单、结算这类弹窗不走这里。
+   */
+  openSubsystemPage(this: TavernScene, title: string, closeLabel = "关闭"): Phaser.GameObjects.Container {
+    this.destroyOverlay();
+    const cam = this.cameras.main;
+    const layer = this.add.container(cam.scrollX, cam.scrollY).setDepth(100);
+    layer.add(this.add.rectangle(0, 0, SCREEN_W, SCREEN_H, 0x000000, 0.97).setOrigin(0, 0).setInteractive());
+    layer.add(this.add.text(40, 58, title, { fontSize: "36px", color: "#ffe6a8", fontFamily: XIAN_FONT }));
+    this.addOverlayClose(layer, 1150, closeLabel);
+    this.overlay = layer;
+    this.setWorldPaused(true);
+    return layer;
   }
 
   /** 子系统页面开着时冻结整个店：场景时钟（见 create）、计时器与补间一起停。 */

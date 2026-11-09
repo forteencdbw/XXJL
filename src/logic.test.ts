@@ -9,6 +9,8 @@ import {
   NIGHT_COLOR,
   WEATHERS,
   formatClock,
+  getGoalStatus,
+  getQueueStatus,
   getArrivalSchedule,
   getClockMinutes,
   getNightClockMinutes,
@@ -786,5 +788,22 @@ describe("飞升开局与跨周目账簿", () => {
       1,
     );
     expect(maxed.every((a) => a.unlocked)).toBe(true);
+  });
+});
+
+describe("状态栏文字", () => {
+  it("排队：打烊、已满、下一位、到齐", () => {
+    expect(getQueueStatus({ queued: 1, cap: 3, open: false, nextInMs: 500 })).toEqual({ text: "排队：1/3", tone: "idle" });
+    expect(getQueueStatus({ queued: 3, cap: 3, open: true, nextInMs: 500 }).tone).toBe("full");
+    expect(getQueueStatus({ queued: 1, cap: 3, open: true, nextInMs: 1200 }).text).toBe("排队 1/3 · 下位 2s");
+    expect(getQueueStatus({ queued: 1, cap: 3, open: true, nextInMs: -50 }).text).toBe("排队 1/3 · 下位 0s");
+    expect(getQueueStatus({ queued: 0, cap: 3, open: true, nextInMs: null }).text).toBe("排队 0/3 · 客人已到齐");
+  });
+
+  it("今日目标：进度与达成", () => {
+    const goal = { kind: "revenue" as const, label: "收入", target: 40, rewardCoins: 10 };
+    expect(getGoalStatus(goal, 12)).toEqual({ text: "收入 12/40 灵石", reached: false });
+    expect(getGoalStatus(goal, 40)).toEqual({ text: "今日目标 ✓", reached: true });
+    expect(getGoalStatus({ ...goal, kind: "wish", target: 2 }, 1).text).toBe("口味 1/2 位");
   });
 });

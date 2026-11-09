@@ -4,7 +4,6 @@ import { playSfx } from "../../audio";
 import { GAME } from "../../config";
 import { getEffectiveStars, getExpToNext, getHireCost, getRootBonus, getRootName, getStaffCap, getStaffWage, getTotalStars, JOB_ELEMENT, JOB_NAMES, JOB_STAT, JOBS, ELEMENT_NAMES, moveJobUp, rollCandidate, SHOPKEEPER_ID, spendStatPoint, STAT_NAMES, STATS } from "../../logic";
 import type { Employee, Stat } from "../../logic";
-import { SCREEN_H, SCREEN_W, XIAN_FONT } from "../constants";
 import type { TavernScene } from "../TavernScene";
 
 export class StaffOverlayMethods {
@@ -41,11 +40,7 @@ export class StaffOverlayMethods {
   }
 
   staffOverlayLayer(this: TavernScene, title: string): Phaser.GameObjects.Container {
-    this.destroyOverlay();
-    const cam = this.cameras.main;
-    const layer = this.add.container(cam.scrollX, cam.scrollY).setDepth(100);
-    layer.add(this.add.rectangle(0, 0, SCREEN_W, SCREEN_H, 0x000000, 0.97).setOrigin(0, 0).setInteractive());
-    layer.add(this.add.text(40, 58, title, { fontSize: "36px", color: "#ffe6a8", fontFamily: XIAN_FONT }));
+    const layer = this.openSubsystemPage(title);
     if (this.staffNotice) {
       layer.add(
         this.add.text(40, 154, this.staffNotice, {
@@ -104,9 +99,6 @@ export class StaffOverlayMethods {
       layer.add(this.add.text(664, y + 72, "详情 ›", { fontSize: "16px", color: "#8a9aac" }).setOrigin(1, 0));
     });
 
-    this.addOverlayClose(layer, 1150);
-    this.overlay = layer;
-    this.setWorldPaused(true);
   }
 
   /** 二级页面：一个人的详情。灵根、经验、五项属性与加点、工作勾选与顺序、辞退。 */
@@ -186,9 +178,6 @@ export class StaffOverlayMethods {
       });
     }
 
-    this.addOverlayClose(layer, 1150);
-    this.overlay = layer;
-    this.setWorldPaused(true);
   }
 
   /** 改了分工或加了点：重排站位并存档，留在详情页。 */
@@ -262,8 +251,5 @@ export class StaffOverlayMethods {
       this.staffNotice = "";
       this.buildStaffOverlay();
     });
-    this.addOverlayClose(layer, 1150);
-    this.overlay = layer;
-    this.setWorldPaused(true);
   }
 }

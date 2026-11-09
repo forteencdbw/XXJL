@@ -2,17 +2,12 @@
 import { playSfx } from "../../audio";
 import { BANKRUPT_STREAK, LOANS, LOAN_PERIODS } from "../../logic";
 import type { LoanDef } from "../../logic";
-import { SCREEN_H, SCREEN_W, XIAN_FONT } from "../constants";
 import type { TavernScene } from "../TavernScene";
 
 export class BankOverlayMethods {
   /** 二级页面：灵石商行，按酒楼等级解锁三档借贷。 */
   buildBankOverlay(this: TavernScene) {
-    this.destroyOverlay();
-    const cam = this.cameras.main;
-    const layer = this.add.container(cam.scrollX, cam.scrollY).setDepth(100);
-    layer.add(this.add.rectangle(0, 0, SCREEN_W, SCREEN_H, 0x000000, 0.97).setOrigin(0, 0).setInteractive());
-    layer.add(this.add.text(40, 70, "灵石商行", { fontSize: "30px", color: "#ffe6a8", fontFamily: XIAN_FONT }));
+    const layer = this.openSubsystemPage("灵石商行");
     layer.add(
       this.add.text(40, 116, `在贷 ${this.activeLoans.length} 笔 · 连亏 ${this.negativeStreak}/${BANKRUPT_STREAK} 日`, {
         fontSize: "15px",
@@ -66,9 +61,6 @@ export class BankOverlayMethods {
       }
     });
 
-    this.addOverlayClose(layer, 620);
-    this.overlay = layer;
-    this.setWorldPaused(true);
   }
 
   /** 灵石商行借贷：到账即加灵石，之后每回合还一期。 */

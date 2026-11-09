@@ -1,6 +1,5 @@
 // 二级页面：设置（背景音乐、音效音量）。设置跟设备走，不进存档。
 import { getAudioSettings, playSfx, setBgmVolume, setSfxVolume } from "../../audio";
-import { SCREEN_H, SCREEN_W, XIAN_FONT } from "../constants";
 import type { TavernScene } from "../TavernScene";
 
 const TRACK_X = 60;
@@ -8,17 +7,10 @@ const TRACK_W = 520;
 
 export class SettingsOverlayMethods {
   buildSettingsOverlay(this: TavernScene) {
-    this.destroyOverlay();
-    const cam = this.cameras.main;
-    const layer = this.add.container(cam.scrollX, cam.scrollY).setDepth(100);
-    layer.add(this.add.rectangle(0, 0, SCREEN_W, SCREEN_H, 0x000000, 0.97).setOrigin(0, 0).setInteractive());
-    layer.add(this.add.text(40, 58, "设置", { fontSize: "36px", color: "#ffe6a8", fontFamily: XIAN_FONT }));
+    const layer = this.openSubsystemPage("设置");
     const audio = getAudioSettings();
     this.addVolumeSlider(layer, 220, "背景音乐", "暂无背景音乐，音量先存着", audio.bgm, setBgmVolume);
     this.addVolumeSlider(layer, 380, "音效", "", audio.sfx, setSfxVolume);
-    this.addOverlayClose(layer, 1150);
-    this.overlay = layer;
-    this.setWorldPaused(true);
   }
 
   /** 0–100% 的滑条：点或拖动轨道即生效，松手时响一声试听。 */

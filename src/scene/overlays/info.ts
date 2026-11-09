@@ -1,17 +1,14 @@
 // 二级页面：玩法说明、账簿成就、存档导入导出。
 import { REALMS, getAchievements } from "../../logic";
+import { parseSave } from "../../save";
 import { decodeSaveCode, encodeSaveCode } from "../../savecode";
-import { SAVE_KEY, SCREEN_H, SCREEN_W, XIAN_FONT } from "../constants";
+import { SAVE_KEY } from "../constants";
 import type { TavernScene } from "../TavernScene";
 
 export class InfoOverlayMethods {
   /** 玩法说明：新档第一次进门自动弹出，也可随时从「玩法」按钮打开。 */
   showHelp(this: TavernScene) {
-    this.destroyOverlay();
-    const cam = this.cameras.main;
-    const layer = this.add.container(cam.scrollX, cam.scrollY).setDepth(110);
-    layer.add(this.add.rectangle(0, 0, SCREEN_W, SCREEN_H, 0x000000, 0.97).setOrigin(0, 0).setInteractive());
-    layer.add(this.add.text(40, 80, "灵膳楼 · 掌柜须知", { fontSize: "30px", color: "#ffe6a8", fontFamily: XIAN_FONT }));
+    const layer = this.openSubsystemPage("灵膳楼 · 掌柜须知", "知道了，去营生");
     layer.add(
       this.add.text(40, 142, "你是被逐出师门的散修，带着一口旧锅，在青云镇外支起「灵膳楼」。", {
         fontSize: "17px",
@@ -42,28 +39,23 @@ export class InfoOverlayMethods {
       "每天一个目标，达成有额外灵石；连亏 5 日破产。",
       "「账簿」看成绩、「存档」备份；缺灵石可去灵石商行借小借。",
     ];
-    lines.forEach((line, i) => {
-      layer.add(
-        this.add.text(40, 250 + i * 42, line, {
-          fontSize: "17px",
-          color: "#dddddd",
-          wordWrap: { width: 640 },
-          lineSpacing: 6,
-        }),
-      );
-    });
-    this.addOverlayClose(layer, 650, "知道了，去营生");
-    this.overlay = layer;
-    this.setWorldPaused(true);
+    // 中文没有空格，要开 useAdvancedWrap 才会折行；折行后按实际高度往下排
+    let y = 250;
+    for (const line of lines) {
+      const text = this.add.text(40, y, line, {
+        fontSize: "17px",
+        color: "#dddddd",
+        wordWrap: { width: 640, useAdvancedWrap: true },
+        lineSpacing: 6,
+      });
+      layer.add(text);
+      y += text.height + 16;
+    }
   }
 
   /** 二级页面：账簿。跨周目累计数据、本机最高记录与成就。 */
   buildRecordOverlay(this: TavernScene) {
-    this.destroyOverlay();
-    const cam = this.cameras.main;
-    const layer = this.add.container(cam.scrollX, cam.scrollY).setDepth(100);
-    layer.add(this.add.rectangle(0, 0, SCREEN_W, SCREEN_H, 0x000000, 0.97).setOrigin(0, 0).setInteractive());
-    layer.add(this.add.text(40, 70, "账簿", { fontSize: "30px", color: "#ffe6a8", fontFamily: XIAN_FONT }));
+    const layer = this.openSubsystemPage("账簿");
     const meta = this.meta;
     const realmName = REALMS[Math.min(Math.max(0, meta.maxRealm), REALMS.length - 1)].name;
     const stats = [
@@ -113,9 +105,6 @@ export class InfoOverlayMethods {
       );
     });
 
-    this.addOverlayClose(layer, 740);
-    this.overlay = layer;
-    this.setWorldPaused(true);
   }
 
   /** 导出/导入存档。用浏览器原生输入框承载长文本（Phaser 没有文本输入控件）。 */
@@ -185,8 +174,9 @@ export class InfoOverlayMethods {
       });
     } else {
       button("确认导入", true, () => {
-        const data = decodeSaveCode(textarea.value);
-        if (!data || typeof data !== "object" || (data as { v?: unknown }).v !== 3) {
+        // 与读档同一套校验：坏数据、旧版本都在这里挡住
+        const data = parseSave(decodeSaveCode(textarea.value));
+        if (!data) {
           status.textContent = "导出码无效或版本不匹配";
           return;
         }

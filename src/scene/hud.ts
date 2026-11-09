@@ -1,7 +1,7 @@
 // 每帧刷新的 HUD：状态栏文字、按钮状态、雅座进度条、见闻录与提示。
 import Phaser from "phaser";
-import { playSfx } from "../audio";
-import { DISHES, getGoalProgress, getNextRepThreshold, getRepLevelInfo, getNightDurationMs, getTotalBoothCount, isRarePatron } from "../logic";
+import { DISHES, getGoalStatus, getQueueStatus, getNextRepThreshold, getRepLevelInfo, getNightDurationMs, getTotalBoothCount, isRarePatron } from "../logic";
+import { boothLabel, cookProgress } from "../booth";
 import { GAME } from "../config";
 import { CHRONICLE_MAX_LINES, COLOR_STAFF, PURCHASE_AMOUNT, SCREEN_W, XIAN_FONT } from "./constants";
 import type { BoothState } from "./types";
@@ -19,22 +19,17 @@ export class HudMethods {
     this.inventoryText.setText(`灵材：${this.inventory}`);
     this.inventoryText.setColor(this.inventory <= 0 ? "#ff9a8a" : "#a8d8b0");
     this.levelText.setText(`酒楼等级：${this.level}`);
-    const queueCap = getTotalBoothCount(this.level, this.floorsBuilt);
-    if (open && !this.settling && this.queue.length >= queueCap) {
-      this.queueText.setText(`排队 ${this.queue.length}/${queueCap} · 已满`);
-      this.queueText.setColor("#ff9a8a");
-    } else if (open && !this.settling && this.patronsSpawned < this.patronsTotal) {
-      const nextAt = this.sessionStartedAt + (this.arrivalTimes[this.patronsSpawned] ?? 0);
-      const nextIn = Math.max(0, Math.ceil((nextAt - this.time.now) / 1000));
-      this.queueText.setText(`排队 ${this.queue.length}/${queueCap} · 下位 ${nextIn}s`);
-      this.queueText.setColor("#a8d8b0");
-    } else if (open && !this.settling) {
-      this.queueText.setText(`排队 ${this.queue.length}/${queueCap} · 客人已到齐`);
-      this.queueText.setColor("#d8c8a8");
-    } else {
-      this.queueText.setText(`排队：${this.queue.length}/${queueCap}`);
-      this.queueText.setColor("#d8c8a8");
-    }
+    const queue = getQueueStatus({
+      queued: this.queue.length,
+      cap: getTotalBoothCount(this.level, this.floorsBuilt),
+      open: open && !this.settling,
+      nextInMs:
+        this.patronsSpawned < this.patronsTotal
+          ? this.sessionStartedAt + (this.arrivalTimes[this.patronsSpawned] ?? 0) - this.time.now
+          : null,
+    });
+    this.queueText.setText(queue.text);
+    this.queueText.setColor({ full: "#ff9a8a", next: "#a8d8b0", done: "#d8c8a8", idle: "#d8c8a8" }[queue.tone]);
     const repInfo = getRepLevelInfo(this.reputation);
     const nextRep = getNextRepThreshold(this.reputation);
     this.reputationText.setText(
@@ -52,24 +47,9 @@ export class HudMethods {
       this.sessionText.setText(
         `已服务 ${this.sessionServed}/${this.patronsTotal} · ${this.sessionRevenue}灵石`,
       );
-      const progress = getGoalProgress(this.sessionGoal, {
-        served: this.sessionServed,
-        revenue: this.sessionRevenue,
-        wishes: this.sessionWishes,
-      });
-      const kind = this.sessionGoal.kind;
-      const prefix = kind === "revenue" ? "收入" : "口味";
-      const unit = kind === "revenue" ? " 灵石" : " 位";
-      const reached = progress >= this.sessionGoal.target;
-      this.goalText.setText(
-        reached ? "今日目标 ✓" : `${prefix} ${progress}/${this.sessionGoal.target}${unit}`,
-      );
-      this.goalText.setColor(reached ? "#a8d8b0" : "#e0c060");
-      if (reached && !this.goalAnnounced) {
-        this.goalAnnounced = true;
-        playSfx("upgrade");
-        this.showEventToast("今日目标达成", true);
-      }
+      const goal = getGoalStatus(this.sessionGoal, this.sessionGoalProgress());
+      this.goalText.setText(goal.text);
+      this.goalText.setColor(goal.reached ? "#a8d8b0" : "#e0c060");
     } else {
       const goal = this.currentDayGoal();
       // 夜修：奖励明细留给菜单目标卡，HUD 只留日期、天气与目标，避免长行压到画面
@@ -112,23 +92,9 @@ export class HudMethods {
       );
       // 桌卡只留最短信息：想吃什么/做哪道/入座；桌号单独常驻，常客用「常·」标记
       const marker = kind && isRarePatron(kind) ? "★" : regular ? "常·" : "";
-      const labelText =
-        booth.state === "awaitingCook"
-          ? `${marker}${wishName ?? "随意"}↓`
-          : booth.state === "cooking"
-            ? `${booth.currentDish?.name ?? "烹饪"} ${Math.max(
-                0,
-                Math.ceil((booth.cookDoneAt - this.time.now) / 1000),
-              )}s`
-            : booth.state === "awaitingServe"
-              ? `${booth.currentDish?.name ?? "菜"} 待传`
-              : booth.state === "serving"
-                ? "上菜中"
-                : "入座";
-      visual.label.setText(showLabel ? labelText : "");
+      visual.label.setText(showLabel ? boothLabel(booth, this.time.now, wishName, marker) : "");
     });
 
-    this.startButton.setText("开始营业");
     this.startButton.setVisible(this.gameState === "closed" && this.isDawn() && !this.overlay);
     this.cultivationButton.setVisible(open);
 
@@ -139,13 +105,6 @@ export class HudMethods {
     this.refreshFloorTabs();
     // 菜单/店铺面板打开时也收起事务卡，避免透明卡片的命中区压到面板按钮上
     this.setClosedNavVisible(this.gameState === "closed" && !this.overlay);
-
-    this.staffButton.setText("伙计");
-    this.bankButton.setText("灵石商行");
-    this.helpButton.setText("玩法");
-    this.recordButton.setText("账簿");
-    this.saveButton.setText("存档");
-
 
     this.purchaseButton.sub?.setText(`+${PURCHASE_AMOUNT} · ${this.purchasePrice()} 灵石`);
     this.upgradeButton.setText(`营造 Lv${this.level}`);
@@ -175,8 +134,8 @@ export class HudMethods {
       if (booth.state === "seating" || booth.state === "serving") {
         const task = [...this.staffRt.values()].find((rt) => rt.task?.boothIndex === i && rt.task.kind !== "cook")?.task;
         if (task) fraction = (time - task.startedAt) / Math.max(1, task.duration);
-      } else if (booth.state === "cooking") {
-        fraction = (time - booth.cookStartedAt) / Math.max(1, booth.cookDoneAt - booth.cookStartedAt);
+      } else {
+        fraction = cookProgress(booth, time);
       }
       const showBar = this.gameState === "open" && booth.floor === this.activeFloor && fraction > 0;
       visual.barBg.setVisible(showBar);

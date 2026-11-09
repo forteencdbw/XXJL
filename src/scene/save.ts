@@ -1,15 +1,15 @@
-// 存档：序列化、新周目存档、读档清洗。未上线前改结构就升版本号，旧档直接作废。
-import { DISHES, EMPTY_META, SHOPKEEPER_ID, STARTING_COINS, STARTING_INVENTORY, createShopkeeper, getNightDurationMs, getRealmIndex, sanitizeEmployees } from "../logic";
+// 存档在场景这一侧：把场景状态打包成存档、把存档赋回场景、读写 localStorage。
+// 新档默认值与读档清洗在 src/save.ts（纯逻辑，有单测）。
+import { newSave, parseSave, SAVE_VERSION } from "../save";
+import type { SaveData } from "../save";
 import { SAVE_KEY } from "./constants";
-import type { SaveData } from "./types";
 import type { TavernScene } from "./TavernScene";
 
 export class SaveMethods {
-  // ===== 存档 =====
   /** 只存经营进度与选择；营业中不落盘——中途刷新等于放弃本局，避免带着收益跳过工资与还账。 */
   buildSaveData(this: TavernScene): SaveData {
     return {
-      v: 3,
+      v: SAVE_VERSION,
       coins: this.coins,
       inventory: this.inventory,
       level: this.level,
@@ -41,6 +41,38 @@ export class SaveMethods {
     };
   }
 
+  /** 把一份（已清洗的）存档赋回场景。 */
+  applySave(this: TavernScene, data: SaveData) {
+    this.coins = data.coins;
+    this.displayedCoins = data.coins;
+    this.inventory = data.inventory;
+    this.level = data.level;
+    this.stoveLevel = data.stoveLevel;
+    this.signLevel = data.signLevel;
+    this.reputation = data.reputation;
+    this.shopkeeper = data.shopkeeper;
+    this.employees = data.employees;
+    this.candidates = data.candidates;
+    this.candidatesDay = data.candidatesDay;
+    this.nextStaffId = data.nextStaffId;
+    this.borrowedIds = new Set(data.borrowedIds);
+    this.activeLoans = data.activeLoans;
+    this.negativeStreak = data.negativeStreak;
+    this.cultivation = data.cultivation;
+    this.day = data.day;
+    this.ascensions = data.ascensions;
+    this.selectedDishIds = new Set(data.selectedDishIds);
+    this.playerGender = data.playerGender;
+    this.nightStartedAt = this.time.now - data.nightMs;
+    this.meta = data.meta;
+    this.dailyGoal = data.dailyGoal;
+    this.regulars = data.regulars;
+    this.goalStreak = data.goalStreak;
+    this.lastGiftDate = data.lastGiftDate;
+    this.giftStreak = data.giftStreak;
+    this.floorsBuilt = data.floorsBuilt;
+  }
+
   save(this: TavernScene) {
     if (this.suppressSave || this.gameState === "bankrupt") return;
     if (this.gameState === "open" && !this.settling) return;
@@ -55,164 +87,28 @@ export class SaveMethods {
     }
   }
 
-  /** 新周目存档（破产重开）：保留仙缘数值与掌柜性别，其余归零；仙缘加成随修为子系统停用。 */
-  freshSave(this: TavernScene, ascensions: number): SaveData {
-    const startLevel = 1;
-    return {
-      v: 3,
-      coins: STARTING_COINS,
-      inventory: STARTING_INVENTORY,
-      level: startLevel,
-      stoveLevel: 0,
-      signLevel: 0,
-      reputation: 0,
-      // 灵根是掌柜本人的，破产重开也不变
-      shopkeeper: { ...createShopkeeper(), root: this.shopkeeper.root },
-      employees: [],
-      candidates: [],
-      candidatesDay: 0,
-      nextStaffId: 1,
-      borrowedIds: [],
-      activeLoans: [],
-      negativeStreak: 0,
-      cultivation: 0,
-      day: 1,
-      ascensions,
-      selectedDishIds: DISHES.filter((d) => d.unlockLevel <= startLevel).map((d) => d.id),
+  /** 新周目存档（破产重开）：保留仙缘、掌柜本人（性别、灵根）、账簿与利是记录，其余从头来。 */
+  freshSave(this: TavernScene): SaveData {
+    return newSave({
+      ascensions: this.ascensions,
       playerGender: this.playerGender,
-      // 新周目从第 1 日辰正开张，不先过夜
-      nightMs: getNightDurationMs(),
+      shopkeeperRoot: this.shopkeeper.root,
       meta: this.meta,
-      goalStreak: 0,
       lastGiftDate: this.lastGiftDate,
       giftStreak: this.giftStreak,
-      floorsBuilt: 0,
-    };
+    });
   }
 
-  /** 读档，返回是否读到有效存档；损坏或版本不符时按新档处理。 */
+  /** 读档并赋回场景；没有存档、损坏或版本不符时按新档开局。返回是否读到了有效存档。 */
   loadSave(this: TavernScene): boolean {
+    let data: SaveData | null = null;
     try {
       const raw = localStorage.getItem(SAVE_KEY);
-      if (!raw) return false;
-      const data = JSON.parse(raw) as Partial<SaveData>;
-      if (data.v !== 3) return false;
-      const num = (value: unknown, fallback: number) =>
-        typeof value === "number" && Number.isFinite(value) ? value : fallback;
-      const count = (value: unknown) => Math.max(0, Math.floor(num(value, 0)));
-      this.coins = num(data.coins, STARTING_COINS);
-      this.inventory = count(data.inventory);
-      this.level = Math.max(1, Math.floor(num(data.level, 1)));
-      this.stoveLevel = count(data.stoveLevel);
-      this.signLevel = count(data.signLevel);
-      this.reputation = count(data.reputation);
-      this.cultivation = count(data.cultivation);
-      this.negativeStreak = count(data.negativeStreak);
-      this.goalStreak = Math.max(0, Math.floor(num(data.goalStreak, 0)));
-      this.lastGiftDate =
-        typeof data.lastGiftDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(data.lastGiftDate)
-          ? data.lastGiftDate
-          : undefined;
-      this.giftStreak = count(data.giftStreak);
-      const maxFloors = this.level >= 6 ? 2 : this.level >= 3 ? 1 : 0;
-      this.floorsBuilt = Math.min(maxFloors, count(data.floorsBuilt));
-      this.day = Math.max(1, Math.floor(num(data.day, 1)));
-      this.ascensions = Math.max(0, Math.floor(num(data.ascensions, 0)));
-      this.playerGender = data.playerGender === "female" ? "female" : "male";
-      this.nightStartedAt = this.time.now - Math.min(getNightDurationMs(), count(num(data.nightMs, getNightDurationMs())));
-      // 身份字段以代码为准，防止导出码把掌柜改成可辞退的伙计
-      const keeper = sanitizeEmployees([data.shopkeeper])[0] ?? createShopkeeper();
-      this.shopkeeper = { ...keeper, id: SHOPKEEPER_ID, name: "掌柜" };
-      this.employees = sanitizeEmployees(data.employees);
-      this.candidates = sanitizeEmployees(data.candidates);
-      this.candidatesDay = count(data.candidatesDay);
-      const maxId = Math.max(0, ...[...this.employees, ...this.candidates].map((e) => e.id));
-      this.nextStaffId = Math.max(maxId + 1, count(data.nextStaffId));
-      this.borrowedIds = new Set(
-        (Array.isArray(data.borrowedIds) ? data.borrowedIds : []).filter(
-          (id): id is string => typeof id === "string",
-        ),
-      );
-      this.activeLoans = (Array.isArray(data.activeLoans) ? data.activeLoans : [])
-        .filter(
-          (loan) =>
-            loan &&
-            typeof loan.name === "string" &&
-            Number.isFinite(loan.remaining) &&
-            Number.isFinite(loan.periodsLeft),
-        )
-        .map((loan) => ({
-          name: loan.name,
-          remaining: Math.max(0, loan.remaining),
-          periodsLeft: Math.max(0, Math.floor(loan.periodsLeft)),
-        }));
-      this.selectedDishIds = new Set(
-        (Array.isArray(data.selectedDishIds) ? data.selectedDishIds : []).filter(
-          (id): id is string => typeof id === "string",
-        ),
-      );
-      const goal = data.dailyGoal;
-      this.dailyGoal =
-        goal &&
-        (goal.kind === "revenue" || goal.kind === "wish") &&
-        typeof goal.label === "string" &&
-        goal.label.length > 0
-          ? {
-              kind: goal.kind,
-              label: goal.label,
-              target: Math.max(1, Math.floor(num(goal.target, 1))),
-              rewardCoins: count(goal.rewardCoins),
-            }
-          : null;
-      this.regulars = (Array.isArray(data.regulars) ? data.regulars : [])
-        .filter(
-          (r) =>
-            r &&
-            typeof r.name === "string" &&
-            typeof r.kindId === "string" &&
-            typeof r.wish === "string",
-        )
-        .slice(0, 6)
-        .map((r) => ({
-          name: r.name,
-          kindId: r.kindId,
-          wish: r.wish,
-          visits: Math.max(1, count(r.visits)),
-        }));
-      this.displayedCoins = this.coins;
-      const meta = data.meta;
-      this.meta = meta
-        ? {
-            days: count(meta.days),
-            served: count(meta.served),
-            revenue: count(meta.revenue),
-            bestRevenue: count(meta.bestRevenue),
-            bestServed: count(meta.bestServed),
-            goalsMet: count(meta.goalsMet),
-            maxRealm: count(meta.maxRealm),
-            topDays: (Array.isArray(meta.topDays) ? meta.topDays : [])
-              .filter(
-                (record) =>
-                  record &&
-                  Number.isFinite(record.day) &&
-                  Number.isFinite(record.level) &&
-                  Number.isFinite(record.served) &&
-                  Number.isFinite(record.revenue),
-              )
-              .map((record) => ({
-                day: Math.max(1, Math.floor(record.day)),
-                level: Math.max(1, Math.floor(record.level)),
-                served: Math.max(0, Math.floor(record.served)),
-                revenue: Math.max(0, Math.floor(record.revenue)),
-              }))
-              .sort((a, b) => b.revenue - a.revenue)
-              .slice(0, 5),
-          }
-        : { ...EMPTY_META };
-      this.meta.maxRealm = Math.max(this.meta.maxRealm, getRealmIndex(this.cultivation));
-      return true;
+      data = raw ? parseSave(JSON.parse(raw)) : null;
     } catch {
-      return false;
+      data = null;
     }
+    this.applySave(data ?? newSave());
+    return data !== null;
   }
 }

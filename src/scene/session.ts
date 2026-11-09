@@ -1,8 +1,9 @@
 // 一天的生命周期：营业中每帧推进、开张、打烊结算（工资/还贷/目标/破产）、天色。
 import Phaser from "phaser";
 import { playSfx } from "../audio";
+import { clearBooth, departBooth } from "../booth";
 import { GAME } from "../config";
-import { BANKRUPT_STREAK, DISHES, formatClock, gainReputation, getArrivalSchedule, getClockMinutes, getDailyGoal, getDailyGoalOptions, getDailyRent, getEventSchedule, getFestivalGoalMultiplier, getNightClockMinutes, getNightDurationMs, getNightQuarters, getFloorRent, getGoalPayout, getLoanDue, getRepLevelInfo, getSessionDurationMs, getShichen, getStreakBonus, GOAL_STREAK_TARGET, isFestivalDay, loseReputation, NIGHT_COLOR, REP_GAIN_RARE, REP_GAIN_SERVED, skyColorAt, updateMeta } from "../logic";
+import { BANKRUPT_STREAK, DISHES, formatClock, gainReputation, getArrivalSchedule, getClockMinutes, getDailyGoal, getDailyGoalOptions, getDailyRent, getEventSchedule, getFestivalGoalMultiplier, getNightClockMinutes, getNightDurationMs, getNightQuarters, getFloorRent, getGoalPayout, getGoalProgress, getLoanDue, getRepLevelInfo, getSessionDurationMs, getShichen, getStreakBonus, GOAL_STREAK_TARGET, isFestivalDay, loseReputation, NIGHT_COLOR, REP_GAIN_RARE, REP_GAIN_SERVED, skyColorAt, updateMeta } from "../logic";
 import { CAMERA_CLOSED_X, CAMERA_OPEN_X, FLOOR_Y, MAX_EVENTS_PER_SESSION, PURCHASE_AMOUNT, PURCHASE_TARGET_STOCK, ROUND_END_DELAY_MS, SCREEN_H, SCREEN_W, SKY_TRANSITION_MS, XIAN_FONT } from "./constants";
 import type { TavernScene } from "./TavernScene";
 
@@ -46,34 +47,16 @@ export class SessionMethods {
     this.booths.forEach((booth, index) => {
       if (booth.state === "cooking" && time >= booth.cookDoneAt) {
         this.finishCook(index, time);
-      } else if (booth.state === "dining" && time >= booth.departAt) {
-        const dish = booth.currentDish;
-        const matched = dish !== null && booth.patronWish === dish.id;
-        const hasWish = booth.patronWish !== null;
-        const priceFactor = booth.patronKind?.priceFactor ?? 1;
-        const price = dish ? this.boothPrice(booth, dish) : 0;
-        const dishName = dish?.name ?? "菜";
-        const guest = booth.patronName ?? booth.patronKind?.name ?? "食客";
-        const guestName = booth.patronName;
-        const guestKind = booth.patronKind;
-        const guestWish = booth.patronWish;
-        const guestRegular = booth.patronRegular;
-        booth.state = "empty";
-        booth.currentDish = null;
-        booth.patronKind = null;
-        booth.patronWish = null;
-        booth.patronName = null;
-        booth.patronRegular = false;
-        booth.diningProp?.destroy();
-        booth.diningProp = undefined;
-        booth.awaitingSince = 0;
-        const leaver = booth.patronChar;
-        booth.patronChar = undefined;
-        if (this.focusChar === leaver) this.returnFromFocus();
-        leaver?.setDining(false);
-        leaver?.setSeated(false);
-        if (hasWish && !matched) leaver?.say("这不是我想吃的……", "cold");
-        if (leaver) this.patronWalk(leaver, guestKind, 440, false, () => leaver.destroy());
+      } else if (booth.state === "dining" && time >= booth.departAt && booth.currentDish) {
+        // 售价依赖当天的招牌、楼层与等级，在桌子清空前算好
+        const price = this.boothPrice(booth, booth.currentDish);
+        const r = departBooth(booth, time);
+        if (!r) return;
+        const { matched, hasWish } = r;
+        const dishName = r.dish.name;
+        const guest = r.name ?? r.kind?.name ?? "食客";
+        if (hasWish && !matched) booth.patronChar?.say("这不是我想吃的……", "cold");
+        this.walkPatronOut(booth, r.kind, false);
         playSfx("coin");
         this.showCoinPopup(this.tablePosition(index).x, FLOOR_Y - 120, price);
         this.sessionServed += 1;
@@ -82,9 +65,9 @@ export class SessionMethods {
           this.sessionWishes += 1;
           this.showWishReaction(this.tablePosition(index).x, FLOOR_Y - 140);
         }
+        this.announceGoalIfReached();
         // 吃到想吃的，或本来就没点名、安稳吃完的，都可能记住这家店
-        if (matched) this.rememberRegular(guestName, guestKind, guestWish, guestRegular);
-        else if (!hasWish && dish) this.rememberRegular(guestName, guestKind, dish.id, guestRegular);
+        if (r.rememberDishId) this.rememberRegular(r.name, r.kind, r.rememberDishId, r.regular);
         this.log(
           matched
             ? `${guest}吃到了想吃的${dishName}，满意离店，收入 +${price} 灵石`
@@ -92,7 +75,7 @@ export class SessionMethods {
               ? `${guest}没吃到想吃的${dishName}，只付半价，收入 +${price} 灵石`
               : `${guest}用罢${dishName}离店，收入 +${price} 灵石`,
         );
-        const rare = priceFactor >= GAME.rarePriceFactor;
+        const rare = (r.kind?.priceFactor ?? 1) >= GAME.rarePriceFactor;
         this.gainReputationFor(rare);
       }
     });
@@ -317,18 +300,9 @@ export class SessionMethods {
       this.booths.forEach((booth) => {
         booth.patronChar?.destroy();
         booth.patronChar = undefined;
-        booth.state = "empty";
-        booth.currentDish = null;
-        booth.cookStartedAt = 0;
-        booth.cookDoneAt = 0;
-        booth.departAt = 0;
-        booth.patronKind = null;
-        booth.patronWish = null;
-        booth.patronName = null;
-        booth.patronRegular = false;
         booth.diningProp?.destroy();
         booth.diningProp = undefined;
-        booth.awaitingSince = 0;
+        clearBooth(booth);
       });
       this.pendingFireId = null;
 
@@ -399,6 +373,24 @@ export class SessionMethods {
     });
   }
 
+  /** 今日目标的当前进度（收入或满足口味的人数）。 */
+  sessionGoalProgress(this: TavernScene): number {
+    if (!this.sessionGoal) return 0;
+    return getGoalProgress(this.sessionGoal, {
+      served: this.sessionServed,
+      revenue: this.sessionRevenue,
+      wishes: this.sessionWishes,
+    });
+  }
+
+  /** 结账后看目标是否刚好达成，达成那一刻提示一次。 */
+  announceGoalIfReached(this: TavernScene) {
+    if (this.goalAnnounced || !this.sessionGoal || this.sessionGoalProgress() < this.sessionGoal.target) return;
+    this.goalAnnounced = true;
+    playSfx("upgrade");
+    this.showEventToast("今日目标达成", true);
+  }
+
   /** 服务完一位客人加声望；稀客登门，名声传得更远。 */
   gainReputationFor(this: TavernScene, rare: boolean) {
     const gain = rare ? REP_GAIN_RARE : REP_GAIN_SERVED;
@@ -464,7 +456,7 @@ export class SessionMethods {
       this.buildSettlementOverlay();
     }
     // 破产只重置本局，仙缘保留；其余情况立刻落盘
-    if (this.gameState === "bankrupt") this.writeSave(this.freshSave(this.ascensions));
+    if (this.gameState === "bankrupt") this.writeSave(this.freshSave());
     else this.save();
     // 破产时 update() 不再刷新 HUD，这里只补状态栏的营业提示
     this.sessionText.setText("已打烊");

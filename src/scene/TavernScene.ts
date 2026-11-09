@@ -1,5 +1,6 @@
 // 主场景：字段（全部场景状态）、create/update 入口；方法按功能拆在 scene/ 其他文件。
 import Phaser from "phaser";
+import { createBooth } from "../booth";
 import { createShopkeeper, DISHES, getNightDurationMs, getSessionDurationMs, EMPTY_META, getDailyWeather, localDateKey, STARTING_COINS, STARTING_INVENTORY } from "../logic";
 import type { DailyGoal, Employee, MetaStats, WeatherDef } from "../logic";
 import { Character } from "./Character";
@@ -235,7 +236,7 @@ export class TavernScene extends Phaser.Scene {
     this.ensureInkTitleTexture();
     this.ensureClosedInkTexture();
     this.ensureInkInteriorTexture();
-    this.booths = this.desiredFloors().map((floor) => this.makeBooth(floor));
+    this.booths = this.desiredFloors().map((floor) => createBooth(floor));
     if (this.selectedDishIds.size === 0) {
       this.selectedDishIds = new Set(DISHES.filter((d) => d.unlockLevel <= this.level).map((d) => d.id));
     }

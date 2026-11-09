@@ -1,9 +1,10 @@
 // 楼层与雅座：雅座视觉、楼层切换标签、桌位布局、按楼层增减雅座。
 import Phaser from "phaser";
+import { createBooth } from "../booth";
 import { playSfx } from "../audio";
 import { FLOOR_UNLOCKS, MAX_FLOORS, getFloorBoothCount } from "../logic";
 import { ACTOR_Y, COLOR_PLAYER, FLOOR_Y, TABLE_MARKS, TABLE_X_MAX, TABLE_X_MIN, XIAN_FONT } from "./constants";
-import type { Booth, BoothVisual } from "./types";
+import type { BoothVisual } from "./types";
 import type { TavernScene } from "./TavernScene";
 
 export class FloorMethods {
@@ -302,7 +303,7 @@ export class FloorMethods {
   syncBooths(this: TavernScene) {
     const desired = this.desiredFloors();
     while (this.booths.length < desired.length) {
-      this.booths.push(this.makeBooth(desired[this.booths.length]));
+      this.booths.push(createBooth(desired[this.booths.length]));
     }
     while (this.booths.length > desired.length) {
       const booth = this.booths.pop();
@@ -327,22 +328,4 @@ export class FloorMethods {
     );
   }
 
-  makeBooth(this: TavernScene, floor = 0): Booth {
-    return {
-      floor,
-      state: "empty",
-      cookStaffId: null,
-      cookQuality: 1,
-      currentDish: null,
-      cookStartedAt: 0,
-      cookDoneAt: 0,
-      departAt: 0,
-      awaitingSince: 0,
-      readyAt: 0,
-      patronKind: null,
-      patronWish: null,
-      patronName: null,
-      patronRegular: false,
-    };
-  }
 }

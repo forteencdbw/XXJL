@@ -1,5 +1,6 @@
 // 点人物弹出人物卡（特写）。
 import Phaser from "phaser";
+import { holdDining } from "../booth";
 import { getRootName } from "../logic";
 import { Character } from "./Character";
 import type { CharacterLook } from "./Character";
@@ -21,8 +22,8 @@ export class FocusMethods {
     }
     this.focusChar = char;
     // 用膳中的客人多留一会儿，卡还没收起饭不能先撤
-    const diningBooth = this.booths.find((b) => b.patronChar === char && b.state === "dining");
-    if (diningBooth) diningBooth.departAt = Math.max(diningBooth.departAt, this.time.now + 4500);
+    const diningBooth = this.booths.find((b) => b.patronChar === char);
+    if (diningBooth) holdDining(diningBooth, this.time.now + 4500);
     this.focusTimer?.remove();
     this.eventToast?.destroy();
     this.eventToast = undefined;
