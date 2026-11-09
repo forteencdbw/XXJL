@@ -142,12 +142,13 @@ export class InfoOverlayMethods {
     const row = document.createElement("div");
     row.style.cssText = "display:flex;gap:10px;flex-wrap:wrap;";
 
-    const button = (label: string, primary: boolean, onClick: () => void) => {
+    const button = (label: string, primary: boolean, onClick: () => void, disabled = false) => {
       const btn = document.createElement("button");
       btn.textContent = label;
+      btn.disabled = disabled;
       btn.style.cssText = `flex:1;min-width:110px;padding:12px;border-radius:6px;border:0;font-size:16px;cursor:pointer;background:${
         primary ? "#3f6a3f" : "#3a3a3a"
-      };color:#fff;`;
+      };color:#fff;${disabled ? "opacity:.45;cursor:default;" : ""}`;
       btn.addEventListener("click", onClick);
       row.appendChild(btn);
     };
@@ -190,8 +191,13 @@ export class InfoOverlayMethods {
         }
       });
     }
-    button(mode === "export" ? "导入存档" : "导出存档", false, () =>
-      this.openSaveDialog(mode === "export" ? "import" : "export"),
+    // 导入会刷新页面，营业中导入会丢掉当天的进度
+    const lockImport = mode === "export" && this.gameState === "open";
+    button(
+      lockImport ? "打烊后再导入" : mode === "export" ? "导入存档" : "导出存档",
+      false,
+      () => this.openSaveDialog(mode === "export" ? "import" : "export"),
+      lockImport,
     );
     button("关闭", false, close);
 

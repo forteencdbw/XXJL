@@ -35,7 +35,7 @@ export const CARD_W = 600;
 export const CAMERA_OPEN_X = 60;
 export const CAMERA_CLOSED_X = -2000;
 /** 夜修时副屏的上沿，以及顶部那一条（距天明 / 开始营业）的中线。 */
-export const NIGHT_PANEL_Y = 966;
+export const NIGHT_PANEL_Y = 1080;
 export const NIGHT_STRIP_Y = NIGHT_PANEL_Y + 40;
 /** 夜修时掌柜在法坛正中打坐的位置（角色锚点，脚底再往下约 54px）。 */
 export const NIGHT_SEAT = { x: CAMERA_CLOSED_X, y: 806 };

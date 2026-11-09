@@ -179,7 +179,7 @@ export class UiMethods {
     this.cultivationButton.setBackgroundColor("#3a2e4a");
     this.cultivationButton.setText("修为");
 
-    // 夜修期的副屏：顶部一条显示距天明还有几刻（天明后换成「开始营业」），下面两行四列的子系统入口
+    // 夜修期的副屏：顶部一条显示距天明还有几刻（天明后换成「开始营业」），下面一行子系统入口；玩法、账簿、存档在设置页
     this.navPanel = this.add.container(0, 0).setScrollFactor(0).setDepth(30);
     this.navPanel.add(
       this.add
@@ -192,21 +192,16 @@ export class UiMethods {
       .setOrigin(0.5)
       .setLetterSpacing(3);
     this.navPanel.add(this.navTitle);
-    const col = (i: number) => 93 + i * 178;
-    const [row1, row2] = [NIGHT_PANEL_Y + 128, NIGHT_PANEL_Y + 226];
-    this.staffButton = this.addNavCard(col(0), row1, "伙计", "招聘 · 分工", () => {
+    const col = (i: number) => 72 + i * 144;
+    const row = NIGHT_PANEL_Y + 130;
+    this.staffButton = this.addNavCard(col(0), row, "伙计", () => {
       this.staffNotice = "";
       this.buildStaffOverlay();
     });
-    this.upgradeButton = this.addNavCard(col(1), row1, "营造 Lv1", "雅座 · 灶台", () => this.buildBuildOverlay());
-    this.bankButton = this.addNavCard(col(2), row1, "灵石商行", "借贷 · 还账", () => this.buildBankOverlay());
-    this.purchaseButton = this.addNavCard(col(3), row1, "备货", "", () => this.startPurchase());
-    this.nightCultivationButton = this.addNavCard(col(0), row2, "修为", "修行 · 境界", () =>
-      this.buildCultivationOverlay(),
-    );
-    this.helpButton = this.addNavCard(col(1), row2, "玩法", "规则与操作", () => this.showHelp(), true);
-    this.recordButton = this.addNavCard(col(2), row2, "账簿", "累计 · 成就", () => this.buildRecordOverlay(), true);
-    this.saveButton = this.addNavCard(col(3), row2, "存档", "导出 · 导入", () => this.openSaveDialog("export"), true);
+    this.upgradeButton = this.addNavCard(col(1), row, "营造 Lv1", () => this.buildBuildOverlay());
+    this.bankButton = this.addNavCard(col(2), row, "灵石商行", () => this.buildBankOverlay());
+    this.purchaseButton = this.addNavCard(col(3), row, "备货", () => this.startPurchase());
+    this.nightCultivationButton = this.addNavCard(col(4), row, "修为", () => this.buildCultivationOverlay());
 
     this.buildFloorTabs();
     this.buildBoothVisuals();
@@ -307,9 +302,7 @@ export class UiMethods {
     x: number,
     y: number,
     label: string,
-    subtitle: string,
     onClick: () => void,
-    cool = false,
   ): TapText {
     const tap = () => {
       playSfx("click");
@@ -317,37 +310,25 @@ export class UiMethods {
     };
     // 卡片不进 navPanel：容器 + scrollFactor(0) 会让命中区按世界坐标偏移。
     const card = this.add
-      .rectangle(x, y, 168, 88, cool ? 0x10151c : 0x14100c, 0.97)
-      .setStrokeStyle(2, cool ? 0x8a7a5a : 0x9a3a2a, 0.75)
+      .rectangle(x, y, 130, 64, 0x14100c, 0.97)
+      .setStrokeStyle(2, 0x9a3a2a, 0.75)
       .setScrollFactor(0)
       .setDepth(31)
       .setInteractive({ useHandCursor: true })
       .on("pointerup", tap);
     const title = this.add
-      .text(x, y - 12, label, {
-        fontSize: "25px",
-        color: cool ? "#dfe8f4" : "#f5e6c8",
+      .text(x, y, label, {
+        fontSize: "21px",
+        color: "#f5e6c8",
         fontFamily: XIAN_FONT,
       })
       .setOrigin(0.5)
-      .setLetterSpacing(2)
       .setScrollFactor(0)
       .setDepth(32)
       .setInteractive({ useHandCursor: true })
       .on("pointerup", tap) as TapText;
     title.onTap = onClick;
-    const sub = this.add
-      .text(x, y + 19, subtitle, {
-        fontSize: "14px",
-        color: cool ? "#8a9aac" : "#a89472",
-        fontFamily: XIAN_FONT,
-      })
-      .setOrigin(0.5)
-      .setLetterSpacing(1)
-      .setScrollFactor(0)
-      .setDepth(32);
-    this.navCardObjects.push(card, title, sub);
-    title.sub = sub;
+    this.navCardObjects.push(card, title);
     return title;
   }
 
@@ -365,9 +346,6 @@ export class UiMethods {
       this.staffButton,
       this.bankButton,
       this.upgradeButton,
-      this.helpButton,
-      this.recordButton,
-      this.saveButton,
     ]) {
       button?.setVisible(visible);
     }

@@ -3,7 +3,7 @@ import Phaser from "phaser";
 import { DISHES, getGoalStatus, getQueueStatus, getNextRepThreshold, getRepLevelInfo, getNightDurationMs, getTotalBoothCount, isRarePatron } from "../logic";
 import { boothLabel, cookProgress } from "../booth";
 import { GAME } from "../config";
-import { CHRONICLE_MAX_LINES, COLOR_STAFF, PURCHASE_AMOUNT, SCREEN_W, XIAN_FONT } from "./constants";
+import { CHRONICLE_MAX_LINES, COLOR_STAFF, SCREEN_W, XIAN_FONT } from "./constants";
 import type { BoothState } from "./types";
 import type { TavernScene } from "./TavernScene";
 
@@ -106,7 +106,7 @@ export class HudMethods {
     // 菜单/店铺面板打开时也收起事务卡，避免透明卡片的命中区压到面板按钮上
     this.setClosedNavVisible(this.gameState === "closed" && !this.overlay);
 
-    this.purchaseButton.sub?.setText(`+${PURCHASE_AMOUNT} · ${this.purchasePrice()} 灵石`);
+    this.purchaseButton.setText(`备货 ${this.purchasePrice()}灵石`);
     this.upgradeButton.setText(`营造 Lv${this.level}`);
   }
 

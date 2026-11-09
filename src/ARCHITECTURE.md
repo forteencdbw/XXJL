@@ -41,7 +41,7 @@ Phaser 3 + TypeScript 竖屏经营游戏。领域词汇见根目录 `GLOSSARY.md
 | 食客生成、进场方式、常客、随机事件 | `scene/patrons.ts` |
 | 价格/天气/利是在场景侧的换算，菜单列表 | `scene/rules.ts` |
 | 存档在场景侧：打包成存档、赋回场景、读写 localStorage（清洗与默认值在 `src/save.ts`；未上线前改结构就升版本号，不做迁移） | `scene/save.ts` |
-| 副屏按钮与夜修事务卡搭建、镜头拖拽、二级页面关闭、子系统暂停（`setWorldPaused`） | `scene/ui.ts` |
+| 副屏按钮与夜修事务卡（底部一行）搭建、镜头拖拽、二级页面关闭、子系统暂停（`setWorldPaused`） | `scene/ui.ts` |
 | 每帧 HUD 文字、按钮状态、雅座进度条、见闻录/提示 | `scene/hud.ts` |
 | 楼层切换、雅座视觉与布局 | `scene/floors.ts` |
 | 酒楼内景像素画、窗、灯笼、猫 | `scene/world.ts` |
@@ -54,7 +54,7 @@ Phaser 3 + TypeScript 竖屏经营游戏。领域词汇见根目录 `GLOSSARY.md
 | 营造页（扩建/起楼/灶台/门幡） | `scene/overlays/build.ts` |
 | 伙计名单、个人详情（加点、分工）、招聘页 | `scene/overlays/staff.ts` |
 | 修为子系统入口（占位） | `scene/overlays/cultivation.ts` |
-| 设置页（音量滑条） | `scene/overlays/settings.ts`；音量读写在 `audio.ts` |
+| 设置页（音量滑条；玩法、账簿、存档入口） | `scene/overlays/settings.ts`；音量读写在 `audio.ts` |
 | 灵石商行 | `scene/overlays/bank.ts` |
 | 结算弹窗、破产弹窗 | `scene/overlays/settlement.ts` |
 | 玩法说明、账簿、存档导入导出 | `scene/overlays/info.ts` |

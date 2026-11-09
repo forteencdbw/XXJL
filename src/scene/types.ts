@@ -5,7 +5,7 @@ import type { PatronKind } from "../logic";
 import { Character } from "./Character";
 
 export type GameState = "closed" | "selectingMenu" | "open" | "bankrupt";
-export type TapText = Phaser.GameObjects.Text & { onTap: () => void; sub?: Phaser.GameObjects.Text };
+export type TapText = Phaser.GameObjects.Text & { onTap: () => void };
 
 export type { BoothState } from "../booth";
 

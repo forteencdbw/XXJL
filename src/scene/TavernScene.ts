@@ -179,9 +179,6 @@ export class TavernScene extends Phaser.Scene {
   cultivationButton!: TapText;
   /** 夜修副屏里的修为入口（营业中用底栏那颗）。 */
   nightCultivationButton!: TapText;
-  helpButton!: TapText;
-  recordButton!: TapText;
-  saveButton!: TapText;
   startButton!: TapText;
   lastAutosaveAt = 0;
 
