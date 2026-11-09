@@ -9,6 +9,8 @@ import { ACTOR_Y, COOK_FLOOR_MS, COOK_SPOT, COOK_TAVERN_SHRINK_PER_LEVEL_MS, DOO
 import type { Booth, StaffRuntime } from "./types";
 import type { TavernScene } from "./TavernScene";
 
+export type WorkLine = "seat" | "serve" | "cook" | "buy";
+
 /** 领座时跑堂站在客人前面（桌子在门的左边）的距离。 */
 const LEAD_GAP = 36;
 
@@ -33,6 +35,15 @@ export class ProductionMethods {
     }
     const home = this.staffHome(e);
     rt.char.walkTo(home.x, home.y, this.walkMs(e, rt.char.x, home.x));
+  }
+
+  /** 干活时从对应台词池随机说一句；force 为 false 时按概率说，头上已有气泡就不说。 */
+  workSay(this: TavernScene, e: Employee, kind: WorkLine, force = false) {
+    const char = this.staffRt.get(e.id)?.char;
+    if (!char?.visible || char.isSpeaking()) return;
+    if (!force && Math.random() >= GAME.staff.workLines.chance) return;
+    const pool = GAME.staff.workLines[kind];
+    char.say(pool[Math.floor(Math.random() * pool.length)]);
   }
 
   /** 领座：跑堂先走到门口接人，再走在客人前面领到桌边；客人落座后跑堂才离开。返回是否接了这单。 */
@@ -81,6 +92,7 @@ export class ProductionMethods {
         patron.char.say(patron.kind.id === "elder" ? "此子有慧根。" : "本座只等一炷香。", "cold");
       }
     });
+    this.workSay(e, "seat");
     return true;
   }
 
@@ -177,6 +189,7 @@ export class ProductionMethods {
     this.staffDidWork(e);
     rt.char.walkTo(COOK_SPOT.x, COOK_SPOT.y, Math.min(400, duration), () => rt.char.pulse());
     this.log(`${e.name}烹制${chosen.name}（雅座 ${index + 1}）`);
+    this.workSay(e, "cook");
     return true;
   }
 
@@ -211,6 +224,7 @@ export class ProductionMethods {
       this.setStaffFloor(rt, booth.floor);
       char.walkTo(dropX, ACTOR_Y, toTable);
     });
+    this.workSay(e, "serve");
     return true;
   }
 
@@ -257,6 +271,8 @@ export class ProductionMethods {
     this.displayedCoins = this.coins;
     this.inventory += PURCHASE_AMOUNT;
     this.log(`${credit ? "灵石不足，赊账采购灵材" : "采购灵材"} +${PURCHASE_AMOUNT}`);
+    const buyers = this.workforce().filter((w) => w.jobs.some((j) => j.job === "buy" && j.on) && this.staffRt.get(w.id)?.char.visible);
+    this.workSay(buyers[Math.floor(Math.random() * buyers.length)] ?? this.shopkeeper, "buy", true);
     this.save();
   }
 }

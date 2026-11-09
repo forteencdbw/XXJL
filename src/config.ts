@@ -213,6 +213,17 @@ export const GAME = {
     capLevelsPerSlot: 2,
     /** 可雇人数硬上限（伙计页一屏放得下的人数） */
     capMax: 7,
+    /**
+     * 干活时的台词池：领座/传菜/烹饪开工时有 chance 的概率说一句（头上已有气泡就不说），
+     * 打烊采购时采买员必说一句；闲聊时员工也从这里取（手上的活，空闲则第一岗位）。
+     */
+    workLines: {
+      chance: 0.25,
+      seat: ["客官里边请——", "小心台阶。", "雅座已备好。", "这边请，靠窗灵气足。", "几位？楼上有座。"],
+      serve: ["菜来咯，小心烫。", "让一让，热菜！", "客官的灵膳到了。", "趁热吃，灵气不散。", "这道刚出锅。"],
+      cook: ["火候到了。", "再添一把柴。", "这锅气，成了。", "灵火莫急。", "这道得慢慢煨。", "盐少许，灵露三滴。"],
+      buy: ["今日有鲜货！", "灵材我盯着呢。", "这批灵菇水灵。", "掌柜放心，明日够用。", "价钱又涨了……"],
+    },
     /** 属性上限（星） */
     maxStars: 10,
     /** 招聘时五项属性总星数（每项至少 1 星，其余随机分配） */
@@ -384,6 +395,8 @@ export function validateConfig(cfg: GameConfig): string[] {
   };
   ascending(cfg.reputation.levels, "threshold", "reputation.levels");
   ascending(cfg.realms, "cultivation", "realms");
+
+  if (cfg.staff.workLines.chance > 1) errors.push("staff.workLines.chance 不能大于 1");
 
   const dishIds = new Set(cfg.dishes.map((d) => d.id));
   if (dishIds.size !== cfg.dishes.length) errors.push("dishes 里有重复的 id");

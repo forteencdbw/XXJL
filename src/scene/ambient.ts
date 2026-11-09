@@ -1,6 +1,6 @@
 // 常驻氛围：天气粒子、灵气、蒸汽、萤火、小动作与闲聊。
 import Phaser from "phaser";
-import type { Job } from "../logic";
+import { GAME } from "../config";
 import { Character } from "./Character";
 import { FLOOR_Y } from "./constants";
 import type { TavernScene } from "./TavernScene";
@@ -242,15 +242,11 @@ export class AmbientMethods {
         text: pick(["道友，共饮一杯？", "这家的灵茶不错。", "听闻掌柜是散修出身。", "山外云深，不如先吃。"])
       });
     }
-    const jobLines: Record<Job | "none", string[]> = {
-      cook: ["火候到了。", "再添一把柴。", "这锅气，成了。"],
-      seat: ["客官里边请——", "小心台阶。", "雅座已备好。"],
-      buy: ["今日有鲜货！", "灵材我盯着呢。", "客官，里边请！"],
-      none: ["灵膳楼开张，仙凡同席！"],
-    };
     for (const e of this.employees) {
-      const char = this.staffRt.get(e.id)?.char;
-      if (char?.visible) speakers.push({ char, text: pick(jobLines[this.firstJob(e) ?? "none"]) });
+      const rt = this.staffRt.get(e.id);
+      if (!rt?.char.visible) continue;
+      const kind = rt.task?.kind ?? this.firstJob(e);
+      speakers.push({ char: rt.char, text: kind ? pick(GAME.staff.workLines[kind]) : "灵膳楼开张，仙凡同席！" });
     }
     if (speakers.length === 0) return;
     const chosen = speakers[Math.floor(Math.random() * speakers.length)];

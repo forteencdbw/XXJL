@@ -12,10 +12,12 @@ describe("validateConfig", () => {
     bad.reputation.levels[2].threshold = 10;
     bad.patronKinds[0].favorites = ["nope"];
     bad.dishes = [];
+    bad.staff.workLines.cook = [];
     const errors = validateConfig(bad).join("\n");
     expect(errors).toContain("start.coins");
     expect(errors).toContain("reputation.levels[2].threshold");
     expect(errors).toContain("「nope」");
     expect(errors).toContain("dishes 不能为空");
+    expect(errors).toContain("staff.workLines.cook 不能为空");
   });
 });
