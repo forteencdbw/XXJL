@@ -236,7 +236,7 @@ export class FocusMethods {
       this.chronicleText,
       this.weatherBadge,
       this.clockText,
-      this.sfxButton,
+      this.settingsButton,
       this.startButton,
       this.cultivationButton,
       ...this.floorTabs.flatMap((tab) => [tab.bg, tab.label, tab.sub]),

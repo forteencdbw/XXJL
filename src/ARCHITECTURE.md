@@ -52,6 +52,7 @@ Phaser 3 + TypeScript 竖屏经营游戏。领域词汇见根目录 `GLOSSARY.md
 | 营造页（扩建/起楼/灶台/门幡） | `scene/overlays/build.ts` |
 | 伙计名单、个人详情（加点、分工）、招聘页 | `scene/overlays/staff.ts` |
 | 修为子系统入口（占位） | `scene/overlays/cultivation.ts` |
+| 设置页（音量滑条） | `scene/overlays/settings.ts`；音量读写在 `audio.ts` |
 | 灵石商行 | `scene/overlays/bank.ts` |
 | 结算弹窗、破产弹窗 | `scene/overlays/settlement.ts` |
 | 玩法说明、账簿、存档导入导出 | `scene/overlays/info.ts` |

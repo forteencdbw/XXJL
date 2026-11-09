@@ -1,6 +1,6 @@
 // 屏幕固定层 UI：搭建底栏/导航卡/按钮、镜头拖拽、性别与音效开关、二级页面关闭。
 import Phaser from "phaser";
-import { loadAudioSettings, playSfx, setSfxMuted } from "../audio";
+import { loadAudioSettings, playSfx } from "../audio";
 import { NIGHT_COLOR } from "../logic";
 import { NIGHT_PANEL_Y, NIGHT_STRIP_Y, SCREEN_H, SCREEN_W, STATUS_BAR_H, XIAN_FONT } from "./constants";
 import type { TapText } from "./types";
@@ -162,20 +162,10 @@ export class UiMethods {
       .setScrollFactor(0)
       .setDepth(1000);
 
-    const audio = loadAudioSettings();
-    this.sfxMuted = audio.sfxMuted;
-    this.sfxButton = this.addUiButton(
-      612,
-      96,
-      () => {
-        this.sfxMuted = !this.sfxMuted;
-        setSfxMuted(this.sfxMuted);
-        this.refreshAudioButtons();
-      },
-      { x: 8, y: 4 },
-      0,
-    );
-    this.refreshAudioButtons();
+    loadAudioSettings();
+    // 设置入口：状态栏右侧，营业与夜修都在
+    this.settingsButton = this.addUiButton(630, 94, () => this.buildSettingsOverlay(), { x: 14, y: 4 }, 8, "18px");
+    this.settingsButton.setText("设置");
 
 
     // 「开始营业」只在夜修走到辰正后出现，占副屏顶部那一条
@@ -421,10 +411,6 @@ export class UiMethods {
     this.input.on("pointerup", () => {
       active = false;
     });
-  }
-
-  refreshAudioButtons(this: TavernScene) {
-    this.sfxButton?.setText(this.sfxMuted ? "音效：关" : "音效：开");
   }
 
   setGender(this: TavernScene, gender: "male" | "female") {

@@ -32,13 +32,17 @@ const SFX_DEFS: Record<SfxName, { notes: number[]; dur: number; type: Oscillator
 
 let ctx: AudioContext | null = null;
 let sfxGain: GainNode | null = null;
-let sfxMuted = false;
+// 音量 0–1，存在本机（跟设备走，不进存档）
+let sfxVolume = 1;
+let bgmVolume = 0.6;
+const SFX_KEY = "tavern_sfx_volume";
+const BGM_KEY = "tavern_bgm_volume";
 
 function ensure(): AudioContext {
   if (!ctx) {
     ctx = new AudioContext();
     sfxGain = ctx.createGain();
-    sfxGain.gain.value = sfxMuted ? 0 : 1;
+    sfxGain.gain.value = sfxVolume;
     sfxGain.connect(ctx.destination);
   }
   if (ctx.state === "suspended") void ctx.resume();
@@ -63,13 +67,30 @@ export function playSfx(name: SfxName) {
   });
 }
 
-export function setSfxMuted(muted: boolean) {
-  sfxMuted = muted;
-  localStorage.setItem("tavern_sfx_muted", muted ? "1" : "0");
-  if (sfxGain) sfxGain.gain.value = muted ? 0 : 1;
+const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
+
+export function setSfxVolume(v: number) {
+  sfxVolume = clamp01(v);
+  localStorage.setItem(SFX_KEY, String(sfxVolume));
+  if (sfxGain) sfxGain.gain.value = sfxVolume;
+}
+
+/** 背景音乐音量：本期还没有背景音乐，只保存数值，以后的音乐按它播放。 */
+export function setBgmVolume(v: number) {
+  bgmVolume = clamp01(v);
+  localStorage.setItem(BGM_KEY, String(bgmVolume));
+}
+
+export function getAudioSettings() {
+  return { sfx: sfxVolume, bgm: bgmVolume };
 }
 
 export function loadAudioSettings() {
-  sfxMuted = localStorage.getItem("tavern_sfx_muted") === "1";
-  return { sfxMuted };
+  const read = (key: string, fallback: number) => {
+    const v = Number(localStorage.getItem(key));
+    return localStorage.getItem(key) !== null && Number.isFinite(v) ? clamp01(v) : fallback;
+  };
+  // 旧的「音效关」开关按 0% 处理
+  sfxVolume = read(SFX_KEY, localStorage.getItem("tavern_sfx_muted") === "1" ? 0 : 1);
+  bgmVolume = read(BGM_KEY, 0.6);
 }

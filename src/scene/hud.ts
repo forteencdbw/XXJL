@@ -84,9 +84,8 @@ export class HudMethods {
     this.chronicleText.setText(
       this.chronicleLines.map((line) => (line.length > 34 ? `${line.slice(0, 33)}…` : line)).join("\n"),
     );
-    // 营业中把常驻日志与声音开关收起：给主画面让位，日志在夜修视图里看
+    // 营业中把常驻日志收起：给主画面让位，日志在夜修视图里看
     this.chronicleText.setVisible(!open);
-    this.sfxButton.setVisible(!open);
     const showWeather = open && !this.settling;
     this.weatherBadge.setVisible(showWeather);
     this.weatherBadge.setText(`天气 · ${this.weather.name}`);

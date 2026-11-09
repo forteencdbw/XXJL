@@ -24,6 +24,7 @@ import { MenuOverlayMethods } from "./overlays/menu";
 import { BuildOverlayMethods } from "./overlays/build";
 import { StaffOverlayMethods } from "./overlays/staff";
 import { CultivationOverlayMethods } from "./overlays/cultivation";
+import { SettingsOverlayMethods } from "./overlays/settings";
 import { BankOverlayMethods } from "./overlays/bank";
 import { SettlementOverlayMethods } from "./overlays/settlement";
 import { InfoOverlayMethods } from "./overlays/info";
@@ -166,8 +167,7 @@ export class TavernScene extends Phaser.Scene {
   activeLoans: { name: string; remaining: number; periodsLeft: number }[] = [];
   borrowedIds = new Set<string>();
   negativeStreak = 0;
-  sfxMuted = false;
-  sfxButton!: TapText;
+  settingsButton!: TapText;
   staffButton!: TapText;
   navPanel!: Phaser.GameObjects.Container;
   navTitle!: Phaser.GameObjects.Text;
@@ -333,8 +333,8 @@ export class TavernScene extends Phaser.Scene {
 }
 
 // 方法按功能分散在各文件（见 src/ARCHITECTURE.md），这里合并进 TavernScene 的类型与原型。
-export interface TavernScene extends TextureMethods, TitleMethods, SaveMethods, WorldMethods, UiMethods, FloorMethods, HudMethods, SessionMethods, ProductionMethods, StaffMethods, PatronMethods, RuleMethods, FxMethods, AmbientMethods, FocusMethods, MenuOverlayMethods, BuildOverlayMethods, StaffOverlayMethods, CultivationOverlayMethods, BankOverlayMethods, SettlementOverlayMethods, InfoOverlayMethods {}
-for (const mixin of [TextureMethods, TitleMethods, SaveMethods, WorldMethods, UiMethods, FloorMethods, HudMethods, SessionMethods, ProductionMethods, StaffMethods, PatronMethods, RuleMethods, FxMethods, AmbientMethods, FocusMethods, MenuOverlayMethods, BuildOverlayMethods, StaffOverlayMethods, CultivationOverlayMethods, BankOverlayMethods, SettlementOverlayMethods, InfoOverlayMethods]) {
+export interface TavernScene extends TextureMethods, TitleMethods, SaveMethods, WorldMethods, UiMethods, FloorMethods, HudMethods, SessionMethods, ProductionMethods, StaffMethods, PatronMethods, RuleMethods, FxMethods, AmbientMethods, FocusMethods, MenuOverlayMethods, BuildOverlayMethods, StaffOverlayMethods, CultivationOverlayMethods, SettingsOverlayMethods, BankOverlayMethods, SettlementOverlayMethods, InfoOverlayMethods {}
+for (const mixin of [TextureMethods, TitleMethods, SaveMethods, WorldMethods, UiMethods, FloorMethods, HudMethods, SessionMethods, ProductionMethods, StaffMethods, PatronMethods, RuleMethods, FxMethods, AmbientMethods, FocusMethods, MenuOverlayMethods, BuildOverlayMethods, StaffOverlayMethods, CultivationOverlayMethods, SettingsOverlayMethods, BankOverlayMethods, SettlementOverlayMethods, InfoOverlayMethods]) {
   for (const name of Object.getOwnPropertyNames(mixin.prototype)) {
     if (name === "constructor") continue;
     // 两个文件定义了同名方法会互相覆盖，启动时直接报错
