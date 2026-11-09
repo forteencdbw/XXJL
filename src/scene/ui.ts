@@ -154,6 +154,14 @@ export class UiMethods {
     );
     this.levelText.setVisible(false);
 
+    // 左下角最底部的版本号：压在所有层之上，标题页、营业、夜修都看得到
+    this.add
+      .text(8, SCREEN_H - 4, __APP_VERSION__, { fontSize: "12px", color: "#c8b8a0" })
+      .setOrigin(0, 1)
+      .setAlpha(0.45)
+      .setScrollFactor(0)
+      .setDepth(1000);
+
     const audio = loadAudioSettings();
     this.sfxMuted = audio.sfxMuted;
     this.sfxButton = this.addUiButton(
