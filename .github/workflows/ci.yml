@@ -38,8 +38,7 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      # 前提：仓库 Settings → Pages → Source 选「GitHub Actions」（只需设一次，工作流自带的令牌无权替你开启）
       - uses: actions/configure-pages@v5
-        with:
-          enablement: true
       - id: deployment
         uses: actions/deploy-pages@v4
