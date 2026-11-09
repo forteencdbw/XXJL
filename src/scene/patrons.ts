@@ -10,6 +10,13 @@ import { ACTOR_Y, ENTRANCE_SLOW, QUEUE_GAP, QUEUE_PATIENCE_MS, QUEUE_X } from ".
 import type { TavernScene } from "./TavernScene";
 
 export class PatronMethods {
+  /** 食客按距离走路：速度 = patronMove.walkSpeed × 类型倍率，生气离开再乘 angryFactor。 */
+  patronWalk(this: TavernScene, char: Character, kind: PatronKind | null, x: number, angry: boolean, onComplete?: () => void) {
+    const m = GAME.patronMove;
+    const speed = m.walkSpeed * (kind?.walkSpeedFactor ?? 1) * (angry ? m.angryFactor : 1);
+    char.walkTo(x, ACTOR_Y, (Math.abs(x - char.x) / speed) * 1000, onComplete);
+  }
+
   // ===== 产线 =====
   /** 队尾最多排到空地尽头；等级很高时自动压缩间距。 */
   queueGap(this: TavernScene): number {
@@ -227,10 +234,9 @@ export class PatronMethods {
       });
       return;
     }
-    // 凡人/散修：正常走进来；散修脚下有急行的尘，凡人慢慢挑担
+    // 凡人/散修：慢悠悠走进来，脚下带一点尘
     playSfx("arrival");
-    const walkMs = (id === "rogue" ? 430 : 760) * ENTRANCE_SLOW;
-    char.walkTo(slotX, ACTOR_Y, walkMs, () => {
+    this.patronWalk(char, kind, slotX, false, () => {
       char.arrived = true;
       sayOnArrive();
     });
@@ -282,7 +288,7 @@ export class PatronMethods {
     const wish = regular ? regular.wish : pickPatronWish(kind, unlocked, Math.random());
 
     if (this.queue.length >= getTotalBoothCount(this.level, this.floorsBuilt)) {
-      char.walkTo(1620, ACTOR_Y, 500, () => char.destroy());
+      this.patronWalk(char, kind, 1620, true, () => char.destroy());
       this.sessionLost += 1;
       this.queueLost += 1;
       this.log(`${name}见门外排满，转身离去`);

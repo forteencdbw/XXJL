@@ -7,7 +7,7 @@ export const DINING_MS = GAME.session.diningMs;
 /** 最后一位离店后停顿一下再结算，给清场留个过场。 */
 export const ROUND_END_DELAY_MS = 1200;
 /** 顾客进场动画整体放慢，体现悠闲。 */
-export const ENTRANCE_SLOW = 1.5;
+export const ENTRANCE_SLOW = GAME.patronMove.entranceSlow;
 export const PURCHASE_AMOUNT = GAME.purchase.amount;
 export const PURCHASE_TARGET_STOCK = GAME.staff.buyerTargetStockBase;
 export const CHRONICLE_MAX_LINES = 1;

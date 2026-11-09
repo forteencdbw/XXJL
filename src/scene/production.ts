@@ -148,6 +148,7 @@ export class ProductionMethods {
       this.stockLost += 1;
       const leaver = booth.patronChar;
       const guest = booth.patronKind?.name ?? "食客";
+      const leaverKind = booth.patronKind;
       booth.patronChar = undefined;
       if (this.focusChar === leaver) this.returnFromFocus();
       leaver?.setSeated(false);
@@ -158,7 +159,7 @@ export class ProductionMethods {
       booth.diningProp?.destroy();
       booth.diningProp = undefined;
       booth.awaitingSince = 0;
-      leaver?.walkTo(440, ACTOR_Y, 400, () => leaver.destroy());
+      if (leaver) this.patronWalk(leaver, leaverKind, 440, true, () => leaver.destroy());
       this.sessionLost += 1;
       this.pendingRepLoss += 1;
       this.log(`灵材不足，${guest}没吃上菜便离开了`);

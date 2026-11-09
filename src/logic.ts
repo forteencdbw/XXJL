@@ -237,6 +237,8 @@ export interface PatronKind {
   weight: number;
   /** 客单价倍率：身份越特殊越舍得掏灵石。 */
   priceFactor: number;
+  /** 走路速度倍率，乘在 patronMove.walkSpeed 上。 */
+  walkSpeedFactor: number;
   /** 每个来客都有名字，坐进店里才像个人。 */
   names: string[];
 }

@@ -3,7 +3,7 @@ import Phaser from "phaser";
 import { playSfx } from "../audio";
 import { GAME } from "../config";
 import { BANKRUPT_STREAK, DISHES, formatClock, gainReputation, getArrivalSchedule, getClockMinutes, getDailyGoal, getDailyGoalOptions, getDailyRent, getEventSchedule, getFestivalGoalMultiplier, getNightClockMinutes, getNightDurationMs, getNightQuarters, getFloorRent, getGoalPayout, getLoanDue, getRepLevelInfo, getSessionDurationMs, getShichen, getStreakBonus, GOAL_STREAK_TARGET, isFestivalDay, loseReputation, NIGHT_COLOR, REP_GAIN_RARE, REP_GAIN_SERVED, skyColorAt, updateMeta } from "../logic";
-import { ACTOR_Y, CAMERA_CLOSED_X, CAMERA_OPEN_X, FLOOR_Y, MAX_EVENTS_PER_SESSION, PURCHASE_AMOUNT, PURCHASE_TARGET_STOCK, ROUND_END_DELAY_MS, SCREEN_H, SCREEN_W, SKY_TRANSITION_MS, XIAN_FONT } from "./constants";
+import { CAMERA_CLOSED_X, CAMERA_OPEN_X, FLOOR_Y, MAX_EVENTS_PER_SESSION, PURCHASE_AMOUNT, PURCHASE_TARGET_STOCK, ROUND_END_DELAY_MS, SCREEN_H, SCREEN_W, SKY_TRANSITION_MS, XIAN_FONT } from "./constants";
 import type { TavernScene } from "./TavernScene";
 
 export class SessionMethods {
@@ -24,12 +24,14 @@ export class SessionMethods {
     }
 
     this.queue = this.queue.filter((patron) => {
+      // 还在路上（走进来、御剑落地）的客人不算排队，耐心从站定那一刻起算
+      if (!patron.char.arrived) patron.expiresAt = time + patron.patienceMs;
       if (time >= patron.expiresAt) {
         this.sessionLost += 1;
         this.pendingRepLoss += 1;
         if (this.focusChar === patron.char) this.returnFromFocus();
         patron.char.say("等太久了……", "cold");
-        patron.char.walkTo(1620, ACTOR_Y, 500, () => patron.char.destroy());
+        this.patronWalk(patron.char, patron.kind, 1620, true, () => patron.char.destroy());
         this.log(`${patron.kind.name}候得不耐，拂袖离去`);
         return false;
       }
@@ -71,7 +73,7 @@ export class SessionMethods {
         leaver?.setDining(false);
         leaver?.setSeated(false);
         if (hasWish && !matched) leaver?.say("这不是我想吃的……", "cold");
-        leaver?.walkTo(440, ACTOR_Y, 500, () => leaver.destroy());
+        if (leaver) this.patronWalk(leaver, guestKind, 440, false, () => leaver.destroy());
         playSfx("coin");
         this.showCoinPopup(this.tablePosition(index).x, FLOOR_Y - 120, price);
         this.sessionServed += 1;

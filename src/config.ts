@@ -79,15 +79,25 @@ export const GAME = {
    * 食客类型。patienceFactor 耐心倍率，priceFactor 客单价倍率，weight 抽取权重，
    * favorites 偏爱的菜（填 dishes 里的 id），names 姓名池。颜色仅影响外观。
    */
+  /** 食客类型；walkSpeedFactor 乘在 patronMove.walkSpeed 上（1 = 常速，越小越慢） */
   patronKinds: [
-    { id: "rogue", name: "散修", bodyColor: 0x7a8a6a, hairColor: 0x2b2b2b, patienceFactor: 1, favorites: ["stirfry", "ginseng"], weight: 8, priceFactor: 1, names: ["沈青崖", "陆行舟", "顾长风", "唐不器"] },
-    { id: "sword", name: "剑修", bodyColor: 0x5a7a9a, hairColor: 0x1b1b2b, patienceFactor: 0.8, favorites: ["fish", "jelly", "voidfruit"], weight: 8, priceFactor: 1.1, names: ["白无锋", "叶惊鸿", "江雪照", "谢孤云"] },
-    { id: "alchemist", name: "丹修", bodyColor: 0x8a6a9a, hairColor: 0x3b2b3b, patienceFactor: 1.1, favorites: ["porridge", "jelly", "ginseng"], weight: 8, priceFactor: 1.05, names: ["苏问丹", "柳含烟", "程九炉", "温岐黄"] },
-    { id: "demon", name: "妖修", bodyColor: 0x9a5a3a, hairColor: 0x4a2b1b, patienceFactor: 1.2, favorites: ["fish", "stirfry", "phoenix"], weight: 8, priceFactor: 1.2, names: ["阿椒", "青尾", "胡三娘", "花间狸"] },
-    { id: "mortal", name: "凡人", bodyColor: 0xb0a090, hairColor: 0x3b3b3b, patienceFactor: 1.3, favorites: [] as string[], weight: 8, priceFactor: 0.9, names: ["王二", "李婶", "陈货郎", "赵小满"] },
-    { id: "elder", name: "仙门长老", bodyColor: 0xe8e0c8, hairColor: 0xdfe6ff, patienceFactor: 1.5, favorites: ["ginseng", "phoenix", "voidfruit"], weight: 1, priceFactor: 2.5, names: ["玄阳真人", "清虚长老", "素心仙子", "太微道人"] },
-    { id: "demonlord", name: "魔道散人", bodyColor: 0x6a2a3a, hairColor: 0x1a1a1a, patienceFactor: 0.7, favorites: ["fish", "phoenix"], weight: 1, priceFactor: 1.8, names: ["殷无咎", "屠千山", "夜罗刹", "鬼母"] },
+    { id: "rogue", name: "散修", bodyColor: 0x7a8a6a, hairColor: 0x2b2b2b, patienceFactor: 1, favorites: ["stirfry", "ginseng"], weight: 8, priceFactor: 1, walkSpeedFactor: 1, names: ["沈青崖", "陆行舟", "顾长风", "唐不器"] },
+    { id: "sword", name: "剑修", bodyColor: 0x5a7a9a, hairColor: 0x1b1b2b, patienceFactor: 0.8, favorites: ["fish", "jelly", "voidfruit"], weight: 8, priceFactor: 1.1, walkSpeedFactor: 1, names: ["白无锋", "叶惊鸿", "江雪照", "谢孤云"] },
+    { id: "alchemist", name: "丹修", bodyColor: 0x8a6a9a, hairColor: 0x3b2b3b, patienceFactor: 1.1, favorites: ["porridge", "jelly", "ginseng"], weight: 8, priceFactor: 1.05, walkSpeedFactor: 1, names: ["苏问丹", "柳含烟", "程九炉", "温岐黄"] },
+    { id: "demon", name: "妖修", bodyColor: 0x9a5a3a, hairColor: 0x4a2b1b, patienceFactor: 1.2, favorites: ["fish", "stirfry", "phoenix"], weight: 8, priceFactor: 1.2, walkSpeedFactor: 1, names: ["阿椒", "青尾", "胡三娘", "花间狸"] },
+    { id: "mortal", name: "凡人", bodyColor: 0xb0a090, hairColor: 0x3b3b3b, patienceFactor: 1.3, favorites: [] as string[], weight: 8, priceFactor: 0.9, walkSpeedFactor: 1, names: ["王二", "李婶", "陈货郎", "赵小满"] },
+    { id: "elder", name: "仙门长老", bodyColor: 0xe8e0c8, hairColor: 0xdfe6ff, patienceFactor: 1.5, favorites: ["ginseng", "phoenix", "voidfruit"], weight: 1, priceFactor: 2.5, walkSpeedFactor: 1, names: ["玄阳真人", "清虚长老", "素心仙子", "太微道人"] },
+    { id: "demonlord", name: "魔道散人", bodyColor: 0x6a2a3a, hairColor: 0x1a1a1a, patienceFactor: 0.7, favorites: ["fish", "phoenix"], weight: 1, priceFactor: 1.8, walkSpeedFactor: 1, names: ["殷无咎", "屠千山", "夜罗刹", "鬼母"] },
   ],
+  /** 食客走路：悠闲为主，耗时按距离算（领座时跟着跑堂走，不用这里的速度） */
+  patronMove: {
+    /** 走路速度（像素/秒）；伙计 1 星约 170 */
+    walkSpeed: 110,
+    /** 生气离开（排队等太久、门外排满、灵材不足没吃上）时的速度倍率 */
+    angryFactor: 1.4,
+    /** 御剑、乘云、化烟、裂空等出场动画的时长倍率，越大越慢 */
+    entranceSlow: 2.2,
+  },
   /** 客单价倍率 ≥ 这个值的食客算「稀客」（★、特殊音效、声望更多、受灵雾/声望放大权重） */
   rarePriceFactor: 1.8,
 
@@ -377,6 +387,11 @@ export function validateConfig(cfg: GameConfig): string[] {
 
   const dishIds = new Set(cfg.dishes.map((d) => d.id));
   if (dishIds.size !== cfg.dishes.length) errors.push("dishes 里有重复的 id");
+  if (cfg.patronMove.walkSpeed <= 0 || cfg.patronMove.angryFactor <= 0 || cfg.patronMove.entranceSlow <= 0)
+    errors.push("patronMove 的速度与倍率都要大于 0");
+  cfg.patronKinds.forEach((k, i) => {
+    if (k.walkSpeedFactor <= 0) errors.push(`patronKinds[${i}].walkSpeedFactor 要大于 0`);
+  });
   cfg.patronKinds.forEach((k, i) =>
     k.favorites.forEach((id) => {
       if (!dishIds.has(id)) errors.push(`patronKinds[${i}].favorites 引用了不存在的菜「${id}」`);
