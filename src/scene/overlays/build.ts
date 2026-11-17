@@ -8,6 +8,13 @@ export class BuildOverlayMethods {
   buildBuildOverlay(this: TavernScene) {
     const layer = this.openSubsystemPage("营造");
     layer.add(this.add.text(40, 108, "灵石有限，先补当前的短板", { fontSize: "18px", color: "#999999" }));
+    if (!this.canManage()) {
+      layer.add(
+        this.add
+          .text(680, 108, "营业中只读 · 打烊后操作", { fontSize: "16px", color: "#ff9a8a" })
+          .setOrigin(1, 0),
+      );
+    }
     const nextFloor = this.floorsBuilt + 1;
     if (nextFloor < MAX_FLOORS) {
       const def = FLOOR_UNLOCKS[nextFloor - 1];
@@ -105,6 +112,10 @@ export class BuildOverlayMethods {
   }
 
   buildFloor(this: TavernScene) {
+    if (!this.canManage()) {
+      this.showHint("营业结束后才能操作");
+      return;
+    }
     const next = this.floorsBuilt + 1;
     if (next >= MAX_FLOORS) return;
     const def = FLOOR_UNLOCKS[next - 1];
@@ -128,6 +139,10 @@ export class BuildOverlayMethods {
   }
 
   upgradeTavern(this: TavernScene) {
+    if (!this.canManage()) {
+      this.showHint("营业结束后才能操作");
+      return;
+    }
     const cost = getUpgradeCost(this.level);
     if (this.coins < cost) {
       this.log("灵石不足，无法装潢升级");
@@ -140,8 +155,8 @@ export class BuildOverlayMethods {
     this.drawInterior(this.interiorGfx);
     // 多一张桌子就会多吃货，升级附赠一点灵材，避免第二天立刻断货
     this.inventory += 5;
-    // 打烊期升级发生在开张前：保持玩家已选的目标类型，只更新数值
-    if (this.gameState === "closed") {
+    // 准备阶段升级发生在开张前：保持玩家已选的目标类型，只更新数值
+    if (this.canManage()) {
       const options = getDailyGoalOptions(this.day, this.level);
       this.dailyGoal = options.find((o) => o.kind === this.dailyGoal?.kind) ?? options[0];
     }
@@ -159,6 +174,10 @@ export class BuildOverlayMethods {
   }
 
   upgradeStove(this: TavernScene) {
+    if (!this.canManage()) {
+      this.showHint("营业结束后才能操作");
+      return;
+    }
     const cost = getStoveUpgradeCost(this.stoveLevel);
     if (this.coins < cost) {
       this.log("灵石不足，无法精修灶台");
@@ -176,6 +195,10 @@ export class BuildOverlayMethods {
   }
 
   upgradeSign(this: TavernScene) {
+    if (!this.canManage()) {
+      this.showHint("营业结束后才能操作");
+      return;
+    }
     const cost = getSignUpgradeCost(this.signLevel);
     if (this.coins < cost) {
       this.log("灵石不足，无法更换门面幡旗");

@@ -8,13 +8,12 @@ import {
   STARTING_COINS,
   STARTING_INVENTORY,
   createShopkeeper,
-  getNightDurationMs,
   getRealmIndex,
   sanitizeEmployees,
 } from "./logic";
 import type { DailyGoal, Employee, MetaStats, RootElement } from "./logic";
 
-export const SAVE_VERSION = 3;
+export const SAVE_VERSION = 4;
 
 export interface RegularGuest {
   name: string;
@@ -47,8 +46,6 @@ export interface SaveData {
   ascensions: number;
   selectedDishIds: string[];
   playerGender: "male" | "female";
-  /** 夜修已走的毫秒；营业中为 0。 */
-  nightMs: number;
   meta: MetaStats;
   regulars: RegularGuest[];
   /** 当日目标快照：读档后不能因等级变化换目标，否则同一目标会显示两个数。 */
@@ -70,7 +67,7 @@ export interface SaveCarry {
   giftStreak?: number;
 }
 
-/** 新档（含破产重开）：第 1 日辰正开张，不先过夜。所有开局数值只在这里。 */
+/** 新档（含破产重开）：第 1 日从主界面开始。所有开局数值只在这里。 */
 export function newSave(carry: SaveCarry = {}): SaveData {
   const shopkeeper = createShopkeeper();
   return {
@@ -94,7 +91,6 @@ export function newSave(carry: SaveCarry = {}): SaveData {
     ascensions: carry.ascensions ?? 0,
     selectedDishIds: DISHES.filter((d) => d.unlockLevel <= 1).map((d) => d.id),
     playerGender: carry.playerGender ?? "male",
-    nightMs: getNightDurationMs(),
     meta: carry.meta ?? { ...EMPTY_META, topDays: [] },
     regulars: [],
     dailyGoal: null,
@@ -189,7 +185,6 @@ export function parseSave(raw: unknown): SaveData | null {
     ascensions: count(data.ascensions),
     selectedDishIds: strings(data.selectedDishIds),
     playerGender: data.playerGender === "female" ? "female" : "male",
-    nightMs: Math.min(getNightDurationMs(), count(data.nightMs, getNightDurationMs())),
     meta: metaStats,
     regulars: arr(data.regulars)
       .map(rec)

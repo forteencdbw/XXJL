@@ -18,7 +18,7 @@ export class InfoOverlayMethods {
       }),
     );
     layer.add(
-      this.add.text(40, 176, "白日营生，夜里修行；总有一天，要踏破虚空。", {
+      this.add.text(40, 176, "白天营生，夜里修行；主界面各有入口，随时切换。", {
         fontSize: "17px",
         color: "#c8b8a0",
         fontStyle: "italic",
@@ -30,10 +30,11 @@ export class InfoOverlayMethods {
       "营业中：门口排队 → 跑堂领座 → 掌勺做菜 → 跑堂传菜 → 用膳结账。",
       "掌柜和伙计按「伙计」页的勾选与顺序自动干活；你负责排人、选菜单和备货。",
       "每人有灵根和五项属性：根骨管跑堂、神识管烹饪、机缘管采买；火、水、金灵根分别让烹饪、跑堂、采买多算几星。",
-      "干活攒经验，升级得属性点，打烊或夜修时到「伙计」页点人物加点。",
+      "干活攒经验，升级得属性点，准备阶段到「伙计」页点人物加点。",
       "营业中可左右拖动画面，查看门外排队与空地。",
-      "营业从辰正到子初，按刻计时，不能提前打烊；本机每天第一次开店领「开市利是」，连续越久赏越多。",
-      "打烊后入夜修：掌柜与伙计在法坛打坐，到辰正天亮才能开张；打开任何页面时时间暂停。",
+      "开张后进入固定倒计时，可以切回主界面或去修炼，店里由伙计照常运转；倒计时归零即打烊，未结账的客人不计收入。",
+      "打开任何页面都不会暂停营业；打烊后到结算前管理只读，点开【营业】结算才领奖励、天数 +1。",
+      "天色与天气按现实时间变化，只做氛围，不影响玩法。",
       "客人想吃的菜在今日菜单上才端得对：端对 +50%，端错只付半价。",
       "「修为」子系统还在筹备，敬请期待。",
       "每天一个目标，达成有额外灵石；连亏 5 日破产。",
@@ -110,11 +111,9 @@ export class InfoOverlayMethods {
   /** 导出/导入存档。用浏览器原生输入框承载长文本（Phaser 没有文本输入控件）。 */
   openSaveDialog(this: TavernScene, mode: "export" | "import") {
     document.getElementById("save-dialog")?.remove();
-    this.setWorldPaused(true);
     const overlay = document.createElement("div");
     const close = () => {
       overlay.remove();
-      this.setWorldPaused(false);
     };
     overlay.id = "save-dialog";
     overlay.style.cssText =
@@ -129,7 +128,7 @@ export class InfoOverlayMethods {
     hint.textContent =
       mode === "export"
         ? "复制整段导出码保存。换设备或清空浏览器后，在这里选「导入存档」恢复。"
-        : "粘贴 LS3. 开头的导出码。导入会覆盖本机当前进度。";
+        : "粘贴 LS4. 开头的导出码。导入会覆盖本机当前进度。";
     hint.style.cssText = "font-size:14px;color:#bbbbbb;line-height:1.5;margin-bottom:10px;";
     const textarea = document.createElement("textarea");
     textarea.value = mode === "export" ? encodeSaveCode(this.buildSaveData()) : "";
@@ -191,8 +190,8 @@ export class InfoOverlayMethods {
         }
       });
     }
-    // 导入会刷新页面，营业中导入会丢掉当天的进度
-    const lockImport = mode === "export" && this.gameState === "open";
+    // 导入会刷新页面，营业中或待结算时导入会丢掉本局进度
+    const lockImport = mode === "export" && this.session !== "idle";
     button(
       lockImport ? "打烊后再导入" : mode === "export" ? "导入存档" : "导出存档",
       false,

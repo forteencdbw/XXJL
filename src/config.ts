@@ -17,12 +17,18 @@ export const GAME = {
     ingredients: 8,
   },
 
+  /** 全局装饰时钟：只影响天色与状态栏显示，不影响玩法 */
+  clock: {
+    /** 现实几点算天亮 */
+    dayStartHour: 6,
+    /** 现实几点算入夜 */
+    dayEndHour: 18,
+  },
+
   /** 营业中的节奏 */
   session: {
-    /** 营业时钟：现实多少毫秒走一刻（游戏内 15 分钟） */
+    /** 营业倒计时：现实多少毫秒走一刻（游戏内 15 分钟）；开门到打烊的刻数 × 它 = 本局时长 */
     msPerQuarter: 4000,
-    /** 夜修时钟：现实多少毫秒走一刻；从打烊（子初）走到次日开门（辰正），走满才能开张 */
-    nightMsPerQuarter: 4000,
     /** 几点开门（辰正 = 8） */
     openHour: 8,
     /** 几点打烊（子初 = 23）；到点后不再来客，店里客人走完即结算 */
@@ -416,7 +422,8 @@ export function validateConfig(cfg: GameConfig): string[] {
   if (!(se.openHour < cfg.events.lastHour && cfg.events.lastHour <= se.closeHour))
     errors.push("events.lastHour 要在 session.openHour 与 closeHour 之间");
   if (se.msPerQuarter < 100) errors.push("session.msPerQuarter 至少 100 毫秒");
-  if (se.nightMsPerQuarter < 100) errors.push("session.nightMsPerQuarter 至少 100 毫秒");
+  if (!(cfg.clock.dayStartHour >= 0 && cfg.clock.dayStartHour < cfg.clock.dayEndHour && cfg.clock.dayEndHour <= 24))
+    errors.push("clock 要满足 0 ≤ dayStartHour < dayEndHour ≤ 24");
   for (const [path, v] of [
     ["regulars.returnChance", cfg.regulars.returnChance],
     ["dailyGoal.partialThreshold", cfg.dailyGoal.partialThreshold],

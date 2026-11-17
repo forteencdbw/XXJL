@@ -75,6 +75,12 @@ export class UiMethods {
     this.rightFrame.add(this.add.rectangle(710, 640, 20, 1280, 0x1a120c, 1));
     this.rightFrame.add(this.add.rectangle(700, 640, 3, 1280, 0x8a2a22, 0.85));
     this.rightFrame.add(this.add.rectangle(704, 640, 1.5, 1280, 0xd9b45a, 0.35));
+    this.businessNightTint = this.add
+      .rectangle(0, 0, SCREEN_W, SCREEN_H, 0x0b1424, 0)
+      .setOrigin(0, 0)
+      .setScrollFactor(0)
+      .setDepth(27.5)
+      .setVisible(false);
     this.closedBackdrop = this.add
       .image(360, 640, "ink-closed")
       .setDisplaySize(SCREEN_W, SCREEN_H)
@@ -88,6 +94,16 @@ export class UiMethods {
         fontFamily: XIAN_FONT,
         backgroundColor: "rgba(13,10,8,0.9)",
         padding: { x: 14, y: 6 },
+      })
+      .setOrigin(0.5)
+      .setScrollFactor(0)
+      .setDepth(31)
+      .setVisible(false);
+    this.cultivationNote = this.add
+      .text(360, 760, "店内仍在营业 · 掌柜与伙计留在店里", {
+        fontSize: "18px",
+        color: "#c8b8a0",
+        fontFamily: XIAN_FONT,
       })
       .setOrigin(0.5)
       .setScrollFactor(0)
@@ -163,23 +179,28 @@ export class UiMethods {
       .setDepth(1000);
 
     loadAudioSettings();
-    // 设置入口：状态栏右侧，营业与夜修都在
+    // 设置入口：状态栏右侧，三个视图都在
     this.settingsButton = this.addUiButton(630, 94, () => this.buildSettingsOverlay(), { x: 14, y: 4 }, 8, "18px");
     this.settingsButton.setText("设置");
 
-
-    // 「开始营业」只在夜修走到辰正后出现，占副屏顶部那一条
-    this.startButton = this.addUiButton(360, NIGHT_STRIP_Y, () => this.onStartButton(), { x: 60, y: 14 }, 6, "24px");
-    this.startButton.setOrigin(0.5);
-    this.startButton.setStyle({ color: "#f5e6c8", backgroundColor: "#8a2a22" });
-    this.startButton.setText("开始营业");
-    this.startButton.setVisible(false);
-    // 营业中副屏只剩修为入口
-    this.cultivationButton = this.addUiButton(560, 1186, () => this.buildCultivationOverlay(), { x: 30, y: 28 }, 6, "22px");
+    // 营业视图底部：回主界面 / 跳修炼；修炼视图底部：只读修为页 / 回主界面
+    this.businessHomeButton = this.addUiButton(170, 1186, () => this.enterHome(), { x: 24, y: 28 }, 6, "22px");
+    this.businessHomeButton.setBackgroundColor("#2a2418");
+    this.businessHomeButton.setText("返回主界面");
+    this.cultivationButton = this.addUiButton(550, 1186, () => this.enterCultivationView(), { x: 30, y: 28 }, 6, "22px");
     this.cultivationButton.setBackgroundColor("#3a2e4a");
     this.cultivationButton.setText("修为");
+    this.cultivationPageButton = this.addUiButton(170, 1186, () => this.buildCultivationOverlay(), { x: 30, y: 28 }, 6, "22px");
+    this.cultivationPageButton.setBackgroundColor("#3a2e4a");
+    this.cultivationPageButton.setText("修为");
+    this.cultivationHomeButton = this.addUiButton(550, 1186, () => this.enterHome(), { x: 24, y: 28 }, 6, "22px");
+    this.cultivationHomeButton.setBackgroundColor("#2a2418");
+    this.cultivationHomeButton.setText("返回主界面");
 
-    // 夜修期的副屏：顶部一条显示距天明还有几刻（天明后换成「开始营业」），下面一行子系统入口；玩法、账簿、存档在设置页
+    // 主界面：门面 + 【营业】【修炼】两张入口卡
+    this.buildHomeView();
+
+    // 主界面的副屏：顶部写日期/天气，下面一行管理入口；玩法、账簿、存档也可从设置进
     this.navPanel = this.add.container(0, 0).setScrollFactor(0).setDepth(30);
     this.navPanel.add(
       this.add
@@ -192,16 +213,17 @@ export class UiMethods {
       .setOrigin(0.5)
       .setLetterSpacing(3);
     this.navPanel.add(this.navTitle);
-    const col = (i: number) => 72 + i * 144;
+    const col = (i: number) => 60 + i * 120;
     const row = NIGHT_PANEL_Y + 130;
     this.staffButton = this.addNavCard(col(0), row, "伙计", () => {
       this.staffNotice = "";
       this.buildStaffOverlay();
-    });
-    this.upgradeButton = this.addNavCard(col(1), row, "营造 Lv1", () => this.buildBuildOverlay());
-    this.bankButton = this.addNavCard(col(2), row, "灵石商行", () => this.buildBankOverlay());
-    this.purchaseButton = this.addNavCard(col(3), row, "备货", () => this.startPurchase());
-    this.nightCultivationButton = this.addNavCard(col(4), row, "修为", () => this.buildCultivationOverlay());
+    }, 110, 19);
+    this.upgradeButton = this.addNavCard(col(1), row, "营造 Lv1", () => this.buildBuildOverlay(), 110, 19);
+    this.bankButton = this.addNavCard(col(2), row, "灵石商行", () => this.buildBankOverlay(), 110, 19);
+    this.purchaseButton = this.addNavCard(col(3), row, "备货", () => this.startPurchase(), 110, 19);
+    this.addNavCard(col(4), row, "账簿", () => this.buildRecordOverlay(), 110, 19);
+    this.addNavCard(col(5), row, "存档", () => this.openSaveDialog("export"), 110, 19);
 
     this.buildFloorTabs();
     this.buildBoothVisuals();
@@ -296,13 +318,15 @@ export class UiMethods {
     return t;
   }
 
-  /** 夜修副屏的事务卡：整卡可点，字号比旧文字按钮大，避免手机上挤成一列小字。 */
+  /** 副屏的事务卡：整卡可点，字号比旧文字按钮大，避免手机上挤成一列小字。 */
   addNavCard(
     this: TavernScene,
     x: number,
     y: number,
     label: string,
     onClick: () => void,
+    width = 130,
+    fontSize = 21,
   ): TapText {
     const tap = () => {
       playSfx("click");
@@ -310,7 +334,7 @@ export class UiMethods {
     };
     // 卡片不进 navPanel：容器 + scrollFactor(0) 会让命中区按世界坐标偏移。
     const card = this.add
-      .rectangle(x, y, 130, 64, 0x14100c, 0.97)
+      .rectangle(x, y, width, 64, 0x14100c, 0.97)
       .setStrokeStyle(2, 0x9a3a2a, 0.75)
       .setScrollFactor(0)
       .setDepth(31)
@@ -318,7 +342,7 @@ export class UiMethods {
       .on("pointerup", tap);
     const title = this.add
       .text(x, y, label, {
-        fontSize: "21px",
+        fontSize: `${fontSize}px`,
         color: "#f5e6c8",
         fontFamily: XIAN_FONT,
       })
@@ -351,7 +375,7 @@ export class UiMethods {
     }
   }
 
-  /** 切换营业 / 夜修视角时重排场景；按钮与背景的显隐每帧由 refreshHud 决定，这里不设。 */
+  /** 切换营业 / 主界面 / 修炼视角时重排场景；按钮与背景的显隐每帧由 refreshHud 决定，这里不设。 */
   positionUi(this: TavernScene, isOpen: boolean) {
     this.relayoutTables();
     this.setFloorTabsVisible(isOpen);
@@ -370,7 +394,7 @@ export class UiMethods {
     let active = false;
 
     this.input.on("pointerdown", (p: Phaser.Input.Pointer) => {
-      if (this.gameState !== "open" || this.transitioning || this.settling) return;
+      if (this.view !== "business" || this.transitioning || this.settling) return;
       startX = p.x;
       startScroll = cam.scrollX;
       active = true;
@@ -397,12 +421,11 @@ export class UiMethods {
   destroyOverlay(this: TavernScene) {
     this.overlay?.destroy(true);
     this.overlay = null;
-    this.setWorldPaused(false);
   }
 
   /**
-   * 打开一个子系统页面：清掉旧页，铺黑底、写标题、底部放关闭条，并暂停整个店。
-   * 所有子系统页面都从这里开，「打开子系统就暂停」只在这一处保证；菜单、结算这类弹窗不走这里。
+   * 打开一个子系统页面：清掉旧页，铺黑底、写标题、底部放关闭条。
+   * 子系统页面**不暂停**营业——倒计时与店内模拟照常推进。
    */
   openSubsystemPage(this: TavernScene, title: string, closeLabel = "关闭"): Phaser.GameObjects.Container {
     this.destroyOverlay();
@@ -412,15 +435,6 @@ export class UiMethods {
     layer.add(this.add.text(40, 58, title, { fontSize: "36px", color: "#ffe6a8", fontFamily: XIAN_FONT }));
     this.addOverlayClose(layer, 1150, closeLabel);
     this.overlay = layer;
-    this.setWorldPaused(true);
     return layer;
-  }
-
-  /** 子系统页面开着时冻结整个店：场景时钟（见 create）、计时器与补间一起停。 */
-  setWorldPaused(this: TavernScene, on: boolean) {
-    if (this.worldPaused === on) return;
-    this.worldPaused = on;
-    this.time.paused = on;
-    this.tweens.paused = on;
   }
 }

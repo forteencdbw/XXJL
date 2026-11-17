@@ -4,7 +4,10 @@ import type { BoothData } from "../booth";
 import type { PatronKind } from "../logic";
 import { Character } from "./Character";
 
-export type GameState = "closed" | "selectingMenu" | "open" | "bankrupt";
+/** 当前看到的画面：主界面 / 选菜单 / 营业 / 修炼。 */
+export type SceneView = "home" | "menu" | "business" | "cultivation";
+/** 本局状态：未开业 / 倒计时中 / 已打烊待结算。与画面独立，营业可以在后台跑。 */
+export type SessionPhase = "idle" | "running" | "ended";
 export type TapText = Phaser.GameObjects.Text & { onTap: () => void };
 
 export type { BoothState } from "../booth";

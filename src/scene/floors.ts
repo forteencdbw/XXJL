@@ -138,7 +138,7 @@ export class FloorMethods {
         const patron = this.booths[i]?.patronChar;
         if (patron) this.focusOnCharacter(patron);
       });
-    const visible = this.gameState === "open";
+    const visible = this.view === "business";
     [bg, runner, number, label, ...legs, barBg, barFill, candleGlow, candleBody, candleFlame].forEach((o) =>
       o.setVisible(visible),
     );
@@ -165,7 +165,7 @@ export class FloorMethods {
       const visuals = this.boothVisuals.filter((v) => v.floor === floor);
       const total = Math.max(visuals.length, 1);
       const width = Math.min(84, 500 / total);
-      const active = this.gameState === "open" && floor === this.activeFloor;
+      const active = this.view === "business" && floor === this.activeFloor;
       visuals.forEach((v, i) => {
         const x =
           total === 1
@@ -217,7 +217,7 @@ export class FloorMethods {
   }
 
   refreshFloorTabs(this: TavernScene) {
-    const open = this.gameState === "open";
+    const open = this.view === "business";
     this.setFloorTabsVisible(open);
     if (!open) return;
     const names = ["散座", "雅座+15%", "包间+25%"];
@@ -240,7 +240,8 @@ export class FloorMethods {
   }
 
   refreshBoothVisibility(this: TavernScene) {
-    const open = this.gameState === "open";
+    const open = this.view === "business";
+    const cultivating = this.view === "cultivation" && this.session !== "running";
     this.booths.forEach((booth, i) => {
       // 正被领座的客人跟着跑堂走：还在门口时算一楼，上楼后才算目标楼层
       const escort = [...this.staffRt.values()].find((rt) => rt.task?.kind === "seat" && rt.task.boothIndex === i);
@@ -250,8 +251,10 @@ export class FloorMethods {
     });
     const queueVisible = open && this.activeFloor === 0;
     this.queue.forEach((patron) => patron.char.setVisible(queueVisible));
-    // 营业中掌柜和伙计在哪层就只在哪层露面；夜里都在法坛打坐
-    this.staffRt.forEach((rt) => rt.char.setVisible(!open || rt.floor === this.activeFloor));
+    // 营业视图里掌柜和伙计在哪层就只在哪层露面；修炼视图只在没营业时有人打坐
+    this.staffRt.forEach((rt) =>
+      rt.char.setVisible(cultivating || (open && rt.floor === this.activeFloor)),
+    );
   }
 
   switchFloor(this: TavernScene, floor: number) {
@@ -263,7 +266,7 @@ export class FloorMethods {
       this.refreshBoothVisibility();
       this.refreshFloorTabs();
     };
-    if (this.gameState === "open" && !this.settling) {
+    if (this.view === "business" && !this.settling) {
       this.cameras.main.fadeOut(140, 0, 0, 0, () => {
         apply();
         this.cameras.main.fadeIn(160, 0, 0, 0);

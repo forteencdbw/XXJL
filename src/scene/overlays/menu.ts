@@ -298,8 +298,7 @@ export class MenuOverlayMethods {
       .setInteractive({ useHandCursor: true })
       .on("pointerdown", () => {
         playSfx("click");
-        this.gameState = "closed";
-        this.destroyOverlay();
+        this.enterHome();
       });
     layer.add(cancel);
     this.expandHitArea(cancel);

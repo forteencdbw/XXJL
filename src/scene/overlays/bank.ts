@@ -44,11 +44,12 @@ export class BankOverlayMethods {
           }),
         );
       } else {
+        const editable = this.canManage();
         const btn = this.add
           .text(400, y + 4, "立据借贷", {
             fontSize: "18px",
-            color: "#ffffff",
-            backgroundColor: "#5a4a2a",
+            color: editable ? "#ffffff" : "#888888",
+            backgroundColor: editable ? "#5a4a2a" : "#3a3a3a",
             padding: { x: 14, y: 8 },
           })
           .setInteractive({ useHandCursor: true })
@@ -65,6 +66,10 @@ export class BankOverlayMethods {
 
   /** 灵石商行借贷：到账即加灵石，之后每回合还一期。 */
   takeLoan(this: TavernScene, def: LoanDef) {
+    if (!this.canManage()) {
+      this.showHint("营业结束后才能操作");
+      return;
+    }
     if (this.borrowedIds.has(def.id) || this.level < def.unlockLevel || this.day < def.minDay) return;
     this.borrowedIds.add(def.id);
     this.coins += def.principal;

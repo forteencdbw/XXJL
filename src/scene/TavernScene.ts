@@ -1,13 +1,14 @@
 // 主场景：字段（全部场景状态）、create/update 入口；方法按功能拆在 scene/ 其他文件。
 import Phaser from "phaser";
 import { createBooth } from "../booth";
-import { createShopkeeper, DISHES, getNightDurationMs, getSessionDurationMs, EMPTY_META, getDailyWeather, localDateKey, STARTING_COINS, STARTING_INVENTORY } from "../logic";
+import { createShopkeeper, DISHES, getSessionDurationMs, EMPTY_META, getDailyWeather, localDateKey, STARTING_COINS, STARTING_INVENTORY } from "../logic";
 import type { DailyGoal, Employee, MetaStats, WeatherDef } from "../logic";
 import { Character } from "./Character";
 import { AUTOSAVE_MS, CAMERA_CLOSED_X, SCREEN_H, USE_VECTOR_TITLE } from "./constants";
-import type { Booth, BoothVisual, GameState, QueuedPatron, RegularGuest, StaffRuntime, TapText } from "./types";
+import type { Booth, BoothVisual, QueuedPatron, RegularGuest, SceneView, SessionPhase, StaffRuntime, TapText } from "./types";
 import { TextureMethods } from "./textures";
 import { TitleMethods } from "./title";
+import { HomeMethods } from "./home";
 import { SaveMethods } from "./save";
 import { WorldMethods } from "./world";
 import { UiMethods } from "./ui";
@@ -69,18 +70,20 @@ export class TavernScene extends Phaser.Scene {
   /** 今天还没见到常客时，保证至少来一位，避免关系层在短局里完全隐身。 */
   regularDueToday = false;
 
-  gameState: GameState = "closed";
-  /** 子系统页面打开时整个店的时间冻结（场景时钟、计时器、补间）。 */
-  worldPaused = false;
-  /** 累计冻结的现实毫秒：场景时钟 = 现实时间 − 冻结时长。 */
-  pausedMs = 0;
-  lastRawTime = 0;
+  /** 当前画面：主界面 / 选菜单 / 营业 / 修炼。 */
+  view: SceneView = "home";
+  /** 本局状态：未开业 / 倒计时中 / 已打烊待结算。营业与画面独立，切走也会继续跑。 */
+  session: SessionPhase = "idle";
+  bankrupt = false;
   /** 时间倍速（Debug 用）：场景时钟、计时器与补间一起加快。 */
   timeSpeed = 1;
-  /** 夜修从这一刻起算（场景时钟）；默认很早，即新档直接处在天明。 */
-  nightStartedAt = -1e12;
-  /** 本次天明是否已弹过开张提醒。 */
-  dawnPrompted = false;
+  lastRawTime = 0;
+  /** 场景时钟相对现实时间的偏移，只由 Debug 倍速产生。 */
+  speedOffsetMs = 0;
+  /** Debug：覆盖现实时刻（分钟），用于验证白天/夜晚画面；null = 用本机时间。 */
+  debugClockMinutes: number | null = null;
+  /** 硬停时清场、未结账的客人数，结算单单独提示。 */
+  hardStopCleared = 0;
   selectedDishIds = new Set<string>();
   dishCursor = 0;
   sessionStartedAt = 0;
@@ -88,7 +91,6 @@ export class TavernScene extends Phaser.Scene {
   patronsTotal = 0;
   /** 已经到过店（含排队时被拒）的客人数，用于判断名单是否走完。 */
   patronsSpawned = 0;
-  roundEnding = false;
   sessionServed = 0;
   firstGuestShown = false;
   sessionRevenue = 0;
@@ -138,8 +140,12 @@ export class TavernScene extends Phaser.Scene {
   hudLine!: Phaser.GameObjects.Rectangle;
   hudChips!: Phaser.GameObjects.Graphics;
   rightFrame!: Phaser.GameObjects.Container;
+  /** 营业视图的现实夜色压暗层；主界面与修炼用天色本身表达昼夜。 */
+  businessNightTint!: Phaser.GameObjects.Rectangle;
   closedBackdrop!: Phaser.GameObjects.Image;
   closedFloorText!: Phaser.GameObjects.Text;
+  /** 修炼视图里营业仍在后台跑时的说明。 */
+  cultivationNote!: Phaser.GameObjects.Text;
   playerGender: "male" | "female" = "male";
 
   coinsText!: Phaser.GameObjects.Text;
@@ -176,10 +182,20 @@ export class TavernScene extends Phaser.Scene {
   bankButton!: TapText;
   purchaseButton!: TapText;
   upgradeButton!: TapText;
+  /** 营业视图底部：回主界面与跳修炼。 */
+  businessHomeButton!: TapText;
   cultivationButton!: TapText;
-  /** 夜修副屏里的修为入口（营业中用底栏那颗）。 */
-  nightCultivationButton!: TapText;
-  startButton!: TapText;
+  /** 修炼视图底部：只读修为页与回主界面。 */
+  cultivationPageButton!: TapText;
+  cultivationHomeButton!: TapText;
+  /** 主界面的门面与两张入口卡。 */
+  homeFacade?: Phaser.GameObjects.Container;
+  homeOpenCard!: Phaser.GameObjects.Rectangle;
+  homeOpenTitle!: Phaser.GameObjects.Text;
+  homeOpenSub!: Phaser.GameObjects.Text;
+  homeCultivationCard!: Phaser.GameObjects.Rectangle;
+  homeCultivationTitle!: Phaser.GameObjects.Text;
+  homeCultivationSub!: Phaser.GameObjects.Text;
   lastAutosaveAt = 0;
 
   overlay: Phaser.GameObjects.Container | null = null;
@@ -215,16 +231,14 @@ export class TavernScene extends Phaser.Scene {
   }
 
   create() {
-    // 暂停：把场景时钟接到「现实时间 − 冻结时长」上，冻结期间 this.time.now 与计时器都停住
+    // 场景时钟：只在 Debug 倍速时偏离现实时间；营业时间不会被任何页面暂停。
     const clock = this.time;
     this.events.off(Phaser.Scenes.Events.UPDATE, clock.update, clock);
     this.events.on(Phaser.Scenes.Events.UPDATE, (t: number, d: number) => {
       const dt = t - this.lastRawTime;
-      // 冻结时把这段现实时间记成停顿；倍速时反过来让场景时钟多走
-      if (this.worldPaused) this.pausedMs += dt;
-      else this.pausedMs -= dt * (this.timeSpeed - 1);
+      this.speedOffsetMs -= dt * (this.timeSpeed - 1);
       this.lastRawTime = t;
-      clock.update(t - this.pausedMs, d * this.timeSpeed);
+      clock.update(t - this.speedOffsetMs, d * this.timeSpeed);
     });
     const hadSave = this.loadSave();
     this.ensureGlowTexture();
@@ -246,6 +260,9 @@ export class TavernScene extends Phaser.Scene {
     this.setGender(this.playerGender);
     this.refreshPlayerAura();
     this.bindCameraDrag();
+    this.view = "home";
+    this.session = "idle";
+    this.positionUi(false);
     this.refreshHud();
     this.time.addEvent({ delay: 700, loop: true, callback: () => this.emitCookingSteam() });
     this.time.addEvent({ delay: 1100, loop: true, callback: () => this.emitFirefly() });
@@ -277,13 +294,19 @@ export class TavernScene extends Phaser.Scene {
             this.refreshHud();
           },
           skipDay: () => {
-            if (this.gameState !== "open" || this.settling) return this.showHint("只有营业中才能跳到打烊");
-            // 时钟拨到子初：没到的客人不来了，店里的客人照常走完再结算
+            if (this.session !== "running") return this.showHint("只有营业中才能跳到打烊");
+            // 把倒计时拨到 0：下一次 tick 会硬停，按当前视图决定是否直接结算
             this.sessionStartedAt = Math.min(this.sessionStartedAt, this.time.now - getSessionDurationMs());
           },
-          skipNight: () => {
-            if (this.gameState !== "closed" || this.isDawn()) return this.showHint("只有夜修中才能跳到天明");
-            this.nightStartedAt = this.time.now - getNightDurationMs();
+          toggleClock: () => {
+            this.debugClockMinutes = this.debugClockMinutes === null ? 23 * 60 : this.debugClockMinutes === 23 * 60 ? 12 * 60 : null;
+            this.showHint(
+              this.debugClockMinutes === null
+                ? "现实时钟：恢复本机时间"
+                : `现实时钟：锁定 ${this.debugClockMinutes === 12 * 60 ? "正午" : "子夜"}`,
+            );
+            this.updateSky(this.time.now);
+            this.refreshHud();
           },
           toggleSpeed: () => {
             this.timeSpeed = this.timeSpeed === 1 ? 10 : 1;
@@ -302,19 +325,16 @@ export class TavernScene extends Phaser.Scene {
 
 
   update() {
-    if (this.gameState === "bankrupt") return;
-    // 场景时钟（暂停时冻结），不用 update 传进来的现实时间
+    if (this.bankrupt) return;
+    // 场景时钟（Debug 倍速会加快），不用 update 传进来的现实时间
     const time = this.time.now;
     // 覆盖层始终对齐相机可见区域，避免营业↔打烊镜头平移时错位
     if (this.overlay) this.overlay.setPosition(this.cameras.main.scrollX, this.cameras.main.scrollY);
 
-    if (!this.worldPaused) {
-      if (this.gameState === "open" && !this.settling) this.tickOpenSession(time);
-      if (this.gameState === "closed") {
-        this.tickClosedProcurement();
-        this.tickNight();
-      }
-    }
+    this.refreshTodayWeather();
+    // 营业是后台进程：不管玩家在看主界面、修炼还是子系统页，都照常推进
+    if (this.session === "running") this.tickRunningSession(time);
+    if (this.session === "idle") this.tickClosedProcurement();
 
     this.updateSky(time);
     this.renderProgress(time);
@@ -331,8 +351,8 @@ export class TavernScene extends Phaser.Scene {
 }
 
 // 方法按功能分散在各文件（见 src/ARCHITECTURE.md），这里合并进 TavernScene 的类型与原型。
-export interface TavernScene extends TextureMethods, TitleMethods, SaveMethods, WorldMethods, UiMethods, FloorMethods, HudMethods, SessionMethods, ProductionMethods, StaffMethods, PatronMethods, RuleMethods, FxMethods, AmbientMethods, FocusMethods, MenuOverlayMethods, BuildOverlayMethods, StaffOverlayMethods, CultivationOverlayMethods, SettingsOverlayMethods, BankOverlayMethods, SettlementOverlayMethods, InfoOverlayMethods {}
-for (const mixin of [TextureMethods, TitleMethods, SaveMethods, WorldMethods, UiMethods, FloorMethods, HudMethods, SessionMethods, ProductionMethods, StaffMethods, PatronMethods, RuleMethods, FxMethods, AmbientMethods, FocusMethods, MenuOverlayMethods, BuildOverlayMethods, StaffOverlayMethods, CultivationOverlayMethods, SettingsOverlayMethods, BankOverlayMethods, SettlementOverlayMethods, InfoOverlayMethods]) {
+export interface TavernScene extends TextureMethods, TitleMethods, HomeMethods, SaveMethods, WorldMethods, UiMethods, FloorMethods, HudMethods, SessionMethods, ProductionMethods, StaffMethods, PatronMethods, RuleMethods, FxMethods, AmbientMethods, FocusMethods, MenuOverlayMethods, BuildOverlayMethods, StaffOverlayMethods, CultivationOverlayMethods, SettingsOverlayMethods, BankOverlayMethods, SettlementOverlayMethods, InfoOverlayMethods {}
+for (const mixin of [TextureMethods, TitleMethods, HomeMethods, SaveMethods, WorldMethods, UiMethods, FloorMethods, HudMethods, SessionMethods, ProductionMethods, StaffMethods, PatronMethods, RuleMethods, FxMethods, AmbientMethods, FocusMethods, MenuOverlayMethods, BuildOverlayMethods, StaffOverlayMethods, CultivationOverlayMethods, SettingsOverlayMethods, BankOverlayMethods, SettlementOverlayMethods, InfoOverlayMethods]) {
   for (const name of Object.getOwnPropertyNames(mixin.prototype)) {
     if (name === "constructor") continue;
     // 两个文件定义了同名方法会互相覆盖，启动时直接报错

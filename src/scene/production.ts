@@ -23,7 +23,7 @@ export class ProductionMethods {
   /** 员工所在楼层与玩家正在看的楼层一致才显示。 */
   setStaffFloor(this: TavernScene, rt: StaffRuntime, floor: number) {
     rt.floor = floor;
-    rt.char.setVisible(this.gameState === "open" && floor === this.activeFloor);
+    rt.char.setVisible(this.view === "business" && floor === this.activeFloor);
   }
 
   /** 做完一件事回到自己的站位；从楼上下来的先在门口出现。 */
@@ -262,9 +262,13 @@ export class ProductionMethods {
     }
   }
 
-  /** 打烊时采购：瞬间到货。灵石不足时赊账，费用照扣。 */
+  /** 准备阶段采购：瞬间到货。灵石不足时赊账，费用照扣。 */
   startPurchase(this: TavernScene) {
-    if (this.settling || this.gameState === "open") return;
+    if (!this.canManage()) {
+      this.showHint("营业结束后才能操作");
+      return;
+    }
+    if (this.settling) return;
     const price = this.purchasePrice();
     const credit = this.coins < price;
     this.coins -= price;

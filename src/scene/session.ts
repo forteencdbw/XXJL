@@ -1,24 +1,60 @@
-// 一天的生命周期：营业中每帧推进、开张、打烊结算（工资/还贷/目标/破产）、天色。
+// 一局的生命周期：固定倒计时、后台模拟、硬停、延后结算；三个视图之间的切换；现实天色。
 import Phaser from "phaser";
 import { playSfx } from "../audio";
 import { clearBooth, departBooth } from "../booth";
 import { GAME } from "../config";
-import { BANKRUPT_STREAK, DISHES, formatClock, gainReputation, getArrivalSchedule, getClockMinutes, getDailyGoal, getDailyGoalOptions, getDailyRent, getEventSchedule, getFestivalGoalMultiplier, getNightClockMinutes, getNightDurationMs, getNightQuarters, getFloorRent, getGoalPayout, getGoalProgress, getLoanDue, getRepLevelInfo, getSessionDurationMs, getShichen, getStreakBonus, GOAL_STREAK_TARGET, isFestivalDay, loseReputation, NIGHT_COLOR, REP_GAIN_RARE, REP_GAIN_SERVED, skyColorAt, updateMeta } from "../logic";
-import { CAMERA_CLOSED_X, CAMERA_OPEN_X, FLOOR_Y, MAX_EVENTS_PER_SESSION, PURCHASE_AMOUNT, PURCHASE_TARGET_STOCK, ROUND_END_DELAY_MS, SCREEN_H, SCREEN_W, SKY_TRANSITION_MS, XIAN_FONT } from "./constants";
+import {
+  BANKRUPT_STREAK,
+  DISHES,
+  gainReputation,
+  getArrivalSchedule,
+  getDailyGoal,
+  getDailyGoalOptions,
+  getDailyRent,
+  getDaylightProgress,
+  getEventSchedule,
+  getFestivalGoalMultiplier,
+  getFloorRent,
+  getGoalPayout,
+  getGoalProgress,
+  getLoanDue,
+  getNightProgress,
+  getRealClockLabel,
+  getRealMinutes,
+  getRepLevelInfo,
+  getSessionDurationMs,
+  getStreakBonus,
+  GOAL_STREAK_TARGET,
+  isDaylight,
+  isFestivalDay,
+  loseReputation,
+  NIGHT_COLOR,
+  realSkyColor,
+  REP_GAIN_RARE,
+  REP_GAIN_SERVED,
+  updateMeta,
+} from "../logic";
+import { CAMERA_CLOSED_X, CAMERA_OPEN_X, FLOOR_Y, MAX_EVENTS_PER_SESSION, PURCHASE_AMOUNT, PURCHASE_TARGET_STOCK, SCREEN_H, SCREEN_W } from "./constants";
 import type { TavernScene } from "./TavernScene";
 
 export class SessionMethods {
-  tickOpenSession(this: TavernScene, time: number) {
+  /** 准备阶段（已结算、未开业）才能操作管理；营业中与待结算只读。 */
+  canManage(this: TavernScene): boolean {
+    return this.session === "idle" && !this.settling && !this.bankrupt;
+  }
+
+  // ===== 营业（后台倒计时）=====
+  tickRunningSession(this: TavernScene, time: number) {
+    if (this.session !== "running") return;
     const elapsed = time - this.sessionStartedAt;
-    const closing = this.isClosingTime(time);
-    // 名单是开市时按声望锁定的，到店时刻铺满全天；子初以后不再来客
-    if (!closing && this.patronsSpawned < this.patronsTotal && elapsed >= this.arrivalTimes[this.patronsSpawned]) {
+    if (elapsed >= getSessionDurationMs()) {
+      this.hardStopSession();
+      return;
+    }
+    // 名单是开市时按声望锁定的；到店时刻铺满整个倒计时
+    if (this.patronsSpawned < this.patronsTotal && elapsed >= this.arrivalTimes[this.patronsSpawned]) {
       this.spawnPatron(time);
       this.patronsSpawned += 1;
-    }
-    if (closing && this.patronsSpawned < this.patronsTotal) {
-      // 只有把到店时刻配到打烊之后才会走到这里：没来的就算了，不扣声望
-      this.patronsTotal = this.patronsSpawned;
     }
     if (this.eventsThisSession < this.eventTimes.length && elapsed >= this.eventTimes[this.eventsThisSession]) {
       this.triggerRandomEvent();
@@ -84,19 +120,41 @@ export class SessionMethods {
     // 两桌同时用膳时，每 7 秒至少给一次碰杯，不靠随机闲聊撞运气
     if (!this.focusing && time - this.lastClinkAt > 7000) {
       const dining = this.booths.filter((b) => b.state === "dining" && b.patronChar);
-      if (dining.length >= 2) {
-        this.showClink(dining[0].patronChar!, dining[1].patronChar!);
-      }
+      if (dining.length >= 2) this.showClink(dining[0].patronChar!, dining[1].patronChar!);
     }
 
     this.flushRepLoss();
-    // 营业一定跑满到子初；到点后等店里最后一位客人走完流程再打烊
-    if (closing && this.queue.length === 0 && this.booths.every((booth) => booth.state === "empty")) {
-      this.finishSession();
-    }
   }
 
+  /** 倒计时归零：立刻清场，未结账的客人不计收入、不扣声望。 */
+  hardStopSession(this: TavernScene) {
+    if (this.session !== "running") return;
+    this.session = "ended";
+    this.hardStopCleared =
+      this.queue.length + this.booths.filter((booth) => booth.state !== "empty").length;
+    if (this.focusing) this.returnFromFocus();
+    this.queue.forEach((patron) => patron.char.destroy());
+    this.queue = [];
+    this.booths.forEach((booth) => {
+      booth.patronChar?.destroy();
+      booth.patronChar = undefined;
+      booth.diningProp?.destroy();
+      booth.diningProp = undefined;
+      clearBooth(booth);
+    });
+    this.staffRt.forEach((rt) => {
+      rt.task = null;
+      rt.char.setCarrying(false);
+    });
+    this.log(`营业倒计时结束，打烊清场${this.hardStopCleared > 0 ? `（${this.hardStopCleared} 位未结账）` : ""}`);
+    this.showEventToast("营业结束", true);
+    if (this.view === "business") this.settleFinishedSession();
+    else if (this.view === "cultivation") this.seatForNight();
+  }
+
+  /** 倒计时结束、店里停业后的采购：只在准备阶段自动补货。 */
   tickClosedProcurement(this: TavernScene) {
+    if (this.settling || this.overlay || this.bankrupt) return;
     const buyer = this.bestBuyer();
     if (!buyer) return;
     // 酒楼越大，备货目标越高，避免高等级时 10 份存货撑不过一局
@@ -117,175 +175,124 @@ export class SessionMethods {
     }
   }
 
-  // ===== 夜修 =====
-  /** 夜修已走的毫秒（场景时钟，随暂停冻结），到天明封顶。 */
-  nightElapsed(this: TavernScene): number {
-    return Phaser.Math.Clamp(this.time.now - this.nightStartedAt, 0, getNightDurationMs());
-  }
-
-  isDawn(this: TavernScene): boolean {
-    return this.nightElapsed() >= getNightDurationMs();
-  }
-
-  /** 打烊结算后进入夜修：时钟从子初走起，掌柜与伙计到法坛打坐。 */
-  enterNight(this: TavernScene) {
-    this.nightStartedAt = this.time.now;
-    this.dawnPrompted = false;
-    this.seatForNight();
-    this.save();
-  }
-
-  /** 走到辰正弹一次开张提醒；页面或特写开着时等它们关掉再弹。 */
-  tickNight(this: TavernScene) {
-    if (this.dawnPrompted || !this.isDawn() || this.overlay || this.transitioning || this.focusing) return;
-    this.dawnPrompted = true;
-    this.showDawnPopup();
-  }
-
-  showDawnPopup(this: TavernScene) {
-    const { panel, left } = this.buildPopupCard(250, 110);
-    playSfx("upgrade");
-    panel.add(
-      this.add.text(left, 30, "天亮了，该开张了", { fontSize: "34px", color: "#ffe6a8", fontFamily: XIAN_FONT }),
-    );
-    panel.add(
-      this.add.text(left, 86, `第 ${this.day} 日 · 辰正 · 天气：${this.weather.name}`, {
-        fontSize: "18px",
-        color: "#c8b8a0",
-      }),
-    );
-    const start = this.add
-      .text(0, 170, "开始营业", {
-        fontSize: "28px",
-        color: "#f5e6c8",
-        backgroundColor: "#8a2a22",
-        padding: { x: 48, y: 16 },
-        fontFamily: XIAN_FONT,
-      })
-      .setOrigin(0.5)
-      .setInteractive({ useHandCursor: true })
-      .on("pointerup", () => {
-        playSfx("click");
-        this.destroyOverlay();
-        this.openMenu();
+  // ===== 视图切换 =====
+  /** 回主界面：营业可以在后台继续跑。 */
+  enterHome(this: TavernScene) {
+    if (this.bankrupt) return;
+    const apply = () => {
+      this.destroyOverlay();
+      this.stopCelebration();
+      this.settling = false;
+      this.focusTimer?.remove();
+      this.focusTimer = undefined;
+      this.focusing = false;
+      this.clearFocusCard();
+      this.setFocusUiHidden(false);
+      this.view = "home";
+      const cam = this.cameras.main;
+      cam.centerOn(CAMERA_CLOSED_X, SCREEN_H / 2);
+      cam.setZoom(1);
+      this.positionUi(false);
+      this.refreshHud();
+    };
+    if (this.view === "business" && !this.transitioning) {
+      this.transitioning = true;
+      this.cameras.main.fadeOut(220, 0, 0, 0, () => {
+        apply();
+        this.cameras.main.fadeIn(220, 0, 0, 0);
+        this.transitioning = false;
       });
-    this.expandHitArea(start, 14);
-    panel.add(start);
+    } else {
+      apply();
+    }
   }
 
-  // ===== 昼夜 =====
-  updateSky(this: TavernScene, time: number) {
-    let t = 1;
-    // 夜修的破晓进度：寅初（3 点）起天色渐亮，辰正全亮
-    let dawnK = 0;
-    if (this.gameState === "open") {
-      const elapsed = time - this.sessionStartedAt;
-      t = Phaser.Math.Clamp(elapsed / getSessionDurationMs(), 0, 1);
-    } else {
-      const quarter = this.nightElapsed() / GAME.session.nightMsPerQuarter;
-      const brighten = getNightQuarters() - (GAME.session.openHour - 3) * 4;
-      dawnK = Phaser.Math.Clamp((quarter - brighten) / (getNightQuarters() - brighten), 0, 1);
-    }
-
-    let color = this.gameState === "open" ? skyColorAt(t) : NIGHT_COLOR;
-    if (dawnK > 0) {
-      const mixed = Phaser.Display.Color.Interpolate.ColorWithColor(
-        Phaser.Display.Color.IntegerToColor(NIGHT_COLOR),
-        Phaser.Display.Color.IntegerToColor(skyColorAt(0)),
-        100,
-        dawnK * 100,
-      );
-      color = Phaser.Display.Color.GetColor(mixed.r, mixed.g, mixed.b);
-    }
-    // 营业开始后的入场过渡：夜晚 → 清晨
-    if (this.gameState === "open") {
-      const elapsed = time - this.sessionStartedAt;
-      if (elapsed < SKY_TRANSITION_MS) {
-        const k = elapsed / SKY_TRANSITION_MS;
-        const night = Phaser.Display.Color.IntegerToColor(NIGHT_COLOR);
-        const dawn = Phaser.Display.Color.IntegerToColor(skyColorAt(t));
-        const mixed = Phaser.Display.Color.Interpolate.ColorWithColor(night, dawn, 100, k * 100);
-        color = Phaser.Display.Color.GetColor(mixed.r, mixed.g, mixed.b);
+  /** 进营业视图；如果这一局已经打烊，进来即结算。 */
+  enterBusinessView(this: TavernScene) {
+    if (this.bankrupt || this.transitioning) return;
+    const apply = () => {
+      this.view = "business";
+      this.settling = false;
+      const cam = this.cameras.main;
+      cam.centerOn(CAMERA_OPEN_X, SCREEN_H / 2);
+      cam.setZoom(1);
+      // 若刚从修炼视图过来，先把打坐的人放回各自站位，再结算/庆祝
+      if (this.session === "ended") {
+        for (const e of this.workforce()) {
+          const rt = this.staffRt.get(e.id);
+          if (!rt) continue;
+          rt.task = null;
+          rt.char.setCarrying(false);
+          rt.char.setMeditating(false);
+          const home = this.staffHome(e);
+          rt.char.teleportTo(home.x, home.y);
+        }
       }
+      this.positionUi(true);
+      this.refreshHud();
+      if (this.session === "ended") this.settleFinishedSession();
+    };
+    if (this.view === "business") {
+      apply();
+      return;
     }
-    this.skyRect.setFillStyle(color, 1);
-    const showStars = this.gameState !== "open" ? dawnK < 0.6 : t > 0.8;
-    this.stars.forEach((star) => star.setVisible(showStars));
-    // 室内窗户透出的天光与外面同步；打烊时窗户只剩余夜色
-    if (this.windowViews.length) {
-      let winColor = NIGHT_COLOR;
-      if (this.gameState === "open") {
-        const sky = Phaser.Display.Color.IntegerToColor(color);
-        const warm = Phaser.Display.Color.IntegerToColor(0x8a6a4a);
-        const mixed = Phaser.Display.Color.Interpolate.ColorWithColor(sky, warm, 100, 28);
-        winColor = Phaser.Display.Color.GetColor(mixed.r, mixed.g, mixed.b);
-      }
-      this.windowViews.forEach((w) => w.setFillStyle(winColor, 1));
-    }
+    this.destroyOverlay();
+    this.stopCelebration();
+    this.transitioning = true;
+    this.cameras.main.fadeOut(220, 0, 0, 0, () => {
+      apply();
+      this.cameras.main.fadeIn(220, 0, 0, 0);
+      this.transitioning = false;
+    });
+  }
 
-    // 日月：营业期间从左侧地平线弧到右侧，夜晚显示月牙色
-    if (this.gameState === "open") {
-      const x = 80 + (SCREEN_W - 160) * t;
-      const y = 250 - Math.sin(Math.PI * t) * 170;
-      this.sunMoon.setPosition(x, y);
-      this.sunMoon.setFillStyle(t > 0.82 ? 0xdfe6ff : 0xffe8a0, 1);
-      this.sunMoon.setRadius(t > 0.82 ? 26 : 34);
+  /** 进修炼视图；营业可以继续在后台跑，这时法坛上没有人。 */
+  enterCultivationView(this: TavernScene) {
+    if (this.bankrupt || this.transitioning) return;
+    const apply = () => {
+      this.view = "cultivation";
+      this.settling = false;
+      this.stopCelebration();
+      const cam = this.cameras.main;
+      cam.centerOn(CAMERA_CLOSED_X, SCREEN_H / 2);
+      cam.setZoom(1);
+      if (this.session !== "running") this.seatForNight();
+      this.positionUi(false);
+      this.refreshHud();
+    };
+    if (this.view === "business") {
+      this.destroyOverlay();
+      this.transitioning = true;
+      this.cameras.main.fadeOut(220, 0, 0, 0, () => {
+        apply();
+        this.cameras.main.fadeIn(220, 0, 0, 0);
+        this.transitioning = false;
+      });
     } else {
-      // 月亮随夜修西沉，天明前落到山后
-      this.sunMoon.setPosition(SCREEN_W - 140 - dawnK * 120, 170 + dawnK * 420);
-      this.sunMoon.setFillStyle(0xdfe6ff, 1);
-      this.sunMoon.setRadius(26);
-    }
-    // 夜里给月亮咬出一弯缺口；星空同步淡出
-    const isMoon = this.gameState !== "open" || t > 0.82;
-    this.moonShadow.setVisible(isMoon);
-    this.moonHalo.setVisible(isMoon);
-    if (isMoon) {
-      this.moonShadow
-        .setPosition(this.sunMoon.x + 12, this.sunMoon.y - 8)
-        .setRadius(24)
-        .setFillStyle(color, 1);
-      this.moonHalo.setPosition(this.sunMoon.x, this.sunMoon.y);
+      apply();
     }
   }
 
   // ===== 回合 =====
-  onStartButton(this: TavernScene) {
-    if (this.settling || this.transitioning) return;
-    if (this.gameState === "closed" && this.isDawn()) this.openMenu();
-  }
-
-  /** 营业时钟走到子初（打烊时刻）。 */
-  isClosingTime(this: TavernScene, time: number): boolean {
-    return time - this.sessionStartedAt >= getSessionDurationMs();
-  }
-
-  /** 状态栏最右的时辰：营业中按刻跳，收尾停在子初。 */
-  clockLabel(this: TavernScene): string {
-    if (this.gameState === "selectingMenu") return `${getShichen(GAME.session.openHour * 60)}时 · 待开张`;
-    if (this.gameState !== "open") {
-      const minutes = getNightClockMinutes(this.nightElapsed());
-      return this.isDawn() ? `${formatClock(minutes)} · 天明` : `${formatClock(minutes)} · 夜修`;
-    }
-    const minutes = getClockMinutes(this.time.now - this.sessionStartedAt);
-    if (this.isClosingTime(this.time.now) && !this.settling) return `${formatClock(minutes)} · 收尾`;
-    return formatClock(minutes);
-  }
-
   openMenu(this: TavernScene) {
+    if (this.session !== "idle" || this.bankrupt || this.transitioning) return;
     this.refreshTodayWeather();
-    this.gameState = "selectingMenu";
+    this.view = "menu";
     this.buildMenuOverlay();
   }
 
   startSession(this: TavernScene) {
+    if (this.session !== "idle" || this.bankrupt) return;
     if (this.getMenuDishes().length === 0 || this.inventory <= 0 || this.transitioning) return;
     this.destroyOverlay();
+    this.stopCelebration();
     this.transitioning = true;
 
     this.cameras.main.fadeOut(450, 0, 0, 0, () => {
-      this.gameState = "open";
+      this.session = "running";
+      this.view = "business";
       this.settling = false;
+      this.hardStopCleared = 0;
       // 跨过零点后重新取天气：同一天内始终一致
       this.refreshTodayWeather();
       this.cameras.main.centerOn(CAMERA_OPEN_X, SCREEN_H / 2);
@@ -350,7 +357,6 @@ export class SessionMethods {
       const dayCount = baseCount + (isFestivalDay(this.day) ? GAME.festival.extraPatrons : 0);
       this.patronsTotal = Math.max(1, dayCount - (this.day === 1 ? GAME.session.firstDayFewerPatrons : 0));
       this.patronsSpawned = 0;
-      this.roundEnding = false;
       this.pendingRepLoss = 0;
       this.repGainedToday = 0;
       this.repLostToday = 0;
@@ -366,7 +372,7 @@ export class SessionMethods {
       playSfx("open");
       this.log("开张大吉，今日营业开始");
       this.showDayBanner();
-      if (this.day === 1) this.showHint("掌柜会按伙计页的分工自动干活，打烊后去伙计页调整顺序");
+      if (this.day === 1) this.showHint("掌柜会按伙计页的分工自动干活，营业结束后去伙计页调整顺序");
 
       this.cameras.main.fadeIn(450, 0, 0, 0);
       this.transitioning = false;
@@ -406,17 +412,9 @@ export class SessionMethods {
     this.pendingRepLoss = 0;
   }
 
-  /** 子初已到、客人散尽：停顿一下作为清场过场，再弹结算。 */
-  finishSession(this: TavernScene) {
-    if (this.roundEnding || this.settling) return;
-    this.roundEnding = true;
-    this.log("子初已到，客人散尽，收摊打烊");
-    this.showEventToast("子初已到，收摊打烊", true);
-    this.time.delayedCall(ROUND_END_DELAY_MS, () => this.endSession());
-  }
-
-  endSession(this: TavernScene) {
-    if (this.settling) return;
+  /** 玩家打开已打烊的一局：扣工资/租金、发目标奖励、天数 +1、破产判定。 */
+  settleFinishedSession(this: TavernScene) {
+    if (this.session !== "ended" || this.settling || this.bankrupt) return;
     this.focusTimer?.remove();
     this.focusTimer = undefined;
     this.focusing = false;
@@ -446,39 +444,16 @@ export class SessionMethods {
       level: this.level,
     });
     this.updateBankruptStreak();
-    // 结算/破产期间锁定副屏，避免重复结算
-    this.startButton.setAlpha(0.4);
-    // 镜头暂留营业视角，等玩家在结算面板点「打烊」后再拉远过渡
-    if (this.gameState === "bankrupt") {
+    // 结算完成后这一局就结束了；待结算状态不落盘
+    this.session = "idle";
+    if (this.bankrupt) {
       this.buildBankruptOverlay();
+      this.writeSave(this.freshSave());
     } else {
       this.startCelebration();
       this.buildSettlementOverlay();
+      this.save();
     }
-    // 破产只重置本局，仙缘保留；其余情况立刻落盘
-    if (this.gameState === "bankrupt") this.writeSave(this.freshSave());
-    else this.save();
-    // 破产时 update() 不再刷新 HUD，这里只补状态栏的营业提示
-    this.sessionText.setText("已打烊");
-  }
-
-  /** 从内部视角淡出到黑屏，切到夜修视图后再淡入。 */
-  transitionToClosedView(this: TavernScene) {
-    if (this.transitioning) return;
-    this.stopCelebration();
-    this.destroyOverlay();
-    this.transitioning = true;
-    const cam = this.cameras.main;
-    cam.fadeOut(450, 0, 0, 0, () => {
-      this.gameState = "closed";
-      this.settling = false;
-      cam.centerOn(CAMERA_CLOSED_X, SCREEN_H / 2);
-      cam.setZoom(1);
-      this.enterNight();
-      this.positionUi(false);
-      cam.fadeIn(450, 0, 0, 0);
-      this.transitioning = false;
-    });
   }
 
   /** 每回合按剩余本息均摊一期。 */
@@ -549,11 +524,70 @@ export class SessionMethods {
     if (this.coins < 0) {
       this.negativeStreak += 1;
       if (this.negativeStreak >= BANKRUPT_STREAK) {
-        this.gameState = "bankrupt";
+        this.bankrupt = true;
         this.log("连续五日亏空，酒楼倒闭了");
       }
     } else {
       this.negativeStreak = 0;
+    }
+  }
+
+  // ===== 现实天色 =====
+  /** 唯一的现实时间读取点；Debug 可以覆盖成白天/夜晚方便验证。 */
+  realNow(this: TavernScene): Date {
+    if (this.debugClockMinutes === null) return new Date();
+    return new Date(
+      2000,
+      0,
+      1,
+      Math.floor(this.debugClockMinutes / 60) % 24,
+      Math.floor(this.debugClockMinutes % 60),
+    );
+  }
+
+  /** 状态栏最右的现实时辰，如「子初三刻 · 夜 23:45」。 */
+  clockLabel(this: TavernScene): string {
+    return getRealClockLabel(getRealMinutes(this.realNow()));
+  }
+
+  updateSky(this: TavernScene, _time: number) {
+    const minutes = getRealMinutes(this.realNow());
+    const day = isDaylight(minutes);
+    const dayK = getDaylightProgress(minutes);
+    const nightK = getNightProgress(minutes);
+    const color = realSkyColor(minutes);
+
+    this.skyRect.setFillStyle(color, 1);
+    // 营业视图在室内看不到天空：按天色亮度压一层夜色，让「夜晚经营」看得出来
+    const lum =
+      (0.299 * ((color >> 16) & 0xff) + 0.587 * ((color >> 8) & 0xff) + 0.114 * (color & 0xff)) / 255;
+    this.businessNightTint.setAlpha(Phaser.Math.Clamp((0.6 - lum) * 0.7, 0, 0.32));
+    this.stars.forEach((star) => star.setVisible(!day));
+    // 室内窗户透出的天光与外面同步；夜里窗户只剩余夜色
+    if (this.windowViews.length) {
+      let winColor = NIGHT_COLOR;
+      if (day) {
+        const sky = Phaser.Display.Color.IntegerToColor(color);
+        const warm = Phaser.Display.Color.IntegerToColor(0x8a6a4a);
+        const mixed = Phaser.Display.Color.Interpolate.ColorWithColor(sky, warm, 100, 28);
+        winColor = Phaser.Display.Color.GetColor(mixed.r, mixed.g, mixed.b);
+      }
+      this.windowViews.forEach((w) => w.setFillStyle(winColor, 1));
+    }
+
+    // 太阳白天从左弧到右，月亮夜里从左弧到右
+    const k = day ? dayK : nightK;
+    const x = 80 + (SCREEN_W - 160) * k;
+    const y = 250 - Math.sin(Math.PI * k) * 170;
+    this.sunMoon.setPosition(x, y);
+    this.sunMoon.setFillStyle(day ? 0xffe8a0 : 0xdfe6ff, 1);
+    this.sunMoon.setRadius(day ? 34 : 26);
+    // 夜里给月亮咬出一弯缺口
+    this.moonShadow.setVisible(!day);
+    this.moonHalo.setVisible(!day);
+    if (!day) {
+      this.moonShadow.setPosition(x + 12, y - 8).setRadius(24).setFillStyle(color, 1);
+      this.moonHalo.setPosition(x, y);
     }
   }
 }

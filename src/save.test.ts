@@ -1,13 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { getNightDurationMs } from "./logic";
 import { getMaxFloorsBuilt, newSave, parseSave, SAVE_VERSION } from "./save";
 
 describe("存档编解码", () => {
-  it("新档：第 1 日辰正、开局数值、掌柜五项 4 星", () => {
+  it("新档：第 1 日、开局数值、掌柜五项 4 星", () => {
     const s = newSave();
     expect(s.v).toBe(SAVE_VERSION);
     expect([s.day, s.level, s.floorsBuilt, s.employees.length]).toEqual([1, 1, 0, 0]);
-    expect(s.nightMs).toBe(getNightDurationMs());
     expect(s.shopkeeper.name).toBe("掌柜");
     expect(s.selectedDishIds.length).toBeGreaterThan(0);
   });
@@ -37,7 +35,6 @@ describe("存档编解码", () => {
       inventory: -5,
       level: 4,
       floorsBuilt: 9,
-      nightMs: 1e12,
       playerGender: "robot",
       shopkeeper: { id: 7, name: "伙计", root: ["fire"], stars: {}, jobs: [] },
       activeLoans: [{ name: "小额", remaining: 30, periodsLeft: 2.7 }, { name: 3 }],
@@ -48,7 +45,6 @@ describe("存档编解码", () => {
     expect(s.coins).toBe(newSave().coins);
     expect(s.inventory).toBe(0);
     expect(s.floorsBuilt).toBe(getMaxFloorsBuilt(4));
-    expect(s.nightMs).toBe(getNightDurationMs());
     expect(s.playerGender).toBe("male");
     expect([s.shopkeeper.id, s.shopkeeper.name]).toEqual([0, "掌柜"]);
     expect(s.activeLoans).toEqual([{ name: "小额", remaining: 30, periodsLeft: 2 }]);

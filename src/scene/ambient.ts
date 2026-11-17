@@ -8,7 +8,7 @@ import type { TavernScene } from "./TavernScene";
 export class AmbientMethods {
   /** 烹饪中的桌上冒热气；没开火时灶台自己冒。 */
   emitCookingSteam(this: TavernScene) {
-    if (this.gameState !== "open" || this.settling) return;
+    if (this.view !== "business" || this.settling) return;
     let puffs = 0;
     this.booths.forEach((booth, i) => {
       if (puffs >= 3 || booth.state !== "cooking") return;
@@ -19,9 +19,9 @@ export class AmbientMethods {
     if (puffs === 0) this.spawnSteam(-272 + Phaser.Math.Between(-8, 8), 826, 0.16);
   }
 
-  /** 当日天气的粒子：晴=流萤，灵雾=低雾，落英=花瓣，夜雨=雨丝。纯氛围。 */
+  /** 当日天气的粒子：晴=流萤，灵雾=低雾，落英=花瓣，夜雨=雨丝。三个视图共用。 */
   emitWeather(this: TavernScene) {
-    if (this.gameState !== "open" || this.settling) return;
+    if (this.settling || this.view === "menu" || this.bankrupt) return;
     const mode = this.weather.visual;
     const cam = this.cameras.main;
     const x = cam.scrollX + Phaser.Math.Between(30, 690);
@@ -96,7 +96,7 @@ export class AmbientMethods {
 
   /** 随机让一个在场的小人做个小动作。 */
   idleTwitch(this: TavernScene) {
-    if (this.gameState !== "open" || this.settling) return;
+    if (this.view !== "business" || this.settling) return;
     const chars: Character[] = [this.playerChar];
     for (const b of this.booths) if (b.patronChar) chars.push(b.patronChar);
     for (const q of this.queue) chars.push(q.char);
@@ -119,7 +119,7 @@ export class AmbientMethods {
 
   /** 店里慢慢浮动的尘埃/灵光，让静态墙面有一点呼吸。 */
   emitInteriorMote(this: TavernScene) {
-    if (this.gameState !== "open" || this.settling) return;
+    if (this.view !== "business" || this.settling) return;
     const x = Phaser.Math.Between(-260, 260);
     const y = Phaser.Math.Between(380, 960);
     const mote = this.add
@@ -138,7 +138,7 @@ export class AmbientMethods {
 
   /** 门外空地的流萤，给营业中添一点活气。 */
   emitFirefly(this: TavernScene) {
-    if (this.gameState !== "open" || this.settling || this.fireflyCount >= 6) return;
+    if (this.view !== "business" || this.settling || this.fireflyCount >= 6) return;
     this.fireflyCount += 1;
     const x = Phaser.Math.Between(380, 900);
     const y = Phaser.Math.Between(FLOOR_Y - 240, FLOOR_Y - 20);
@@ -157,9 +157,9 @@ export class AmbientMethods {
     });
   }
 
-  /** 夜修吐息：灵气从四周往打坐的人身上聚，掌柜身边更浓。 */
+  /** 修炼吐息：灵气从四周往打坐的人身上聚，掌柜身边更浓。 */
   emitNightQi(this: TavernScene) {
-    if (this.gameState !== "closed" || this.focusing) return;
+    if (this.view !== "cultivation" || this.session === "running" || this.focusing) return;
     this.workforce().forEach((e, i) => {
       const char = this.staffRt.get(e.id)?.char;
       if (!char?.visible || (i > 0 && Math.random() < 0.5)) return;
@@ -185,7 +185,7 @@ export class AmbientMethods {
 
   /** 小人偶尔冒一句话：排队、等菜、用膳和伙计各有台词，让画面不只剩数字。 */
   ambientBark(this: TavernScene) {
-    if (this.gameState !== "open" || this.settling || this.focusing) return;
+    if (this.view !== "business" || this.settling || this.focusing) return;
     if (Math.random() < 0.35) return;
     const pick = (lines: string[]) => lines[Math.floor(Math.random() * lines.length)];
     const diningNow = this.booths.filter((b) => b.state === "dining" && b.patronChar);

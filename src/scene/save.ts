@@ -6,7 +6,7 @@ import { SAVE_KEY } from "./constants";
 import type { TavernScene } from "./TavernScene";
 
 export class SaveMethods {
-  /** 只存经营进度与选择；营业中不落盘——中途刷新等于放弃本局，避免带着收益跳过工资与还账。 */
+  /** 只存经营进度与选择；营业中刷新等于放弃本局。 */
   buildSaveData(this: TavernScene): SaveData {
     return {
       v: SAVE_VERSION,
@@ -29,8 +29,6 @@ export class SaveMethods {
       ascensions: this.ascensions,
       selectedDishIds: [...this.selectedDishIds],
       playerGender: this.playerGender,
-      // 营业中（含结算弹窗）不算夜修；夜里记下走到哪，刷新后接着走
-      nightMs: this.gameState === "open" ? 0 : this.nightElapsed(),
       meta: this.meta,
       dailyGoal: this.dailyGoal,
       regulars: this.regulars,
@@ -63,7 +61,6 @@ export class SaveMethods {
     this.ascensions = data.ascensions;
     this.selectedDishIds = new Set(data.selectedDishIds);
     this.playerGender = data.playerGender;
-    this.nightStartedAt = this.time.now - data.nightMs;
     this.meta = data.meta;
     this.dailyGoal = data.dailyGoal;
     this.regulars = data.regulars;
@@ -73,9 +70,10 @@ export class SaveMethods {
     this.floorsBuilt = data.floorsBuilt;
   }
 
+  /** 只存已结算、未开业的准备阶段；营业中、待结算与破产都不落盘。 */
   save(this: TavernScene) {
-    if (this.suppressSave || this.gameState === "bankrupt") return;
-    if (this.gameState === "open" && !this.settling) return;
+    if (this.suppressSave || this.bankrupt) return;
+    if (this.session !== "idle") return;
     this.writeSave(this.buildSaveData());
   }
 

@@ -279,7 +279,7 @@ export class PatronMethods {
     const spawnX = Math.max(980, slotX + 60);
     const longHair = kind.id === "alchemist" || kind.id === "demonlord" || kind.id === "elder";
     const char = new Character(this, spawnX, ACTOR_Y, kind.bodyColor, kind.hairColor, longHair, kind.id as CharacterLook);
-    char.setVisible(this.gameState === "open");
+    char.setVisible(this.view === "business");
     char.setMood(rare ? "cold" : "waiting");
     const name = regular?.name ?? (tutorialSword ? "白无锋" : pickPatronName(kind, Math.random()));
     char.displayName = regular ? `${name}（常客）` : name;

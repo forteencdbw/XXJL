@@ -49,6 +49,16 @@ export class StaffOverlayMethods {
         }),
       );
     }
+    if (!this.canManage()) {
+      layer.add(
+        this.add
+          .text(360, 1124, "营业中只读 · 打烊结算后才能改动", {
+            fontSize: "16px",
+            color: "#ff9a8a",
+          })
+          .setOrigin(0.5),
+      );
+    }
     return layer;
   }
 
@@ -105,6 +115,7 @@ export class StaffOverlayMethods {
   buildStaffDetail(this: TavernScene, e: Employee) {
     const layer = this.staffOverlayLayer(e.name);
     const keeper = e.id === SHOPKEEPER_ID;
+    const editable = this.canManage();
     this.addChip(layer, 560, 62, "返回名单", "#33405a", () => {
       this.pendingFireId = null;
       this.staffNotice = "";
@@ -135,7 +146,7 @@ export class StaffOverlayMethods {
         ? "留给修行，暂无经营作用"
         : `管${JOB_NAMES[job]}${bonus > 0 ? ` · ${ELEMENT_NAMES[JOB_ELEMENT[job]]}灵根 +${bonus}，按 ${getEffectiveStars(e, job)} 星算` : ""}`;
       layer.add(this.add.text(56, y + 48, effect, { fontSize: "15px", color: bonus > 0 ? "#9fe870" : "#a8b8c8" }));
-      if (e.statPoints > 0 && e.stars[stat] < GAME.staff.maxStars) {
+      if (editable && e.statPoints > 0 && e.stars[stat] < GAME.staff.maxStars) {
         this.addChip(layer, 616, y + 22, "+", "#7a5a1a", () => {
           if (spendStatPoint(e, stat)) this.onRosterChanged(e);
         });
@@ -143,29 +154,39 @@ export class StaffOverlayMethods {
     });
 
     layer.add(this.add.text(40, 660, "工作顺序（点勾选做不做，↑ 调先后）", { fontSize: "17px", color: "#e0c060" }));
-    e.jobs.forEach((slot, k) => {
-      const x = 40 + k * 215;
-      this.addChip(
-        layer,
-        x,
-        696,
-        `${slot.on ? "✓" : "　"} ${k + 1}.${JOB_NAMES[slot.job]}`,
-        slot.on ? "#3f6a3f" : "#3a3a3a",
-        () => {
-          slot.on = !slot.on;
-          this.onRosterChanged(e);
-        },
-        slot.on ? "#ffffff" : "#888888",
+    if (editable) {
+      e.jobs.forEach((slot, k) => {
+        const x = 40 + k * 215;
+        this.addChip(
+          layer,
+          x,
+          696,
+          `${slot.on ? "✓" : "　"} ${k + 1}.${JOB_NAMES[slot.job]}`,
+          slot.on ? "#3f6a3f" : "#3a3a3a",
+          () => {
+            slot.on = !slot.on;
+            this.onRosterChanged(e);
+          },
+          slot.on ? "#ffffff" : "#888888",
+        );
+        if (k > 0) {
+          this.addChip(layer, x + 128, 696, "↑", "#33405a", () => {
+            moveJobUp(e, k);
+            this.onRosterChanged(e);
+          });
+        }
+      });
+    } else {
+      const order = e.jobs.filter((slot) => slot.on).map((slot, k) => `${k + 1}.${JOB_NAMES[slot.job]}`);
+      layer.add(
+        this.add.text(40, 696, order.length ? order.join("  ") : "没有分工", {
+          fontSize: "18px",
+          color: order.length ? "#b8d8c8" : "#ff9a8a",
+        }),
       );
-      if (k > 0) {
-        this.addChip(layer, x + 128, 696, "↑", "#33405a", () => {
-          moveJobUp(e, k);
-          this.onRosterChanged(e);
-        });
-      }
-    });
+    }
 
-    if (!keeper) {
+    if (!keeper && editable) {
       const confirming = this.pendingFireId === e.id;
       this.addChip(layer, 40, 770, confirming ? "确认辞退" : "辞退", confirming ? "#8a2a2a" : "#4a2a2a", () => {
         if (confirming) {
@@ -182,14 +203,19 @@ export class StaffOverlayMethods {
 
   /** 改了分工或加了点：重排站位并存档，留在详情页。 */
   onRosterChanged(this: TavernScene, e: Employee) {
+    if (!this.canManage()) {
+      this.showHint("营业结束后才能调整分工");
+      return;
+    }
     this.pendingFireId = null;
     this.rebuildStaffChars();
     this.save();
     this.buildStaffDetail(e);
   }
 
-  /** 候选人按天刷新；同一天读档后还是同一批。 */
+  /** 候选人按天刷新；同一天读档后还是同一批。营业中只读，不刷新。 */
   ensureCandidates(this: TavernScene, force = false) {
+    if (!this.canManage()) return;
     if (!force && this.candidatesDay === this.day) return;
     this.candidatesDay = this.day;
     const used = new Set(this.employees.map((e) => e.name));
@@ -209,6 +235,7 @@ export class StaffOverlayMethods {
     const layer = this.staffOverlayLayer("招聘");
     const cap = getStaffCap(this.level);
     const full = this.employees.length >= cap;
+    const editable = this.canManage();
     layer.add(
       this.add.text(
         40,
@@ -229,14 +256,17 @@ export class StaffOverlayMethods {
         this.add.text(170, y + 17, `${getRootName(c.root)} · 总 ${getTotalStars(c)} 星 · 日薪 ${getStaffWage(c)} 灵石`, { fontSize: "16px", color: "#bbbbbb" }),
       );
       STATS.forEach((stat, k) => this.addStarBar(layer, 56 + (k % 3) * 210, y + 44 + Math.floor(k / 3) * 24, stat, c.stars[stat]));
-      this.addChip(layer, 56, y + 96, `雇佣 ${cost} 灵石`, full || this.coins < cost ? "#3a3a3a" : "#3a5a3a", () => {
+      this.addChip(layer, 56, y + 96, `雇佣 ${cost} 灵石`, full || this.coins < cost || !editable ? "#3a3a3a" : "#3a5a3a", () => {
         this.hireStaff(c);
         this.buildRecruitOverlay();
       });
     });
     const refreshCost = GAME.staff.refreshCost;
-    this.addChip(layer, 40, 660, `换一批（${refreshCost} 灵石）`, "#33405a", () => {
-      if (this.coins < refreshCost) {
+    this.addChip(layer, 40, 660, `换一批（${refreshCost} 灵石）`, editable ? "#33405a" : "#3a3a3a", () => {
+      if (!this.canManage()) {
+        this.staffNotice = "营业结束后才能换一批";
+        this.staffNoticeGood = false;
+      } else if (this.coins < refreshCost) {
         this.staffNotice = `灵石不足，换一批需 ${refreshCost} 灵石`;
         this.staffNoticeGood = false;
       } else {

@@ -1,8 +1,7 @@
 // 每帧刷新的 HUD：状态栏文字、按钮状态、雅座进度条、见闻录与提示。
 import Phaser from "phaser";
-import { DISHES, getGoalStatus, getQueueStatus, getNextRepThreshold, getRepLevelInfo, getNightDurationMs, getTotalBoothCount, isRarePatron } from "../logic";
+import { DISHES, formatCountdown, getGoalStatus, getNextRepThreshold, getQueueStatus, getRepLevelInfo, getSessionDurationMs, getTotalBoothCount, isRarePatron } from "../logic";
 import { boothLabel, cookProgress } from "../booth";
-import { GAME } from "../config";
 import { CHRONICLE_MAX_LINES, COLOR_STAFF, SCREEN_W, XIAN_FONT } from "./constants";
 import type { BoothState } from "./types";
 import type { TavernScene } from "./TavernScene";
@@ -10,10 +9,14 @@ import type { TavernScene } from "./TavernScene";
 export class HudMethods {
   refreshHud(this: TavernScene) {
     if (this.focusing) return;
-    const open = this.gameState === "open";
+    const business = this.view === "business";
+    const running = this.session === "running";
+    const cultivating = this.view === "cultivation";
+    const home = this.view === "home";
+
     // 掌柜说话时气泡就在头顶，先收起「掌柜」名牌
-    this.playerLabel.setVisible(open && this.playerChar.visible && !this.playerChar.isSpeaking());
-    if (open) this.playerLabel.setPosition(this.playerChar.x, this.playerChar.y - 120);
+    this.playerLabel.setVisible(business && this.playerChar.visible && !this.playerChar.isSpeaking());
+    if (business) this.playerLabel.setPosition(this.playerChar.x, this.playerChar.y - 120);
 
     this.coinsText.setText(`灵石：${this.displayedCoins}`);
     this.inventoryText.setText(`灵材：${this.inventory}`);
@@ -22,9 +25,9 @@ export class HudMethods {
     const queue = getQueueStatus({
       queued: this.queue.length,
       cap: getTotalBoothCount(this.level, this.floorsBuilt),
-      open: open && !this.settling,
+      open: running,
       nextInMs:
-        this.patronsSpawned < this.patronsTotal
+        running && this.patronsSpawned < this.patronsTotal
           ? this.sessionStartedAt + (this.arrivalTimes[this.patronsSpawned] ?? 0) - this.time.now
           : null,
     });
@@ -43,31 +46,36 @@ export class HudMethods {
     if (this.settling) {
       this.sessionText.setText("已打烊");
       this.goalText.setText("");
-    } else if (open && this.sessionGoal) {
+    } else if (running) {
+      const remaining = Math.max(0, getSessionDurationMs() - (this.time.now - this.sessionStartedAt));
       this.sessionText.setText(
-        `已服务 ${this.sessionServed}/${this.patronsTotal} · ${this.sessionRevenue}灵石`,
+        `营业中 · 剩余 ${formatCountdown(remaining)} · 已服务 ${this.sessionServed}/${this.patronsTotal} · ${this.sessionRevenue}灵石`,
       );
-      const goal = getGoalStatus(this.sessionGoal, this.sessionGoalProgress());
-      this.goalText.setText(goal.text);
-      this.goalText.setColor(goal.reached ? "#a8d8b0" : "#e0c060");
+      if (this.sessionGoal) {
+        const goal = getGoalStatus(this.sessionGoal, this.sessionGoalProgress());
+        this.goalText.setText(goal.text);
+        this.goalText.setColor(goal.reached ? "#a8d8b0" : "#e0c060");
+      } else {
+        this.goalText.setText("");
+      }
+    } else if (this.session === "ended") {
+      this.sessionText.setText(`第 ${this.day} 日 · 营业结束 · 回主界面【营业】结算`);
+      this.goalText.setText(`本局收入 ${this.sessionRevenue} 灵石`);
+      this.goalText.setColor("#ffd98a");
     } else {
       const goal = this.currentDayGoal();
-      // 夜修：奖励明细留给菜单目标卡，HUD 只留日期、天气与目标，避免长行压到画面
       this.sessionText.setText(`第 ${this.day} 日 · 天气：${this.weather.name} · ${goal.label}`);
       // 状态栏常驻回访提示：今天还没领利是就写「待领」，领过则显示连续天数
       const giftPending = this.lastGiftDate !== this.todayKey;
       this.goalText.setText(giftPending ? "今日利是待领" : this.giftStreak > 0 ? `连开 ${this.giftStreak} 天` : "");
       this.goalText.setColor(giftPending ? "#ffd98a" : "#a89472");
-      const left = Math.ceil((getNightDurationMs() - this.nightElapsed()) / GAME.session.nightMsPerQuarter);
-      this.navTitle.setText(this.isDawn() ? "" : `夜修中 · 距天明还有 ${left} 刻`);
     }
     this.chronicleText.setText(
       this.chronicleLines.map((line) => (line.length > 34 ? `${line.slice(0, 33)}…` : line)).join("\n"),
     );
-    // 营业中把常驻日志收起：给主画面让位，日志在夜修视图里看
-    this.chronicleText.setVisible(!open);
-    const showWeather = open && !this.settling;
-    this.weatherBadge.setVisible(showWeather);
+    // 营业视图里把常驻日志收起：给主画面让位，其它视图常驻
+    this.chronicleText.setVisible(!business);
+    this.weatherBadge.setVisible(!this.settling);
     this.weatherBadge.setText(`天气 · ${this.weather.name}`);
 
     this.booths.forEach((booth, i) => {
@@ -78,7 +86,7 @@ export class HudMethods {
         booth.state === "awaitingCook" ? DISHES.find((d) => d.id === booth.patronWish)?.name : undefined;
       // 用膳中的客人只留碗筷与人物，不再顶着卡片；等待/烹饪才需要信息
       const showLabel =
-        open &&
+        business &&
         booth.floor === this.activeFloor &&
         booth.state !== "empty" &&
         booth.state !== "dining" &&
@@ -95,19 +103,34 @@ export class HudMethods {
       visual.label.setText(showLabel ? boothLabel(booth, this.time.now, wishName, marker) : "");
     });
 
-    this.startButton.setVisible(this.gameState === "closed" && this.isDawn() && !this.overlay);
-    this.cultivationButton.setVisible(open);
-
-    this.startButton.setAlpha(this.settling ? 0.4 : 1);
-    this.cultivationButton.setAlpha(this.settling ? 0.4 : 1);
-    this.rightFrame.setVisible(open);
-    this.closedBackdrop.setVisible(!open);
+    // 底部按钮按视图切换
+    this.businessHomeButton.setVisible(business);
+    this.cultivationButton.setVisible(business);
+    this.cultivationPageButton.setVisible(cultivating);
+    this.cultivationHomeButton.setVisible(cultivating);
+    const disabledAlpha = this.settling ? 0.4 : 1;
+    this.businessHomeButton.setAlpha(disabledAlpha);
+    this.cultivationButton.setAlpha(disabledAlpha);
+    this.rightFrame.setVisible(business);
+    this.businessNightTint.setVisible(business && !this.settling);
+    this.closedBackdrop.setVisible(cultivating);
+    this.cultivationNote.setVisible(cultivating && this.session === "running");
     this.refreshFloorTabs();
-    // 菜单/店铺面板打开时也收起事务卡，避免透明卡片的命中区压到面板按钮上
-    this.setClosedNavVisible(this.gameState === "closed" && !this.overlay);
+    // 主界面：门面 + 两张入口卡 + 管理入口；开着页面时收起，避免命中区压到面板
+    this.setHomeVisible(home && !this.overlay);
+    this.refreshHomeCards();
+    this.setClosedNavVisible(home && !this.overlay);
+    this.navTitle.setText(
+      home ? `第 ${this.day} 日 · 天气：${this.weather.name}` : cultivating ? `修炼 · 天气：${this.weather.name}` : "",
+    );
 
     this.purchaseButton.setText(`备货 ${this.purchasePrice()}灵石`);
     this.upgradeButton.setText(`营造 Lv${this.level}`);
+    // 营业中与待结算只读：入口还能进，操作按钮会自己拦
+    const readonly = this.session !== "idle";
+    [this.staffButton, this.upgradeButton, this.bankButton, this.purchaseButton].forEach((button) =>
+      button.setAlpha(readonly ? 0.55 : 1),
+    );
   }
 
   rollCoinsDisplay(this: TavernScene) {
@@ -137,7 +160,7 @@ export class HudMethods {
       } else {
         fraction = cookProgress(booth, time);
       }
-      const showBar = this.gameState === "open" && booth.floor === this.activeFloor && fraction > 0;
+      const showBar = this.view === "business" && this.session === "running" && booth.floor === this.activeFloor && fraction > 0;
       visual.barBg.setVisible(showBar);
       visual.barFill.setVisible(showBar);
       if (showBar) {

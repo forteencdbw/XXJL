@@ -13,9 +13,13 @@ import {
   getQueueStatus,
   getArrivalSchedule,
   getClockMinutes,
-  getNightClockMinutes,
-  getNightDurationMs,
-  getNightQuarters,
+  formatCountdown,
+  getRealMinutes,
+  getRealClockLabel,
+  getDaylightProgress,
+  getNightProgress,
+  isDaylight,
+  realSkyColor,
   getEventSchedule,
   getSessionDurationMs,
   PATRON_KINDS,
@@ -327,8 +331,14 @@ describe("灵石商行", () => {
 });
 
 describe("顾客到店与破产阈值", () => {
-  it("营业时钟：4 秒一刻，8 点到 23 点共 4 分钟，到打烊封顶", () => {
+  it("营业倒计时：4 秒一刻，开门到打烊共 4 分钟", () => {
     expect(getSessionDurationMs()).toBe(240000);
+    expect(formatCountdown(240000)).toBe("4:00");
+    expect(formatCountdown(61000)).toBe("1:01");
+    expect(formatCountdown(-5)).toBe("0:00");
+  });
+
+  it("本局时间线只用于排期：到打烊封顶", () => {
     expect(getClockMinutes(0)).toBe(480);
     expect(getClockMinutes(3999)).toBe(480);
     expect(getClockMinutes(4000)).toBe(495);
@@ -336,12 +346,24 @@ describe("顾客到店与破产阈值", () => {
     expect(getClockMinutes(999999)).toBe(23 * 60);
   });
 
-  it("夜修时钟：子初到辰正共 36 刻，跨零点，到开门封顶", () => {
-    expect(getNightQuarters()).toBe(36);
-    expect(getNightDurationMs()).toBe(144000);
-    expect(formatClock(getNightClockMinutes(0))).toBe("子初");
-    expect(formatClock(getNightClockMinutes(4000 * 4))).toBe("子正");
-    expect(formatClock(getNightClockMinutes(999999))).toBe("辰正");
+  it("现实时钟：06:00–18:00 为白天，其余为夜晚", () => {
+    expect(getRealMinutes(new Date(2026, 0, 1, 8, 15, 30))).toBeCloseTo(495.5);
+    expect(isDaylight(6 * 60)).toBe(true);
+    expect(isDaylight(12 * 60)).toBe(true);
+    expect(isDaylight(18 * 60)).toBe(false);
+    expect(isDaylight(23 * 60)).toBe(false);
+    expect(isDaylight(0)).toBe(false);
+    expect(getDaylightProgress(12 * 60)).toBeCloseTo(0.5);
+    expect(getNightProgress(0)).toBeCloseTo(0.5);
+  });
+
+  it("现实天色：正午不是夜色，深夜是夜色", () => {
+    expect(realSkyColor(12 * 60)).not.toBe(NIGHT_COLOR);
+    expect(realSkyColor(23 * 60)).toBe(NIGHT_COLOR);
+    expect(realSkyColor(3 * 60)).toBe(NIGHT_COLOR);
+    expect(realSkyColor(6 * 60)).toBe(0xa8d8ff);
+    expect(getRealClockLabel(23 * 60 + 45)).toContain("子初三刻");
+    expect(getRealClockLabel(23 * 60 + 45)).toContain("23:45");
   });
 
   it("时辰：初/正与刻", () => {

@@ -4,8 +4,6 @@ import { GAME } from "../config";
 // 玩法数值都在 config.ts，这里只取别名
 export const QUEUE_PATIENCE_MS = GAME.session.queuePatienceMs;
 export const DINING_MS = GAME.session.diningMs;
-/** 最后一位离店后停顿一下再结算，给清场留个过场。 */
-export const ROUND_END_DELAY_MS = 1200;
 /** 顾客进场动画整体放慢，体现悠闲。 */
 export const ENTRANCE_SLOW = GAME.patronMove.entranceSlow;
 export const PURCHASE_AMOUNT = GAME.purchase.amount;
@@ -49,7 +47,6 @@ export const NIGHT_STAFF_SEATS = [
   { dx: 170, dy: -110 },
   { dx: 0, dy: -110 },
 ];
-export const SKY_TRANSITION_MS = 2000;
 
 export const FLOOR_Y = 1010;
 export const ACTOR_Y = FLOOR_Y - 34;

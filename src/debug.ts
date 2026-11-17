@@ -3,10 +3,10 @@ import Phaser from "phaser";
 /** 只在开发环境挂载的调试面板。生产构建通过动态 import 整块剔除。 */
 export interface DebugActions {
   addCoins: (n: number) => void;
-  /** 营业中把时钟拨到子初。 */
+  /** 营业中把倒计时拨到 0。 */
   skipDay: () => void;
-  /** 夜修中把时钟拨到辰正。 */
-  skipNight: () => void;
+  /** 在本机时间 / 正午 / 子夜之间切换装饰时钟。 */
+  toggleClock: () => void;
   /** 在 ×1 与 ×10 之间切换时间倍速，返回新倍速。 */
   toggleSpeed: () => number;
   speed: () => number;
@@ -25,7 +25,7 @@ export function setupDebug(scene: Phaser.Scene, actions: DebugActions) {
     const items: { label: string; run: () => void }[] = [
       { label: "+1000 灵石", run: () => actions.addCoins(1000) },
       { label: "跳到打烊（营业中）", run: () => (actions.skipDay(), close()) },
-      { label: "跳到天明（夜修中）", run: () => (actions.skipNight(), close()) },
+      { label: "切换现实时刻（本机/正午/子夜）", run: () => (actions.toggleClock(), close()) },
       { label: `时间倍速 ×${actions.speed() === 1 ? 10 : 1}`, run: () => (actions.toggleSpeed(), close()) },
     ];
 

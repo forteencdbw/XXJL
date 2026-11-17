@@ -43,8 +43,8 @@ export class StaffMethods {
     }
     const home = this.staffHome(this.shopkeeper);
     this.playerChar.teleportTo(home.x, home.y);
-    // 夜里雇人/辞退后，新名单直接到法坛打坐
-    if (this.gameState !== "open") this.seatForNight();
+    // 准备阶段在修炼视图里改名册，新名单直接到法坛打坐
+    if (this.view === "cultivation" && this.session !== "running") this.seatForNight();
   }
 
   /** 夜修：掌柜坐在法坛正中，伙计在身后排成一两排，都盘腿吐息。 */
@@ -77,10 +77,10 @@ export class StaffMethods {
 
   /** 干完一件活得经验，升级时写进见闻录。 */
   staffDidWork(this: TavernScene, e: Employee) {
-    if (gainExp(e)) this.log(`${e.name}升到 ${e.level} 级，打烊后可去伙计页加点`);
+    if (gainExp(e)) this.log(`${e.name}升到 ${e.level} 级，营业结束后可去伙计页加点`);
   }
 
-  /** 空闲的人按自己的工作顺序，从上往下取第一件能做的事。跑堂先传菜再领座；采买只在打烊时做。 */
+  /** 空闲的人按自己的工作顺序，从上往下取第一件能做的事。跑堂先传菜再领座；采买只在准备阶段做。 */
   assignStaffWork(this: TavernScene) {
     const team = this.workforce();
     // 没人勾跑堂时人人兜底，避免客人卡在门口、菜凉在灶台上
@@ -120,6 +120,11 @@ export class StaffMethods {
   }
 
   hireStaff(this: TavernScene, c: Employee) {
+    if (!this.canManage()) {
+      this.staffNotice = "营业结束后才能雇人";
+      this.staffNoticeGood = false;
+      return;
+    }
     const cap = getStaffCap(this.level);
     const cost = getHireCost(c);
     if (this.employees.length >= cap) {
@@ -145,8 +150,13 @@ export class StaffMethods {
     this.log(`雇到${c.name}，去伙计页安排分工`);
   }
 
-  /** 打烊时辞退：当天不付工资，也不给遣散费。掌柜不能辞退。 */
+  /** 准备阶段辞退：当天不付工资，也不给遣散费。掌柜不能辞退。 */
   fireStaff(this: TavernScene, e: Employee) {
+    if (!this.canManage()) {
+      this.staffNotice = "营业结束后才能辞退";
+      this.staffNoticeGood = false;
+      return;
+    }
     if (e.id === SHOPKEEPER_ID) return;
     this.employees = this.employees.filter((o) => o !== e);
     this.pendingFireId = null;

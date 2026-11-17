@@ -149,39 +149,106 @@ export function getWalkSpeed(stars: number): number {
   return C.staff.walkSpeed / getStarSpeedFactor(stars);
 }
 
-// ===== 营业时钟 =====
-/** 一刻 = 15 分钟；营业时钟按刻跳动。 */
+// ===== 营业倒计时 =====
+/** 一刻 = 15 分钟；本局倒计时按刻推进。 */
 export const MINUTES_PER_QUARTER = 15;
 
 function hourToMs(hours: number): number {
   return (hours * 60 / MINUTES_PER_QUARTER) * C.session.msPerQuarter;
 }
 
-/** 从开门到打烊的现实毫秒数。 */
+/** 从开门到打烊的现实毫秒数，也就是一局的固定倒计时。 */
 export function getSessionDurationMs(): number {
   return hourToMs(C.session.closeHour - C.session.openHour);
 }
 
-/** 夜修共几刻：子初打烊到次日辰正开门。 */
-export function getNightQuarters(): number {
-  return ((24 - C.session.closeHour + C.session.openHour) * 60) / MINUTES_PER_QUARTER;
+/** 剩余毫秒 → mm:ss。 */
+export function formatCountdown(ms: number): string {
+  const seconds = Math.max(0, Math.ceil(ms / 1000));
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
-/** 夜修的现实毫秒数。 */
-export function getNightDurationMs(): number {
-  return getNightQuarters() * C.session.nightMsPerQuarter;
-}
-
-/** 夜修已过现实毫秒 → 几点几分（从打烊时刻起算，可超过 24 点，按刻取整，到开门封顶）。 */
-export function getNightClockMinutes(elapsedMs: number): number {
-  const quarters = Math.min(getNightQuarters(), Math.floor(Math.max(0, elapsedMs) / C.session.nightMsPerQuarter));
-  return C.session.closeHour * 60 + quarters * MINUTES_PER_QUARTER;
-}
-
-/** 营业已过现实毫秒 → 当天几点几分（分钟数，按刻取整，到打烊时刻封顶）。 */
+/** 营业已过现实毫秒 → 本局时间线（分钟数）；只用于到店/事件排期，不显示给玩家。 */
 export function getClockMinutes(elapsedMs: number): number {
   const quarters = Math.floor(Math.max(0, elapsedMs) / C.session.msPerQuarter);
   return Math.min(C.session.closeHour * 60, C.session.openHour * 60 + quarters * MINUTES_PER_QUARTER);
+}
+
+// ===== 现实时钟：只决定天色与状态栏，不影响玩法 =====
+// shortcut: 信任本机时钟，改系统时间就能改天色与昼夜；接入服务端后再换权威时间
+/** 本机时间 → 当天分钟数（含秒的小数）。 */
+export function getRealMinutes(date: Date): number {
+  return date.getHours() * 60 + date.getMinutes() + date.getSeconds() / 60;
+}
+
+function normalizeMinutes(minutes: number): number {
+  return ((minutes % 1440) + 1440) % 1440;
+}
+
+/** 06:00–18:00 算白天，其余算夜晚。 */
+export function isDaylight(minutes: number): boolean {
+  const m = normalizeMinutes(minutes);
+  return m >= C.clock.dayStartHour * 60 && m < C.clock.dayEndHour * 60;
+}
+
+/** 白天在 0..1 里的位置（用于太阳轨迹）；夜里返回 0。 */
+export function getDaylightProgress(minutes: number): number {
+  const start = C.clock.dayStartHour * 60;
+  const span = (C.clock.dayEndHour - C.clock.dayStartHour) * 60;
+  return Math.min(1, Math.max(0, (normalizeMinutes(minutes) - start) / span));
+}
+
+/** 夜晚在 0..1 里的位置（用于月亮轨迹）；白天返回 0。 */
+export function getNightProgress(minutes: number): number {
+  const start = C.clock.dayEndHour * 60;
+  const span = 1440 - (C.clock.dayEndHour - C.clock.dayStartHour) * 60;
+  const m = normalizeMinutes(minutes);
+  const elapsed = m >= start ? m - start : m + 1440 - start;
+  return Math.min(1, Math.max(0, elapsed / span));
+}
+
+/** 状态栏的现实时辰：如「子初三刻 · 夜 23:45」。 */
+export function getRealClockLabel(minutes: number): string {
+  const total = Math.floor(normalizeMinutes(minutes));
+  const hh = String(Math.floor(total / 60)).padStart(2, "0");
+  const mm = String(total % 60).padStart(2, "0");
+  return `${formatClock(total)} · ${isDaylight(total) ? "昼" : "夜"} ${hh}:${mm}`;
+}
+
+function mixColor(a: number, b: number, k: number): number {
+  const ar = (a >> 16) & 0xff;
+  const ag = (a >> 8) & 0xff;
+  const ab = a & 0xff;
+  const br = (b >> 16) & 0xff;
+  const bg = (b >> 8) & 0xff;
+  const bb = b & 0xff;
+  return (
+    (Math.round(ar + (br - ar) * k) << 16) |
+    (Math.round(ag + (bg - ag) * k) << 8) |
+    Math.round(ab + (bb - ab) * k)
+  );
+}
+
+/** 白天从晨光到暮色的色带；夜里固定 NIGHT_COLOR。 */
+const REAL_SKY_STOPS = [
+  { m: 6 * 60, color: 0xa8d8ff },
+  { m: 9 * 60, color: 0x74bdf7 },
+  { m: 12 * 60, color: 0x8ecbff },
+  { m: 16 * 60, color: 0x9fc8e8 },
+  { m: 17 * 60 + 30, color: 0xf0a05a },
+  { m: 18 * 60, color: NIGHT_COLOR },
+] as const;
+
+/** 现实时刻 → 天色；只用于三个视图的背景。 */
+export function realSkyColor(minutes: number): number {
+  const m = normalizeMinutes(minutes);
+  if (m < REAL_SKY_STOPS[0].m || m >= REAL_SKY_STOPS[REAL_SKY_STOPS.length - 1].m) return NIGHT_COLOR;
+  for (let i = 0; i < REAL_SKY_STOPS.length - 1; i++) {
+    const a = REAL_SKY_STOPS[i];
+    const b = REAL_SKY_STOPS[i + 1];
+    if (m >= a.m && m <= b.m) return mixColor(a.color, b.color, (m - a.m) / (b.m - a.m || 1));
+  }
+  return NIGHT_COLOR;
 }
 
 const BRANCHES = "子丑寅卯辰巳午未申酉戌亥";

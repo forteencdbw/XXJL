@@ -57,6 +57,9 @@ export class SettlementOverlayMethods {
     if (this.queueLost > 0) {
       summary.push(`排队溢出流失：${this.queueLost} 位（门口排满，先招待）`);
     }
+    if (this.hardStopCleared > 0) {
+      summary.push(`打烊清场：${this.hardStopCleared} 位未结账（不计收入、不扣声望）`);
+    }
     const nextSpecial = DISHES.find(
       (d) => d.id === getDailySpecial(this.day, this.level, this.unlockedDishIds()),
     );
@@ -202,13 +205,12 @@ export class SettlementOverlayMethods {
         .setInteractive({ useHandCursor: true })
         .on("pointerdown", () => {
           this.stopCelebration();
-          this.destroyOverlay();
-          this.transitionToClosedView();
+          this.enterHome();
         }),
     );
     panel.add(
       this.add
-        .text(left + 272, closeY + 32, `打烊 · 进入第 ${this.day} 日`, {
+        .text(left + 272, closeY + 32, "打烊 · 回主界面", {
           fontSize: "25px",
           color: "#f5e6c8",
           fontFamily: XIAN_FONT,

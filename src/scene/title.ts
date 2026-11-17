@@ -701,6 +701,6 @@ export class TitleMethods {
     if (this.overlay !== layer) return;
     playSfx("click");
     layer.list.forEach((child) => this.tweens.killTweensOf(child));
-    this.destroyOverlay();
+    this.enterHome();
   }
 }

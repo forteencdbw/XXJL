@@ -15,7 +15,7 @@ export class SettingsOverlayMethods {
     const entries: [string, () => void][] = [
       ["玩法", () => this.showHelp()],
       ["账簿", () => this.buildRecordOverlay()],
-      // 存档是 DOM 弹窗：先关掉设置页，弹窗关闭时才能正确恢复营业
+      // 存档是 DOM 弹窗：先关掉设置页，弹窗关闭时才能回到场景
       ["存档", () => (this.destroyOverlay(), this.openSaveDialog("export"))],
     ];
     entries.forEach(([label, open], i) => {
