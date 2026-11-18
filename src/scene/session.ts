@@ -130,6 +130,7 @@ export class SessionMethods {
   /** 倒计时归零：立刻清场，未结账的客人不计收入、不扣声望。 */
   hardStopSession(this: TavernScene) {
     if (this.session !== "running") return;
+    this.speedupConfirm = null;
     this.session = "ended";
     this.hardStopCleared =
       this.queue.length + this.booths.filter((booth) => booth.state !== "empty").length;

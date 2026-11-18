@@ -12,6 +12,7 @@ Phaser 3 + TypeScript 竖屏经营游戏。领域词汇见根目录 `GLOSSARY.md
 | `save.ts` | **存档编解码**（纯逻辑）：`newSave`（新档/破产重开，所有开局数值）、`parseSave`（读档与导入共用的清洗，版本不符返回 null）、`SAVE_VERSION`。`save.test.ts` 覆盖。 |
 | `main.ts` | 入口：校验配置后启动 Phaser。 |
 | `scene/` | 唯一的 Phaser 场景 `TavernScene`，按功能拆成多个文件（见下）。 |
+| `ads.ts` | **广告桩**：唯一的广告入口 `showRewardedAd(): Promise<boolean>`；本期模拟等待后返回成功，接真实 SDK 只改这里。 |
 | `audio.ts` / `pixel.ts` / `savecode.ts` / `debug.ts` | 音效、像素角色贴图、存档导出码、开发调试面板（按 P）。 |
 
 ## scene/ 的组织方式
@@ -52,7 +53,7 @@ Phaser 3 + TypeScript 竖屏经营游戏。领域词汇见根目录 `GLOSSARY.md
 | 天气粒子、灵气、蒸汽、闲聊等常驻氛围 | `scene/ambient.ts` |
 | 点人物弹出的人物卡 | `scene/focus.ts` |
 | 选菜单页（配方、缺料提示） | `scene/overlays/menu.ts` |
-| 采集页（三个采集点、现实时间冷却、派员工、动作循环） | `scene/overlays/gathering.ts`（冷却清理与派工方法也在这里） |
+| 采集页（三个采集点、现实时间冷却、派员工、动作循环、看广告得仙玉、采集加速） | `scene/overlays/gathering.ts`（冷却清理、广告与两处加速方法也在这里） |
 | 仓库（目前只有「食材」标签页，按种列库存与介绍） | `scene/overlays/warehouse.ts` |
 | 营造页（扩建/起楼/灶台/门幡） | `scene/overlays/build.ts` |
 | 伙计名单、个人详情（加点、分工）、招聘页 | `scene/overlays/staff.ts` |

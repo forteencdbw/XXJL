@@ -13,8 +13,26 @@ export const GAME = {
   start: {
     /** 开局灵石 */
     coins: 20,
+    /** 开局仙玉（看广告得的加速货币） */
+    jade: 0,
     /** 开局食材（按 ingredients 的 id 计数，没写的为 0） */
     ingredients: { lingshu: 6 } as Record<string, number>,
+  },
+
+  /** 广告：本期只有桩函数，接真实 SDK 后只换 src/ads.ts */
+  ads: {
+    /** 完整看一次广告得多少仙玉 */
+    reward: 1,
+    /** 桩函数模拟观看时长（毫秒），真实 SDK 不需要 */
+    stubMs: 900,
+  },
+
+  /** 加速价格（仙玉）：一次付费，立刻结束对应倒计时 */
+  speedup: {
+    /** 一个采集点的冷却 */
+    gather: 1,
+    /** 当前营业倒计时（立刻打烊） */
+    session: 1,
   },
 
   /** 全局装饰时钟：只影响天色与状态栏显示，不影响玩法 */

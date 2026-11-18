@@ -1,5 +1,6 @@
 // 采集：三个采集点、现实时间冷却、派空闲员工出门。
 import Phaser from "phaser";
+import { showRewardedAd } from "../../ads";
 import { playSfx } from "../../audio";
 import { GAME } from "../../config";
 import {
@@ -25,6 +26,7 @@ export class GatheringOverlayMethods {
       const g = this.gathering[spot.id];
       if (!g || !isGatherReady(g.startedAt, now)) continue;
       delete this.gathering[spot.id];
+      if (this.speedupConfirm === `gather:${spot.id}`) this.speedupConfirm = null;
       changed = true;
       const e = this.employeeById(g.employeeId);
       if (!e) continue;
@@ -74,10 +76,94 @@ export class GatheringOverlayMethods {
     this.buildGatheringOverlay();
   }
 
+  /** 二次确认状态：5 秒内再点同一个按钮才算确认。 */
+  isSpeedupConfirm(this: TavernScene, key: string): boolean {
+    return this.speedupConfirm === key && Date.now() - this.speedupConfirmAt < 5000;
+  }
+
+  setSpeedupConfirm(this: TavernScene, key: string) {
+    this.speedupConfirm = key;
+    this.speedupConfirmAt = Date.now();
+  }
+
+  clearSpeedupConfirm(this: TavernScene) {
+    this.speedupConfirm = null;
+  }
+
+  /** 看一次激励广告换仙玉；桩函数期间约 1 秒。 */
+  async watchAdForJade(this: TavernScene) {
+    if (this.adBusy) return;
+    this.adBusy = true;
+    if (this.overlay === this.gatheringOverlayLayer) this.buildGatheringOverlay();
+    const ok = await showRewardedAd();
+    this.adBusy = false;
+    if (ok) {
+      this.jade += GAME.ads.reward;
+      this.save();
+      this.showEventToast(`看广告 +${GAME.ads.reward} 仙玉`, true);
+    } else {
+      this.showHint("广告未看完，没有仙玉");
+    }
+    if (this.overlay && this.overlay === this.gatheringOverlayLayer) this.buildGatheringOverlay();
+  }
+
+  /** 花仙玉立刻结束一个采集点的冷却（二次确认）。 */
+  requestGatherSpeedup(this: TavernScene, spotId: string) {
+    const assignment = this.gathering[spotId];
+    if (!assignment) return;
+    const cost = GAME.speedup.gather;
+    const key = `gather:${spotId}`;
+    if (this.jade < cost) {
+      this.showHint(`仙玉不足：加速需要 ${cost} 仙玉，先看广告`);
+      return;
+    }
+    if (!this.isSpeedupConfirm(key)) {
+      this.setSpeedupConfirm(key);
+      this.buildGatheringOverlay();
+      return;
+    }
+    this.jade -= cost;
+    this.clearSpeedupConfirm();
+    // 把开始时间拨到冷却结束之前，走正常的归队流程
+    assignment.startedAt = Date.now() - GATHER_COOLDOWN_MS;
+    this.tickGathering();
+    this.save();
+  }
+
+  /** 花仙玉立刻打烊（二次确认）；等价于营业倒计时归零。 */
+  requestSessionSpeedup(this: TavernScene) {
+    if (this.session !== "running" || this.settling) return;
+    const cost = GAME.speedup.session;
+    if (this.jade < cost) {
+      this.showHint(`仙玉不足：加速打烊需要 ${cost} 仙玉，先看广告`);
+      return;
+    }
+    if (!this.isSpeedupConfirm("session")) {
+      this.setSpeedupConfirm("session");
+      return;
+    }
+    this.jade -= cost;
+    this.clearSpeedupConfirm();
+    this.log(`花 ${cost} 仙玉加速，直接打烊`);
+    this.hardStopSession();
+  }
+
   /** 采集页：三个点各一个槽位；选食材 → 点空闲伙计即可出发。 */
   buildGatheringOverlay(this: TavernScene) {
     const layer = this.openSubsystemPage("采集");
     this.gatheringOverlayLayer = layer;
+    // 右上角：仙玉与看广告入口
+    const jadeChip = this.add
+      .text(690, 58, this.adBusy ? "观看中…" : `仙玉 ${this.jade} · 看广告 +${GAME.ads.reward}`, {
+        fontSize: "18px",
+        color: "#9fd8ff",
+        backgroundColor: this.adBusy ? "#3a3a3a" : "#2a3a4a",
+        padding: { x: 10, y: 6 },
+      })
+      .setOrigin(1, 0)
+      .setInteractive({ useHandCursor: !this.adBusy });
+    if (!this.adBusy) jadeChip.on("pointerup", () => this.watchAdForJade());
+    layer.add(jadeChip);
     layer.add(
       this.add.text(40, 108, "选采集点里的一种食材，再点一名空闲伙计，食材立刻到手；该点冷却 5 分钟（现实时间），伙计归队后才能再派。", {
         fontSize: "16px",
@@ -116,6 +202,20 @@ export class GatheringOverlayMethods {
         layer.add(cd);
         countdowns.push({ spotId: spot.id, text: cd });
         layer.add(this.add.text(60, y + 168, "冷却结束自动归队，期间不能派活", { fontSize: "15px", color: "#8a7a62" }));
+        const speedCost = GAME.speedup.gather;
+        const confirming = this.isSpeedupConfirm(`gather:${spot.id}`);
+        const affordable = this.jade >= speedCost;
+        layer.add(
+          this.add
+            .text(60, y + 200, confirming ? `确认加速 · 花 ${speedCost} 仙玉` : `加速 · ${speedCost} 仙玉`, {
+              fontSize: "18px",
+              color: confirming ? "#ffe6a8" : affordable ? "#dfe8f4" : "#8a8a8a",
+              backgroundColor: confirming ? "#7a5a1a" : affordable ? "#2e3a4a" : "#2a2a2a",
+              padding: { x: 10, y: 6 },
+            })
+            .setInteractive({ useHandCursor: true })
+            .on("pointerup", () => this.requestGatherSpeedup(spot.id)),
+        );
         // 小小的采集动作循环：像素小人一起一落，旁边一把工具来回摆
         const look = this.firstJob(e ?? this.shopkeeper) === "cook" ? "cook" : "server";
         const tex = getPixelTexture(this, {

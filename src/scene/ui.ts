@@ -141,6 +141,7 @@ export class UiMethods {
     this.hudChips.strokeRoundedRect(270, 36, 434, 30, 7);
 
     this.coinsText = this.addUiText(24, 6, "", "26px", "#ffe6a8");
+    this.jadeText = this.addUiText(190, 6, "", "26px", "#9fd8ff");
     this.levelText = this.addUiText(400, 6, "", "18px", "#87ceeb");
     this.queueText = this.addUiText(24, 40, "", "24px", "#d8c8a8");
     // 状态栏最右：营业时钟的时辰
@@ -164,7 +165,7 @@ export class UiMethods {
       .setDepth(30.7);
     this.chronicleText = this.addUiText(24, 96, "", "17px", "#b8b0a0");
     this.weatherBadge = this.addUiText(24, 176, "", "17px", "#e0c9a0").setVisible(false);
-    [this.coinsText, this.queueText, this.goalText].forEach(
+    [this.coinsText, this.jadeText, this.queueText, this.goalText].forEach(
       (text) => text.setStyle({ fontStyle: "bold" }),
     );
     this.levelText.setVisible(false);
@@ -189,6 +190,8 @@ export class UiMethods {
     this.cultivationButton = this.addUiButton(550, 1186, () => this.enterCultivationView(), { x: 30, y: 28 }, 6, "22px");
     this.cultivationButton.setBackgroundColor("#3a2e4a");
     this.cultivationButton.setText("修为");
+    this.sessionSpeedupButton = this.addUiButton(360, 1186, () => this.requestSessionSpeedup(), { x: 16, y: 20 }, 6, "20px");
+    this.sessionSpeedupButton.setBackgroundColor("#3a2e4a");
     this.cultivationPageButton = this.addUiButton(170, 1186, () => this.buildCultivationOverlay(), { x: 30, y: 28 }, 6, "22px");
     this.cultivationPageButton.setBackgroundColor("#3a2e4a");
     this.cultivationPageButton.setText("修为");

@@ -8,6 +8,7 @@ import {
   INGREDIENTS,
   SHOPKEEPER_ID,
   STARTING_COINS,
+  STARTING_JADE,
   createShopkeeper,
   getRealmIndex,
   sanitizeEmployees,
@@ -15,7 +16,7 @@ import {
 } from "./logic";
 import type { DailyGoal, Employee, GatherAssignment, IngredientStock, MetaStats, RootElement } from "./logic";
 
-export const SAVE_VERSION = 5;
+export const SAVE_VERSION = 6;
 
 export interface RegularGuest {
   name: string;
@@ -27,6 +28,8 @@ export interface RegularGuest {
 export interface SaveData {
   v: typeof SAVE_VERSION;
   coins: number;
+  /** 看广告攒的加速货币；破产与飞升都保留 */
+  jade: number;
   /** 按食材 id 分别计数 */
   ingredients: IngredientStock;
   /** 采集点 id → 当前占用；冷却按 startedAt 的现实时间差恢复 */
@@ -70,6 +73,7 @@ export interface SaveCarry {
   meta?: MetaStats;
   lastGiftDate?: string;
   giftStreak?: number;
+  jade?: number;
 }
 
 /** 新档（含破产重开）：第 1 日从主界面开始。所有开局数值只在这里。 */
@@ -78,6 +82,7 @@ export function newSave(carry: SaveCarry = {}): SaveData {
   return {
     v: SAVE_VERSION,
     coins: STARTING_COINS,
+    jade: carry.jade ?? STARTING_JADE,
     ingredients: startingStock(),
     gathering: {},
     level: 1,
@@ -199,6 +204,7 @@ export function parseSave(raw: unknown): SaveData | null {
   return {
     v: SAVE_VERSION,
     coins: num(data.coins, base.coins),
+    jade: count(data.jade),
     ingredients,
     gathering,
     level,

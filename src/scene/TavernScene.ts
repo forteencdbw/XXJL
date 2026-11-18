@@ -1,7 +1,7 @@
 // 主场景：字段（全部场景状态）、create/update 入口；方法按功能拆在 scene/ 其他文件。
 import Phaser from "phaser";
 import { createBooth } from "../booth";
-import { createShopkeeper, DISHES, getSessionDurationMs, EMPTY_META, getDailyWeather, localDateKey, STARTING_COINS, startingStock } from "../logic";
+import { createShopkeeper, DISHES, getSessionDurationMs, EMPTY_META, getDailyWeather, localDateKey, STARTING_COINS, STARTING_JADE, startingStock } from "../logic";
 import type { DailyGoal, Employee, GatherAssignment, IngredientStock, MetaStats, WeatherDef } from "../logic";
 import { Character } from "./Character";
 import { AUTOSAVE_MS, CAMERA_CLOSED_X, SCREEN_H, USE_VECTOR_TITLE } from "./constants";
@@ -35,6 +35,13 @@ import { WarehouseOverlayMethods } from "./overlays/warehouse";
 
 export class TavernScene extends Phaser.Scene {
   coins = STARTING_COINS;
+  /** 看广告攒的仙玉：只用于加速，破产与飞升都保留。 */
+  jade = STARTING_JADE;
+  /** 广告播放中，防止重复点。 */
+  adBusy = false;
+  /** 待确认的加速操作："session" 或 "gather:<spotId>"；超时自动失效。 */
+  speedupConfirm: string | null = null;
+  speedupConfirmAt = 0;
   /** 食材库存：按食材 id 分别计数。 */
   inventory: IngredientStock = startingStock();
   /** 采集点 id → 当前占用（员工、食材、现实时间开始时刻）。 */
@@ -158,6 +165,7 @@ export class TavernScene extends Phaser.Scene {
   playerGender: "male" | "female" = "male";
 
   coinsText!: Phaser.GameObjects.Text;
+  jadeText!: Phaser.GameObjects.Text;
   levelText!: Phaser.GameObjects.Text;
   goalText!: Phaser.GameObjects.Text;
   queueText!: Phaser.GameObjects.Text;
@@ -190,9 +198,10 @@ export class TavernScene extends Phaser.Scene {
   bankButton!: TapText;
   warehouseButton!: TapText;
   upgradeButton!: TapText;
-  /** 营业视图底部：回主界面与跳修炼。 */
+  /** 营业视图底部：回主界面、跳修炼、花仙玉立刻打烊。 */
   businessHomeButton!: TapText;
   cultivationButton!: TapText;
+  sessionSpeedupButton!: TapText;
   /** 修炼视图底部：只读修为页与回主界面。 */
   cultivationPageButton!: TapText;
   cultivationHomeButton!: TapText;

@@ -1,5 +1,6 @@
 // 每帧刷新的 HUD：状态栏文字、按钮状态、雅座进度条、见闻录与提示。
 import Phaser from "phaser";
+import { GAME } from "../config";
 import { DISHES, formatCountdown, getGoalStatus, getNextRepThreshold, getQueueStatus, getRepLevelInfo, getSessionDurationMs, getTotalBoothCount, isRarePatron } from "../logic";
 import { boothLabel, cookProgress } from "../booth";
 import { CHRONICLE_MAX_LINES, COLOR_STAFF, SCREEN_W, XIAN_FONT } from "./constants";
@@ -19,6 +20,7 @@ export class HudMethods {
     if (business) this.playerLabel.setPosition(this.playerChar.x, this.playerChar.y - 120);
 
     this.coinsText.setText(`灵石：${this.displayedCoins}`);
+    this.jadeText.setText(`仙玉：${this.jade}`);
     this.levelText.setText(`酒楼等级：${this.level}`);
     const queue = getQueueStatus({
       queued: this.queue.length,
@@ -104,6 +106,12 @@ export class HudMethods {
     // 底部按钮按视图切换
     this.businessHomeButton.setVisible(business);
     this.cultivationButton.setVisible(business);
+    this.sessionSpeedupButton.setVisible(business && running && !this.settling);
+    const speedupCost = GAME.speedup.session;
+    this.sessionSpeedupButton.setText(
+      this.isSpeedupConfirm("session") ? `确认加速 · 花 ${speedupCost} 仙玉` : `加速打烊 · ${speedupCost} 仙玉`,
+    );
+    this.sessionSpeedupButton.setAlpha(this.jade < speedupCost ? 0.5 : 1);
     this.cultivationPageButton.setVisible(cultivating);
     this.cultivationHomeButton.setVisible(cultivating);
     const disabledAlpha = this.settling ? 0.4 : 1;

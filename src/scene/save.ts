@@ -11,6 +11,7 @@ export class SaveMethods {
     return {
       v: SAVE_VERSION,
       coins: this.coins,
+      jade: this.jade,
       ingredients: this.inventory,
       gathering: this.gathering,
       level: this.level,
@@ -44,6 +45,7 @@ export class SaveMethods {
   applySave(this: TavernScene, data: SaveData) {
     this.coins = data.coins;
     this.displayedCoins = data.coins;
+    this.jade = data.jade;
     this.inventory = { ...data.ingredients };
     this.gathering = { ...data.gathering };
     this.level = data.level;
@@ -96,6 +98,7 @@ export class SaveMethods {
       meta: this.meta,
       lastGiftDate: this.lastGiftDate,
       giftStreak: this.giftStreak,
+      jade: this.jade,
     });
   }
 

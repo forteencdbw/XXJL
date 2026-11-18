@@ -12,8 +12,8 @@ describe("存档编解码", () => {
 
   it("破产重开继承仙缘、性别、灵根、账簿与利是，其余归零", () => {
     const meta = { days: 9, served: 50, revenue: 900, bestRevenue: 200, bestServed: 12, goalsMet: 4, maxRealm: 1, topDays: [] };
-    const s = newSave({ ascensions: 2, playerGender: "female", shopkeeperRoot: ["fire"], meta, lastGiftDate: "2026-11-01", giftStreak: 3 });
-    expect(s).toMatchObject({ ascensions: 2, playerGender: "female", meta, lastGiftDate: "2026-11-01", giftStreak: 3, day: 1, coins: newSave().coins });
+    const s = newSave({ ascensions: 2, playerGender: "female", shopkeeperRoot: ["fire"], meta, lastGiftDate: "2026-11-01", giftStreak: 3, jade: 7 });
+    expect(s).toMatchObject({ ascensions: 2, playerGender: "female", meta, lastGiftDate: "2026-11-01", giftStreak: 3, day: 1, coins: newSave().coins, jade: 7 });
     expect(s.shopkeeper.root).toEqual(["fire"]);
   });
 
@@ -32,6 +32,7 @@ describe("存档编解码", () => {
     const s = parseSave({
       v: SAVE_VERSION,
       coins: "lots",
+      jade: -3,
       ingredients: { lingshu: -5, bogus: 9 },
       gathering: {
         herb: { employeeId: 99, ingredientId: "lingshu", startedAt: 1 },
@@ -48,6 +49,7 @@ describe("存档编解码", () => {
       lastGiftDate: "昨天",
     })!;
     expect(s.coins).toBe(newSave().coins);
+    expect(s.jade).toBe(0);
     expect(s.ingredients.lingshu).toBe(0);
     expect(s.ingredients.daoguo).toBe(0);
     expect("bogus" in s.ingredients).toBe(false);
