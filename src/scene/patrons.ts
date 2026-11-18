@@ -2,7 +2,7 @@
 import Phaser from "phaser";
 import { playSfx } from "../audio";
 import { GAME } from "../config";
-import { DISHES, PATRON_KINDS, applyEvent, getRepLevel, getTotalBoothCount, isRarePatron, pickPatronKind, pickPatronName, pickPatronWish, pickRandomEvent } from "../logic";
+import { DISHES, INGREDIENT_BY_ID, PATRON_KINDS, applyEvent, getRepLevel, getTotalBoothCount, isRarePatron, pickLossIngredient, pickPatronKind, pickPatronName, pickPatronWish, pickRandomEvent, pickRewardIngredient } from "../logic";
 import type { PatronKind } from "../logic";
 import { Character } from "./Character";
 import type { CharacterLook } from "./Character";
@@ -315,14 +315,19 @@ export class PatronMethods {
   /** 随机事件：不打断操作，直接把结果记进见闻录并飘一条提示。 */
   triggerRandomEvent(this: TavernScene) {
     const event = pickRandomEvent(Math.random());
-    const next = applyEvent(event, { coins: this.coins, ingredients: this.inventory });
+    // 送食材抽一味（稀有更少），扣食材只从有存货的里抽
+    const ingredientId =
+      event.ingredients > 0 ? pickRewardIngredient() : event.ingredients < 0 ? pickLossIngredient(this.inventory) : null;
+    const next = applyEvent(event, { coins: this.coins, stock: this.inventory }, ingredientId);
     this.coins = next.coins;
     this.displayedCoins = this.coins;
-    this.inventory = next.ingredients;
+    this.inventory = next.stock;
     this.eventsThisSession += 1;
     const parts: string[] = [];
     if (event.coins !== 0) parts.push(`灵石 ${event.coins > 0 ? "+" : ""}${event.coins}`);
-    if (event.ingredients !== 0) parts.push(`灵材 ${event.ingredients > 0 ? "+" : ""}${event.ingredients}`);
+    if (event.ingredients !== 0 && ingredientId) {
+      parts.push(`${INGREDIENT_BY_ID[ingredientId].name} ${event.ingredients > 0 ? "+" : ""}${event.ingredients}`);
+    }
     this.log(`【事件】${event.text}${parts.length ? `（${parts.join("，")}）` : ""}`);
     this.showEventToast(event.text, event.kind !== "bad");
     if (event.kind === "bad") this.cameras.main.shake(220, 0.006);

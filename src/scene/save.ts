@@ -11,7 +11,8 @@ export class SaveMethods {
     return {
       v: SAVE_VERSION,
       coins: this.coins,
-      inventory: this.inventory,
+      ingredients: this.inventory,
+      gathering: this.gathering,
       level: this.level,
       stoveLevel: this.stoveLevel,
       signLevel: this.signLevel,
@@ -43,7 +44,8 @@ export class SaveMethods {
   applySave(this: TavernScene, data: SaveData) {
     this.coins = data.coins;
     this.displayedCoins = data.coins;
-    this.inventory = data.inventory;
+    this.inventory = { ...data.ingredients };
+    this.gathering = { ...data.gathering };
     this.level = data.level;
     this.stoveLevel = data.stoveLevel;
     this.signLevel = data.signLevel;

@@ -1,5 +1,5 @@
 // 经营规则的场景侧换算：价格、天气、开市利是、菜单；境界只读（修为子系统占位）。
-import { DISHES, getDailyGift, getDailyGoal, getDailySpecial, getDailyWeather, getEffectiveStars, getFloorPriceMultiplier, getGiftStreak, getPostCapPriceBonus, getPurchasePrice, getRealmIndex, getSpecialPrice, getWishPrice, localDateKey } from "../logic";
+import { DISHES, getDailyGift, getDailyGoal, getDailySpecial, getDailyWeather, getFloorPriceMultiplier, getGiftStreak, getPostCapPriceBonus, getRealmIndex, getSpecialPrice, getWishPrice, localDateKey, pickRewardIngredient, adjustIngredient, INGREDIENT_BY_ID } from "../logic";
 import type { DailyGoal, Dish } from "../logic";
 import type { Booth } from "./types";
 import type { TavernScene } from "./TavernScene";
@@ -26,12 +26,6 @@ export class RuleMethods {
 
   dishPrice(this: TavernScene, dish: Dish): number {
     return getSpecialPrice(this.baseDishPrice(dish), this.currentDailySpecial() === dish.id);
-  }
-
-  /** 采购价含采买员工的机缘折扣。 */
-  purchasePrice(this: TavernScene): number {
-    const buyer = this.bestBuyer();
-    return getPurchasePrice(buyer ? getEffectiveStars(buyer, "buy") : 0);
   }
 
   /** 一桌离店时的成交价：菜品价 × 身份 × 楼层 × 口味 × 烹饪质量。 */
@@ -67,11 +61,17 @@ export class RuleMethods {
     this.lastGift = { streak: this.giftStreak, ...gift };
     this.coins += gift.coins;
     this.displayedCoins = this.coins;
-    this.inventory += gift.ingredients;
+    const gained: Record<string, number> = {};
+    for (let i = 0; i < gift.ingredients; i++) {
+      const id = pickRewardIngredient();
+      this.inventory = adjustIngredient(this.inventory, id, 1);
+      gained[id] = (gained[id] ?? 0) + 1;
+    }
+    const giftText = Object.entries(gained)
+      .map(([id, n]) => `${INGREDIENT_BY_ID[id].name}×${n}`)
+      .join("、");
     this.log(
-      `开市利是（连续第 ${this.giftStreak} 天）：+${gift.coins} 灵石${
-        gift.ingredients ? `、+${gift.ingredients} 灵材` : ""
-      }`,
+      `开市利是（连续第 ${this.giftStreak} 天）：+${gift.coins} 灵石${giftText ? `、+${giftText}` : ""}`,
     );
     this.showEventToast(`开市利是 · 连续第 ${this.giftStreak} 天 +${gift.coins} 灵石`, true);
     // 一次性跨日奖励立即落盘：营业中刷新会回退本局，但不能重领利是

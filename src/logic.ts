@@ -1,34 +1,126 @@
 // 纯数值逻辑：不依赖 Phaser / DOM，便于单元测试。数值本身都在 config.ts。
 import { GAME } from "./config";
 
-/** 员工可勾选的三项工作：跑堂（领座与传菜）/ 烹饪 / 采买。 */
-export type Job = "seat" | "cook" | "buy";
-export const JOBS: Job[] = ["seat", "cook", "buy"];
+/** 员工可勾选的两项工作：跑堂（领座与传菜）/ 烹饪。 */
+export type Job = "seat" | "cook";
+export const JOBS: Job[] = ["seat", "cook"];
 /** 「seat」是跑堂：领座与传菜两件事。 */
-export const JOB_NAMES: Record<Job, string> = { seat: "跑堂", cook: "烹饪", buy: "采买" };
+export const JOB_NAMES: Record<Job, string> = { seat: "跑堂", cook: "烹饪" };
 
-/** 五项属性：根骨、神识、机缘各管一项工作，悟性、气感留给修行。 */
+/** 五项属性：根骨、神识、机缘各管一件事，悟性、气感留给修行。 */
 export type Stat = "gengu" | "wuxing" | "shenshi" | "jiyuan" | "qigan";
 export const STATS: Stat[] = ["gengu", "wuxing", "shenshi", "jiyuan", "qigan"];
 export const STAT_NAMES: Record<Stat, string> = { gengu: "根骨", wuxing: "悟性", shenshi: "神识", jiyuan: "机缘", qigan: "气感" };
-export const JOB_STAT: Record<Job, Stat> = { seat: "gengu", cook: "shenshi", buy: "jiyuan" };
+export const JOB_STAT: Record<Job, Stat> = { seat: "gengu", cook: "shenshi" };
 
-/** 五行灵根；火、水、金各对口一项工作，木、土留给功法。 */
+/** 五行灵根；火、水各对口一项工作，金、木、土留给功法。 */
 export type RootElement = "metal" | "wood" | "water" | "fire" | "earth";
 export const ELEMENTS: RootElement[] = ["metal", "wood", "water", "fire", "earth"];
 export const ELEMENT_NAMES: Record<RootElement, string> = { metal: "金", wood: "木", water: "水", fire: "火", earth: "土" };
-export const JOB_ELEMENT: Record<Job, RootElement> = { seat: "water", cook: "fire", buy: "metal" };
+export const JOB_ELEMENT: Record<Job, RootElement> = { seat: "water", cook: "fire" };
 
 const C = GAME;
 export const TABLE_COUNT_BASE = C.tavern.groundFloorBaseBooths;
 export const STARTING_COINS = C.start.coins;
-export const STARTING_INVENTORY = C.start.ingredients;
-export const PURCHASE_COST = C.purchase.cost;
 export const UPGRADE_BASE_COST = C.tavern.upgradeBaseCost;
 export const UPGRADE_COST_MULTIPLIER = C.tavern.upgradeCostMultiplier;
 export const LOAN_PERIODS = C.bank.periods;
 export const BANKRUPT_STREAK = C.bank.bankruptStreak;
 export const NIGHT_COLOR = 0x1b2440;
+
+// ===== 食材与采集 =====
+export interface IngredientDef {
+  id: string;
+  name: string;
+  rare: boolean;
+  /** 采集产量系数：稀有食材更低 */
+  yieldFactor: number;
+  desc: string;
+}
+
+export const INGREDIENTS: IngredientDef[] = C.ingredients;
+export const INGREDIENT_BY_ID: Record<string, IngredientDef> = Object.fromEntries(
+  INGREDIENTS.map((i) => [i.id, i]),
+);
+export type IngredientStock = Record<string, number>;
+
+/** 开局食材：config 里写的份数，其余食材补 0。 */
+export function startingStock(): IngredientStock {
+  return Object.fromEntries(INGREDIENTS.map((i) => [i.id, Math.max(0, Math.floor(C.start.ingredients[i.id] ?? 0))]));
+}
+
+/** 所有食材的份数之和。 */
+export function totalIngredients(stock: IngredientStock): number {
+  return INGREDIENTS.reduce((sum, i) => sum + Math.max(0, stock[i.id] ?? 0), 0);
+}
+
+/** 这道菜的配方是否齐备。 */
+export function hasRecipe(stock: IngredientStock, recipe: string[]): boolean {
+  return recipe.every((id) => (stock[id] ?? 0) > 0);
+}
+
+/** 缺哪些食材（id）；空数组表示齐了。 */
+export function missingIngredients(stock: IngredientStock, recipe: string[]): string[] {
+  return recipe.filter((id) => (stock[id] ?? 0) <= 0);
+}
+
+/** 起锅扣料：每种食材各扣 1 份，返回新库存。 */
+export function consumeRecipe(stock: IngredientStock, recipe: string[]): IngredientStock {
+  const next = { ...stock };
+  for (const id of recipe) next[id] = Math.max(0, (next[id] ?? 0) - 1);
+  return next;
+}
+
+/** 加/减某一味食材；扣不会低于 0。 */
+export function adjustIngredient(stock: IngredientStock, id: string, amount: number): IngredientStock {
+  return { ...stock, [id]: Math.max(0, (stock[id] ?? 0) + amount) };
+}
+
+/** 随机事件/利是送食材：稀有食材权重更低；rand 返回 [0,1)。 */
+export function pickRewardIngredient(rand: () => number = Math.random): string {
+  const total = INGREDIENTS.reduce((sum, i) => sum + i.yieldFactor, 0);
+  let cursor = Math.min(0.999999, Math.max(0, rand())) * total;
+  for (const i of INGREDIENTS) {
+    cursor -= i.yieldFactor;
+    if (cursor < 0) return i.id;
+  }
+  return INGREDIENTS[INGREDIENTS.length - 1].id;
+}
+
+/** 坏事扣食材：只在有存货的食材里随机扣，避免凭空扣出负数。 */
+export function pickLossIngredient(stock: IngredientStock, rand: () => number = Math.random): string | null {
+  const stocked = INGREDIENTS.filter((i) => (stock[i.id] ?? 0) > 0);
+  if (stocked.length === 0) return null;
+  return stocked[Math.floor(Math.min(0.999999, Math.max(0, rand())) * stocked.length)].id;
+}
+
+/** 一次采集的产量：基础量 + 机缘系数，再乘食材稀有度，四舍五入至少 1 份。 */
+export function getGatherYield(jiyuanStars: number, ingredientId: string): number {
+  const factor = INGREDIENT_BY_ID[ingredientId]?.yieldFactor ?? 1;
+  return Math.max(1, Math.round((C.gathering.yieldBase + C.gathering.yieldPerStar * Math.max(0, jiyuanStars)) * factor));
+}
+
+/** 采集冷却是否结束（startedAt 是现实时间毫秒）；now 便于测试。 */
+export function isGatherReady(startedAt: number, now: number = Date.now()): boolean {
+  return now - startedAt >= C.gathering.cooldownMs;
+}
+
+export interface GatheringSpotDef {
+  id: string;
+  name: string;
+  desc: string;
+  ingredients: string[];
+}
+
+export const GATHERING_SPOTS: GatheringSpotDef[] = C.gathering.spots;
+export const GATHER_COOLDOWN_MS = C.gathering.cooldownMs;
+
+/** 某个采集点当前的占用：谁、采什么、现实时间几点开始。 */
+export interface GatherAssignment {
+  employeeId: number;
+  ingredientId: string;
+  startedAt: number;
+}
 
 export interface Dish {
   id: string;
@@ -36,6 +128,9 @@ export interface Dish {
   price: number;
   cookMs: number;
   unlockLevel: number;
+  /** 起锅要消耗的食材 id，每种 1 份 */
+  recipe: string[];
+  desc: string;
 }
 
 // 价格越高、单位时间收益越低：高价菜靠口味/稀客加成才值得，走量菜靠翻台。
@@ -456,7 +551,7 @@ export interface RandomEventDef {
   weight: number;
 }
 
-/** 事件池整体期望为正，单次损失有硬上限（灵石 -4、灵材 -2）。 */
+/** 事件池整体期望为正，单次损失有硬上限（灵石 -4、食材 -2）。 */
 export const RANDOM_EVENTS: RandomEventDef[] = C.events.pool;
 
 /** 按权重抽一个事件；roll 取 [0,1) 方便测试。 */
@@ -472,14 +567,20 @@ export function pickRandomEvent(roll: number): RandomEventDef {
 
 export interface EventState {
   coins: number;
-  ingredients: number;
+  stock: IngredientStock;
 }
 
-/** 结算事件：灵材不为负，灵石按事件允许扣成欠款。 */
-export function applyEvent(event: RandomEventDef, state: EventState): EventState {
+/**
+ * 结算事件：食材按份数加到/扣自调用方选好的那一味，扣到 0 为止；
+ * ingredientId 为 null（没有存货可扣）时食材不变。灵石按事件允许扣成欠款。
+ */
+export function applyEvent(event: RandomEventDef, state: EventState, ingredientId: string | null): EventState {
   return {
     coins: state.coins + event.coins,
-    ingredients: Math.max(0, state.ingredients + event.ingredients),
+    stock:
+      event.ingredients === 0 || ingredientId === null
+        ? { ...state.stock }
+        : adjustIngredient(state.stock, ingredientId, event.ingredients),
   };
 }
 
@@ -830,7 +931,7 @@ export function getEffectiveStars(e: Pick<Employee, "root" | "stars">, job: Job)
   return e.stars[JOB_STAT[job]] + getRootBonus(e, job);
 }
 
-/** 新档掌柜：五项同星、随机灵根，默认依次勾选烹饪、跑堂、采买。 */
+/** 新档掌柜：五项同星、随机灵根，默认依次勾选烹饪、跑堂。 */
 export function createShopkeeper(rand: () => number = Math.random): Employee {
   return {
     id: SHOPKEEPER_ID,
@@ -840,7 +941,7 @@ export function createShopkeeper(rand: () => number = Math.random): Employee {
     level: 1,
     exp: 0,
     statPoints: 0,
-    jobs: (["cook", "seat", "buy"] as Job[]).map((job) => ({ job, on: true })),
+    jobs: (["cook", "seat"] as Job[]).map((job) => ({ job, on: true })),
   };
 }
 
@@ -873,16 +974,7 @@ export function getCookQuality(stars: number): number {
   return S.qualityBase + S.qualityPerStar * Math.max(1, stars);
 }
 
-/** 采购折扣：机缘每星 5%，封顶 50%；没有人勾采买时传 0。 */
-export function getPurchaseDiscount(buyStars: number): number {
-  return Math.min(S.buyDiscountCap, S.buyDiscountPerStar * Math.max(buyStars, 0));
-}
-
-export function getPurchasePrice(buyStars: number): number {
-  return Math.max(1, Math.round(PURCHASE_COST * (1 - getPurchaseDiscount(buyStars))));
-}
-
-/** 新员工默认勾选全部工作，按有效星数从高到低排序（同分按 跑堂/烹饪/采买）。 */
+/** 新员工默认勾选全部工作，按有效星数从高到低排序（同分按 跑堂/烹饪）。 */
 export function defaultJobs(e: Pick<Employee, "root" | "stars">): Employee["jobs"] {
   return [...JOBS].sort((a, b) => getEffectiveStars(e, b) - getEffectiveStars(e, a)).map((job) => ({ job, on: true }));
 }

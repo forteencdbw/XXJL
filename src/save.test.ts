@@ -32,7 +32,12 @@ describe("存档编解码", () => {
     const s = parseSave({
       v: SAVE_VERSION,
       coins: "lots",
-      inventory: -5,
+      ingredients: { lingshu: -5, bogus: 9 },
+      gathering: {
+        herb: { employeeId: 99, ingredientId: "lingshu", startedAt: 1 },
+        stream: { employeeId: 0, ingredientId: "lingmi", startedAt: 2 },
+        bamboo: { employeeId: 0, ingredientId: "shanjun", startedAt: 3 },
+      },
       level: 4,
       floorsBuilt: 9,
       playerGender: "robot",
@@ -43,7 +48,12 @@ describe("存档编解码", () => {
       lastGiftDate: "昨天",
     })!;
     expect(s.coins).toBe(newSave().coins);
-    expect(s.inventory).toBe(0);
+    expect(s.ingredients.lingshu).toBe(0);
+    expect(s.ingredients.daoguo).toBe(0);
+    expect("bogus" in s.ingredients).toBe(false);
+    // 不存在的员工丢弃；同一人只认第一处
+    expect(Object.keys(s.gathering)).toEqual(["stream"]);
+    expect(s.gathering.stream).toEqual({ employeeId: 0, ingredientId: "lingmi", startedAt: 2 });
     expect(s.floorsBuilt).toBe(getMaxFloorsBuilt(4));
     expect(s.playerGender).toBe("male");
     expect([s.shopkeeper.id, s.shopkeeper.name]).toEqual([0, "掌柜"]);

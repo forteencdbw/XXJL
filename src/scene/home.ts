@@ -1,7 +1,7 @@
 // 主界面：酒楼门面 + 【营业】【修炼】两张入口卡；营业状态与倒计时写在卡上。
 import Phaser from "phaser";
 import { playSfx } from "../audio";
-import { formatCountdown, getSessionDurationMs } from "../logic";
+import { formatCountdown, GATHER_COOLDOWN_MS, getSessionDurationMs } from "../logic";
 import { SCREEN_W, XIAN_FONT } from "./constants";
 import type { TavernScene } from "./TavernScene";
 
@@ -123,16 +123,22 @@ export class HomeMethods {
       return { card, titleText, sub };
     };
 
-    const open = makeCard(408, "营业", () => this.onHomeOpen(), 150);
+    const open = makeCard(360, "营业", () => this.onHomeOpen(), 140);
     this.homeOpenCard = open.card;
     this.homeOpenTitle = open.titleText;
     this.homeOpenSub = open.sub;
 
-    const cultivation = makeCard(612, "修炼", () => this.enterCultivationView(), 130);
+    const cultivation = makeCard(530, "修炼", () => this.enterCultivationView(), 120);
     this.homeCultivationCard = cultivation.card;
     this.homeCultivationTitle = cultivation.titleText;
     this.homeCultivationSub = cultivation.sub;
     this.homeCultivationSub.setText("法坛打坐 · 随时进出");
+
+    const gather = makeCard(680, "采集", () => this.buildGatheringOverlay(), 120);
+    this.homeGatherCard = gather.card;
+    this.homeGatherTitle = gather.titleText;
+    this.homeGatherSub = gather.sub;
+    this.homeGatherSub.setText("派伙计采食材 · 现实时间冷却");
   }
 
   /** 主界面【营业】卡：未开业进菜单，营业中回到店内，已打烊进结算。 */
@@ -159,6 +165,16 @@ export class HomeMethods {
       this.homeOpenSub.setText(`第 ${this.day} 日 · 点击开业`);
       this.homeOpenSub.setColor("#c8b8a0");
     }
+    // 采集卡：有几人在外、最近一位多久归队
+    const active = Object.values(this.gathering);
+    if (active.length === 0) {
+      this.homeGatherSub.setText("派伙计采食材 · 现实时间冷却");
+      this.homeGatherSub.setColor("#c8b8a0");
+    } else {
+      const soonest = Math.min(...active.map((g) => g.startedAt + GATHER_COOLDOWN_MS - Date.now()));
+      this.homeGatherSub.setText(`采集中 ${active.length}/3 · 最近 ${formatCountdown(Math.max(0, soonest))} 归队`);
+      this.homeGatherSub.setColor("#a8d8b0");
+    }
   }
 
   setHomeVisible(this: TavernScene, visible: boolean) {
@@ -170,6 +186,9 @@ export class HomeMethods {
       this.homeCultivationCard,
       this.homeCultivationTitle,
       this.homeCultivationSub,
+      this.homeGatherCard,
+      this.homeGatherTitle,
+      this.homeGatherSub,
     ]) {
       obj.setVisible(visible);
       if (obj.input) obj.input.enabled = visible;

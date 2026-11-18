@@ -1,8 +1,8 @@
 // 主场景：字段（全部场景状态）、create/update 入口；方法按功能拆在 scene/ 其他文件。
 import Phaser from "phaser";
 import { createBooth } from "../booth";
-import { createShopkeeper, DISHES, getSessionDurationMs, EMPTY_META, getDailyWeather, localDateKey, STARTING_COINS, STARTING_INVENTORY } from "../logic";
-import type { DailyGoal, Employee, MetaStats, WeatherDef } from "../logic";
+import { createShopkeeper, DISHES, getSessionDurationMs, EMPTY_META, getDailyWeather, localDateKey, STARTING_COINS, startingStock } from "../logic";
+import type { DailyGoal, Employee, GatherAssignment, IngredientStock, MetaStats, WeatherDef } from "../logic";
 import { Character } from "./Character";
 import { AUTOSAVE_MS, CAMERA_CLOSED_X, SCREEN_H, USE_VECTOR_TITLE } from "./constants";
 import type { Booth, BoothVisual, QueuedPatron, RegularGuest, SceneView, SessionPhase, StaffRuntime, TapText } from "./types";
@@ -30,10 +30,19 @@ import { SettingsOverlayMethods } from "./overlays/settings";
 import { BankOverlayMethods } from "./overlays/bank";
 import { SettlementOverlayMethods } from "./overlays/settlement";
 import { InfoOverlayMethods } from "./overlays/info";
+import { GatheringOverlayMethods } from "./overlays/gathering";
+import { WarehouseOverlayMethods } from "./overlays/warehouse";
 
 export class TavernScene extends Phaser.Scene {
   coins = STARTING_COINS;
-  inventory = STARTING_INVENTORY;
+  /** 食材库存：按食材 id 分别计数。 */
+  inventory: IngredientStock = startingStock();
+  /** 采集点 id → 当前占用（员工、食材、现实时间开始时刻）。 */
+  gathering: Record<string, GatherAssignment> = {};
+  /** 采集页里每个点当前选中的食材（重建页面时保留）。 */
+  gatheringSelection: Record<string, string> = {};
+  /** 当前打开的采集页；用于冷却结束时原地刷新。 */
+  gatheringOverlayLayer?: Phaser.GameObjects.Container;
   level = 1;
   /** 0=只有一楼，1=已起二楼，2=已起三楼。 */
   floorsBuilt = 0;
@@ -96,7 +105,7 @@ export class TavernScene extends Phaser.Scene {
   sessionRevenue = 0;
   sessionLost = 0;
   sessionWishes = 0;
-  /** 因灵材见底而流失的客人数，结算时单独提示。 */
+  /** 因食材不足而流失的客人数，结算时单独提示。 */
   stockLost = 0;
   /** 门口排满而流失的客人数，单独提示，避免玩家只看到总流失。 */
   queueLost = 0;
@@ -149,7 +158,6 @@ export class TavernScene extends Phaser.Scene {
   playerGender: "male" | "female" = "male";
 
   coinsText!: Phaser.GameObjects.Text;
-  inventoryText!: Phaser.GameObjects.Text;
   levelText!: Phaser.GameObjects.Text;
   goalText!: Phaser.GameObjects.Text;
   queueText!: Phaser.GameObjects.Text;
@@ -180,7 +188,7 @@ export class TavernScene extends Phaser.Scene {
   navTitle!: Phaser.GameObjects.Text;
   navCardObjects: (Phaser.GameObjects.Text | Phaser.GameObjects.Rectangle)[] = [];
   bankButton!: TapText;
-  purchaseButton!: TapText;
+  warehouseButton!: TapText;
   upgradeButton!: TapText;
   /** 营业视图底部：回主界面与跳修炼。 */
   businessHomeButton!: TapText;
@@ -188,7 +196,7 @@ export class TavernScene extends Phaser.Scene {
   /** 修炼视图底部：只读修为页与回主界面。 */
   cultivationPageButton!: TapText;
   cultivationHomeButton!: TapText;
-  /** 主界面的门面与两张入口卡。 */
+  /** 主界面的门面与三张入口卡。 */
   homeFacade?: Phaser.GameObjects.Container;
   homeOpenCard!: Phaser.GameObjects.Rectangle;
   homeOpenTitle!: Phaser.GameObjects.Text;
@@ -196,6 +204,9 @@ export class TavernScene extends Phaser.Scene {
   homeCultivationCard!: Phaser.GameObjects.Rectangle;
   homeCultivationTitle!: Phaser.GameObjects.Text;
   homeCultivationSub!: Phaser.GameObjects.Text;
+  homeGatherCard!: Phaser.GameObjects.Rectangle;
+  homeGatherTitle!: Phaser.GameObjects.Text;
+  homeGatherSub!: Phaser.GameObjects.Text;
   lastAutosaveAt = 0;
 
   overlay: Phaser.GameObjects.Container | null = null;
@@ -332,9 +343,10 @@ export class TavernScene extends Phaser.Scene {
     if (this.overlay) this.overlay.setPosition(this.cameras.main.scrollX, this.cameras.main.scrollY);
 
     this.refreshTodayWeather();
+    // 采集冷却走现实时间，与营业、页面都无关
+    this.tickGathering();
     // 营业是后台进程：不管玩家在看主界面、修炼还是子系统页，都照常推进
     if (this.session === "running") this.tickRunningSession(time);
-    if (this.session === "idle") this.tickClosedProcurement();
 
     this.updateSky(time);
     this.renderProgress(time);
@@ -351,8 +363,8 @@ export class TavernScene extends Phaser.Scene {
 }
 
 // 方法按功能分散在各文件（见 src/ARCHITECTURE.md），这里合并进 TavernScene 的类型与原型。
-export interface TavernScene extends TextureMethods, TitleMethods, HomeMethods, SaveMethods, WorldMethods, UiMethods, FloorMethods, HudMethods, SessionMethods, ProductionMethods, StaffMethods, PatronMethods, RuleMethods, FxMethods, AmbientMethods, FocusMethods, MenuOverlayMethods, BuildOverlayMethods, StaffOverlayMethods, CultivationOverlayMethods, SettingsOverlayMethods, BankOverlayMethods, SettlementOverlayMethods, InfoOverlayMethods {}
-for (const mixin of [TextureMethods, TitleMethods, HomeMethods, SaveMethods, WorldMethods, UiMethods, FloorMethods, HudMethods, SessionMethods, ProductionMethods, StaffMethods, PatronMethods, RuleMethods, FxMethods, AmbientMethods, FocusMethods, MenuOverlayMethods, BuildOverlayMethods, StaffOverlayMethods, CultivationOverlayMethods, SettingsOverlayMethods, BankOverlayMethods, SettlementOverlayMethods, InfoOverlayMethods]) {
+export interface TavernScene extends TextureMethods, TitleMethods, HomeMethods, SaveMethods, WorldMethods, UiMethods, FloorMethods, HudMethods, SessionMethods, ProductionMethods, StaffMethods, PatronMethods, RuleMethods, FxMethods, AmbientMethods, FocusMethods, MenuOverlayMethods, BuildOverlayMethods, StaffOverlayMethods, CultivationOverlayMethods, SettingsOverlayMethods, BankOverlayMethods, SettlementOverlayMethods, InfoOverlayMethods, GatheringOverlayMethods, WarehouseOverlayMethods {}
+for (const mixin of [TextureMethods, TitleMethods, HomeMethods, SaveMethods, WorldMethods, UiMethods, FloorMethods, HudMethods, SessionMethods, ProductionMethods, StaffMethods, PatronMethods, RuleMethods, FxMethods, AmbientMethods, FocusMethods, MenuOverlayMethods, BuildOverlayMethods, StaffOverlayMethods, CultivationOverlayMethods, SettingsOverlayMethods, BankOverlayMethods, SettlementOverlayMethods, InfoOverlayMethods, GatheringOverlayMethods, WarehouseOverlayMethods]) {
   for (const name of Object.getOwnPropertyNames(mixin.prototype)) {
     if (name === "constructor") continue;
     // 两个文件定义了同名方法会互相覆盖，启动时直接报错

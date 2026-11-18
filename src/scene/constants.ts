@@ -6,8 +6,6 @@ export const QUEUE_PATIENCE_MS = GAME.session.queuePatienceMs;
 export const DINING_MS = GAME.session.diningMs;
 /** 顾客进场动画整体放慢，体现悠闲。 */
 export const ENTRANCE_SLOW = GAME.patronMove.entranceSlow;
-export const PURCHASE_AMOUNT = GAME.purchase.amount;
-export const PURCHASE_TARGET_STOCK = GAME.staff.buyerTargetStockBase;
 export const CHRONICLE_MAX_LINES = 1;
 export const SAVE_KEY = "tavern_save_v2";
 export const AUTOSAVE_MS = 2000;
@@ -56,7 +54,6 @@ export const QUEUE_X = 300;
 export const QUEUE_GAP = 84;
 export const TABLE_MARKS = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧"];
 export const PLAYER_HOME = { x: 240, y: ACTOR_Y };
-export const HAWKER_HOME = { x: 280, y: ACTOR_Y };
 export const SERVER_HOME = { x: 120, y: ACTOR_Y };
 export const COOK_HOME = { x: -290, y: ACTOR_Y };
 export const COOK_SPOT = { x: -230, y: ACTOR_Y };

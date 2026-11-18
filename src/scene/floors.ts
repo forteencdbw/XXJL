@@ -251,9 +251,11 @@ export class FloorMethods {
     });
     const queueVisible = open && this.activeFloor === 0;
     this.queue.forEach((patron) => patron.char.setVisible(queueVisible));
-    // 营业视图里掌柜和伙计在哪层就只在哪层露面；修炼视图只在没营业时有人打坐
-    this.staffRt.forEach((rt) =>
-      rt.char.setVisible(cultivating || (open && rt.floor === this.activeFloor)),
+    // 营业视图里掌柜和伙计在哪层就只在哪层露面；修炼视图只在没营业时有人打坐；在外采集的人不露面
+    this.staffRt.forEach((rt, id) =>
+      rt.char.setVisible(
+        !this.isGathering(id) && (cultivating || (open && rt.floor === this.activeFloor)),
+      ),
     );
   }
 

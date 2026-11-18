@@ -228,7 +228,6 @@ export class FocusMethods {
       this.rightFrame,
       this.businessNightTint,
       this.coinsText,
-      this.inventoryText,
       this.queueText,
       this.goalText,
       this.sessionText,

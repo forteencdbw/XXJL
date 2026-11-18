@@ -13,8 +13,8 @@ export const GAME = {
   start: {
     /** 开局灵石 */
     coins: 20,
-    /** 开局灵材 */
-    ingredients: 8,
+    /** 开局食材（按 ingredients 的 id 计数，没写的为 0） */
+    ingredients: { lingshu: 6 } as Record<string, number>,
   },
 
   /** 全局装饰时钟：只影响天色与状态栏显示，不影响玩法 */
@@ -58,17 +58,52 @@ export const GAME = {
   },
 
   /**
+   * 食材。rare 决定采集单次产量的稀有度系数与随机奖励的抽取权重；
+   * desc 是仓库里给玩家看的俏皮介绍。
+   */
+  ingredients: [
+    { id: "lingshu", name: "灵蔬", rare: false, yieldFactor: 1, desc: "长得歪歪扭扭的青菜，喝灵泉、晒月光，脾气比人还大。" },
+    { id: "lingmi", name: "灵米", rare: false, yieldFactor: 1, desc: "一粒能煮半锅——前提是按住它别自己跳出来。" },
+    { id: "shanjun", name: "山菌", rare: false, yieldFactor: 1, desc: "雨后探头，见人就说「我不好吃」，然后还是被采了。" },
+    { id: "zhulu", name: "竹露", rare: false, yieldFactor: 1, desc: "一年只攒三滴，喝一口，嘴甜三天。" },
+    { id: "lingshen", name: "九叶灵参", rare: true, yieldFactor: 0.6, desc: "九片叶子九条命，拔之前它会先跟你谈判。" },
+    { id: "xiyu", name: "银鳞溪鱼", rare: true, yieldFactor: 0.6, desc: "鳞片会反光，滑得像一句没说完的谎。" },
+    { id: "qindan", name: "赤羽灵禽蛋", rare: true, yieldFactor: 0.6, desc: "蛋壳上烧着暗火，孵出来是鸡是凤全看它心情。" },
+    { id: "daoguo", name: "太虚道果", rare: true, yieldFactor: 0.6, desc: "三百年开花、五百年结果，所以它比掌柜更少见。" },
+  ],
+
+  /**
+   * 采集。冷却走现实时间（Time.now），切后台、关页面都继续走。
+   * 单次产量 = (yieldBase + 机缘 × yieldPerStar) × 食材 yieldFactor，至少 1 份。
+   */
+  gathering: {
+    /** 每个采集点的冷却（真实毫秒） */
+    cooldownMs: 5 * 60 * 1000,
+    yieldBase: 2,
+    yieldPerStar: 0.5,
+    /** 采集点。ingredients 引用上面的食材 id；开局全开，每点一个槽位。 */
+    spots: [
+      { id: "herb", name: "后山药圃", desc: "掌柜，这儿的草比我会长。", ingredients: ["lingshu", "lingshen", "daoguo"] },
+      { id: "stream", name: "山溪浅滩", desc: "水清得能照见这个月的工钱。", ingredients: ["lingmi", "xiyu"] },
+      { id: "bamboo", name: "南坡竹林", desc: "笋长得比谁都快，露水最慢。", ingredients: ["shanjun", "zhulu", "qindan"] },
+    ],
+    /** 出发时说一句（按概率，和员工干活台词同机制） */
+    lines: ["今儿个多采点。", "手气不错。", "掌柜，看这个！", "这处灵气足。", "采满一篓就回。", "这根成精了吧……"],
+  },
+
+  /**
    * 菜品。price 售价（灵石），cookMs 基础烹饪耗时（毫秒），unlockLevel 酒楼几级解锁。
+   * recipe 是食材 id 列表，每种消耗 1 份。
    * 设计原则：售价越高，每秒收益越低（高价菜靠口味/稀客回本）。
    */
   dishes: [
-    { id: "stirfry", name: "清炒灵蔬", price: 6, cookMs: 1500, unlockLevel: 1 },
-    { id: "porridge", name: "灵米粥", price: 9, cookMs: 2500, unlockLevel: 2 },
-    { id: "jelly", name: "玉露羹", price: 14, cookMs: 4000, unlockLevel: 3 },
-    { id: "fish", name: "龙涎鱼脍", price: 22, cookMs: 6500, unlockLevel: 4 },
-    { id: "ginseng", name: "九转灵参", price: 32, cookMs: 10000, unlockLevel: 6 },
-    { id: "phoenix", name: "凤凰涅槃羹", price: 46, cookMs: 15000, unlockLevel: 8 },
-    { id: "voidfruit", name: "太虚道果", price: 65, cookMs: 22000, unlockLevel: 10 },
+    { id: "stirfry", name: "清炒灵蔬", price: 6, cookMs: 1500, unlockLevel: 1, recipe: ["lingshu"], desc: "大火快炒，锅气一散就不好吃了。散修们的续命菜。" },
+    { id: "porridge", name: "灵米粥", price: 9, cookMs: 2500, unlockLevel: 2, recipe: ["lingmi", "shanjun"], desc: "米熬到开花、菌最后下。下雨天卖得最好。" },
+    { id: "jelly", name: "玉露羹", price: 14, cookMs: 4000, unlockLevel: 3, recipe: ["zhulu", "lingmi"], desc: "用竹露吊出来的甜，不放糖。喝过的都说像小时候。" },
+    { id: "fish", name: "龙涎鱼脍", price: 22, cookMs: 6500, unlockLevel: 4, recipe: ["xiyu"], desc: "鱼片薄得透光，刀工差一点就成鱼泥。" },
+    { id: "ginseng", name: "九转灵参", price: 32, cookMs: 10000, unlockLevel: 6, recipe: ["lingshen", "zhulu"], desc: "九蒸九晒，参自己都嫌麻烦。补得很，也贵得很。" },
+    { id: "phoenix", name: "凤凰涅槃羹", price: 46, cookMs: 15000, unlockLevel: 8, recipe: ["qindan", "lingshu"], desc: "名字最唬人，其实就是一锅好汤。掌柜说这叫品牌溢价。" },
+    { id: "voidfruit", name: "太虚道果", price: 65, cookMs: 22000, unlockLevel: 10, recipe: ["daoguo", "zhulu"], desc: "端上桌客人先拍照。据说一口顶十年苦修，真假不知道，反正贵。" },
   ],
 
   /** 口味与招牌 */
@@ -99,7 +134,7 @@ export const GAME = {
   patronMove: {
     /** 走路速度（像素/秒）；伙计 1 星约 170 */
     walkSpeed: 110,
-    /** 生气离开（排队等太久、门外排满、灵材不足没吃上）时的速度倍率 */
+    /** 生气离开（排队等太久、门外排满、食材不足没吃上）时的速度倍率 */
     angryFactor: 1.4,
     /** 御剑、乘云、化烟、裂空等出场动画的时长倍率，越大越慢 */
     entranceSlow: 2.2,
@@ -182,17 +217,8 @@ export const GAME = {
     costMultiplier: 1.7,
   },
 
-  /** 采购灵材 */
-  purchase: {
-    /** 一次采购的单价（灵石，未打折） */
-    cost: 5,
-    /** 一次采购得多少灵材 */
-    amount: 5,
-  },
-
-  /**
-   * 员工（含掌柜）。每人有灵根和五项属性（1–10 星），其中三项对应工作：
-   *   根骨 → 跑堂（领座、传菜）的走路速度；神识 → 烹饪速度与质量；机缘 → 采买折扣。
+  /** 员工（含掌柜）。每人有灵根和五项属性（1–10 星），其中三项对应工作：
+   *   根骨 → 跑堂（领座、传菜）的走路速度；神识 → 烹饪速度与质量；机缘 → 采集产量。
    *   悟性、气感留给修行，暂无经营作用。
    * 谁都能做任何工作，属性低只是慢、做得差。
    */
@@ -202,7 +228,7 @@ export const GAME = {
     shopkeeperRootCount: 2,
     /**
      * 灵根按种数分档（第 1 项 = 1 种，第 5 项 = 5 种）：
-     *   weight 招聘时的出现权重；jobBonus 对口工作多算几星（火→烹饪、水→跑堂、金→采买，可超过 maxStars）；
+     *   weight 招聘时的出现权重；jobBonus 对口工作多算几星（火→烹饪、水→跑堂，可超过 maxStars）；
      *   worth 工资与雇佣费的身价倍率；maxRealm 修为上限（修为子系统占位，暂不生效）
      */
     roots: [
@@ -220,15 +246,14 @@ export const GAME = {
     /** 可雇人数硬上限（伙计页一屏放得下的人数） */
     capMax: 7,
     /**
-     * 干活时的台词池：领座/传菜/烹饪开工时有 chance 的概率说一句（头上已有气泡就不说），
-     * 打烊采购时采买员必说一句；闲聊时员工也从这里取（手上的活，空闲则第一岗位）。
+     * 领座/传菜/烹饪开工时有 chance 的概率说一句（头上已有气泡就不说）；
+     * 闲聊时员工也从这里取（手上的活，空闲则第一岗位）。
      */
     workLines: {
       chance: 0.25,
       seat: ["客官里边请——", "小心台阶。", "雅座已备好。", "这边请，靠窗灵气足。", "几位？楼上有座。"],
       serve: ["菜来咯，小心烫。", "让一让，热菜！", "客官的灵膳到了。", "趁热吃，灵气不散。", "这道刚出锅。"],
       cook: ["火候到了。", "再添一把柴。", "这锅气，成了。", "灵火莫急。", "这道得慢慢煨。", "盐少许，灵露三滴。"],
-      buy: ["今日有鲜货！", "灵材我盯着呢。", "这批灵菇水灵。", "掌柜放心，明日够用。", "价钱又涨了……"],
     },
     /** 属性上限（星） */
     maxStars: 10,
@@ -250,17 +275,11 @@ export const GAME = {
     /** 烹饪质量（售价倍率）= qualityBase + qualityPerStar × 神识；1 星 ×0.885，10 星 ×1.2 */
     qualityBase: 0.85,
     qualityPerStar: 0.035,
-    /** 采购折扣 = 机缘 × buyDiscountPerStar，最多 buyDiscountCap（多人勾采买时取最高者） */
-    buyDiscountPerStar: 0.05,
-    buyDiscountCap: 0.5,
-    /** 每件活（领座、传菜、起锅、补货）得 1 点经验；升下一级要 expBase + expPerLevel × (当前等级 − 1) 点 */
+    /** 每件活（领座、传菜、起锅、采集）得 1 点经验；升下一级要 expBase + expPerLevel × (当前等级 − 1) 点 */
     expBase: 10,
     expPerLevel: 5,
     /** 等级上限；每升一级得 1 个属性点，由玩家自己加 */
     maxLevel: 40,
-    /** 采买自动补货目标 = base + perLevel × 酒楼等级 */
-    buyerTargetStockBase: 10,
-    buyerTargetStockPerLevel: 2,
     /** 员工姓名池 */
     names: ["阿福", "小满", "石头", "春桃", "二柱", "秋菱", "长庚", "杏儿", "大勇", "青禾", "铁牛", "莲生", "冬瓜", "小鱼", "阿蛮", "柳芽"],
   },
@@ -317,9 +336,9 @@ export const GAME = {
     coinsBase: 15,
     coinsPerStreakDay: 5,
     coinsPerLevel: 2,
-    /** 连续满几天起送灵材 */
+    /** 连续满几天起送食材 */
     ingredientsFromStreak: 3,
-    /** 送多少灵材 */
+    /** 送多少份随机食材 */
     ingredients: 2,
   },
 
@@ -362,14 +381,14 @@ export const GAME = {
     lastHour: 19,
     /** coins/ingredients 可为负；weight 抽取权重 */
     pool: [
-      { id: "rain", text: "灵雨润田，后厨凭空多出一筐灵材", kind: "good", coins: 0, ingredients: 3, weight: 2 },
+      { id: "rain", text: "灵雨润田，后厨凭空多出一筐食材", kind: "good", coins: 0, ingredients: 3, weight: 2 },
       { id: "immortal", text: "一位过路仙长尝了口小菜，留下几块灵石", kind: "good", coins: 6, ingredients: 0, weight: 2 },
       { id: "tip", text: "食客吃得尽兴，多留了一份赏钱", kind: "good", coins: 5, ingredients: 0, weight: 2 },
       { id: "oldfriend", text: "旧友来访，叙旧之余留下一壶灵酒", kind: "good", coins: 3, ingredients: 0, weight: 1 },
-      { id: "crane", text: "仙鹤衔芝落在檐角，赠你一味灵材", kind: "good", coins: 0, ingredients: 4, weight: 1 },
-      { id: "wind", text: "妖风过境，吹散了后厨晾着的一味灵材", kind: "bad", coins: 0, ingredients: -2, weight: 1 },
+      { id: "crane", text: "仙鹤衔芝落在檐角，赠你一味食材", kind: "good", coins: 0, ingredients: 4, weight: 1 },
+      { id: "wind", text: "妖风过境，吹散了后厨晾着的一味食材", kind: "bad", coins: 0, ingredients: -2, weight: 1 },
       { id: "thief", text: "蟊贼光顾，柜上少了几块灵石", kind: "bad", coins: -4, ingredients: 0, weight: 1 },
-      { id: "mishap", text: "灶台走了水，赔了些灵石与灵材", kind: "bad", coins: -3, ingredients: -1, weight: 1 },
+      { id: "mishap", text: "灶台走了水，赔了些灵石与食材", kind: "bad", coins: -3, ingredients: -1, weight: 1 },
     ] as { id: string; text: string; kind: "good" | "bad"; coins: number; ingredients: number; weight: number }[],
   },
 };
@@ -404,8 +423,24 @@ export function validateConfig(cfg: GameConfig): string[] {
 
   if (cfg.staff.workLines.chance > 1) errors.push("staff.workLines.chance 不能大于 1");
 
+  const ingredientIds = new Set(cfg.ingredients.map((i) => i.id));
+  if (ingredientIds.size !== cfg.ingredients.length) errors.push("ingredients 里有重复的 id");
   const dishIds = new Set(cfg.dishes.map((d) => d.id));
   if (dishIds.size !== cfg.dishes.length) errors.push("dishes 里有重复的 id");
+  cfg.dishes.forEach((dish, i) =>
+    dish.recipe.forEach((id) => {
+      if (!ingredientIds.has(id)) errors.push(`dishes[${i}] 的配方引用了不存在的食材「${id}」`);
+    }),
+  );
+  const spotIds = new Set(cfg.gathering.spots.map((s) => s.id));
+  if (spotIds.size !== cfg.gathering.spots.length) errors.push("gathering.spots 里有重复的 id");
+  cfg.gathering.spots.forEach((spot, i) => {
+    if (spot.ingredients.length === 0) errors.push(`gathering.spots[${i}] 至少要产出一种食材`);
+    spot.ingredients.forEach((id) => {
+      if (!ingredientIds.has(id)) errors.push(`gathering.spots[${i}] 引用了不存在的食材「${id}」`);
+    });
+  });
+  if (cfg.gathering.cooldownMs < 1000) errors.push("gathering.cooldownMs 至少 1000 毫秒");
   if (cfg.patronMove.walkSpeed <= 0 || cfg.patronMove.angryFactor <= 0 || cfg.patronMove.entranceSlow <= 0)
     errors.push("patronMove 的速度与倍率都要大于 0");
   cfg.patronKinds.forEach((k, i) => {
@@ -428,7 +463,6 @@ export function validateConfig(cfg: GameConfig): string[] {
     ["regulars.returnChance", cfg.regulars.returnChance],
     ["dailyGoal.partialThreshold", cfg.dailyGoal.partialThreshold],
     ["session.arrivalJitter", cfg.session.arrivalJitter],
-    ["staff.buyDiscountCap", cfg.staff.buyDiscountCap],
   ] as const) {
     if (v > 1) errors.push(`${path} 是比例，不能大于 1（现在是 ${v}）`);
   }

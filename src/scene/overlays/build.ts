@@ -1,6 +1,6 @@
 // 二级页面：营造（雅座扩建、起楼、灶台、门幡）及其购买。
 import { playSfx } from "../../audio";
-import { DISHES, FLOOR_UNLOCKS, MAX_FLOORS, getDailyGoalOptions, getSignUpgradeCost, getStoveSpeedFactor, getStoveUpgradeCost, getTotalBoothCount, getUpgradeCost } from "../../logic";
+import { DISHES, FLOOR_UNLOCKS, INGREDIENT_BY_ID, MAX_FLOORS, adjustIngredient, getDailyGoalOptions, getSignUpgradeCost, getStoveSpeedFactor, getStoveUpgradeCost, getTotalBoothCount, getUpgradeCost, pickRewardIngredient } from "../../logic";
 import type { TavernScene } from "../TavernScene";
 
 export class BuildOverlayMethods {
@@ -153,8 +153,16 @@ export class BuildOverlayMethods {
     this.level += 1;
     this.syncBooths();
     this.drawInterior(this.interiorGfx);
-    // 多一张桌子就会多吃货，升级附赠一点灵材，避免第二天立刻断货
-    this.inventory += 5;
+    // 多一张桌子就会多吃货，升级附赠一点食材，避免第二天立刻断货
+    const bonus: Record<string, number> = {};
+    for (let i = 0; i < 3; i++) {
+      const id = pickRewardIngredient();
+      this.inventory = adjustIngredient(this.inventory, id, 1);
+      bonus[id] = (bonus[id] ?? 0) + 1;
+    }
+    const bonusText = Object.entries(bonus)
+      .map(([id, n]) => `${INGREDIENT_BY_ID[id].name}×${n}`)
+      .join("、");
     // 准备阶段升级发生在开张前：保持玩家已选的目标类型，只更新数值
     if (this.canManage()) {
       const options = getDailyGoalOptions(this.day, this.level);
@@ -166,8 +174,8 @@ export class BuildOverlayMethods {
     playSfx("upgrade");
     this.log(
       unlocked
-        ? `酒楼扩建到 ${this.level} 级，解锁新菜品「${unlocked.name}」并加入今日菜单，附赠 5 灵材`
-        : `酒楼扩建到 ${this.level} 级，附赠 5 灵材`,
+        ? `酒楼扩建到 ${this.level} 级，解锁新菜品「${unlocked.name}」并加入今日菜单，附赠 ${bonusText}`
+        : `酒楼扩建到 ${this.level} 级，附赠 ${bonusText}`,
     );
     this.destroyOverlay();
     this.showEventToast(`营造升至 Lv${this.level}`, true);

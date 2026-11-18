@@ -1,15 +1,15 @@
-// 产线：员工（含掌柜）领座、烹饪、传菜，以及打烊采购。
+// 产线：员工（含掌柜）领座、烹饪、传菜。
 import Phaser from "phaser";
 import { playSfx } from "../audio";
 import { GAME } from "../config";
-import { DISHES, getCookQuality, getEffectiveStars, getStaffDuration, getStoveSpeedFactor, getWalkSpeed, isRarePatron } from "../logic";
+import { DISHES, getCookQuality, getEffectiveStars, getStaffDuration, getStoveSpeedFactor, getWalkSpeed, hasRecipe, isRarePatron, consumeRecipe } from "../logic";
 import type { Employee, PatronKind } from "../logic";
 import { finishCooking, finishSeating, finishServing, leaveUnserved, nextBoothToCook, nextBoothToServe, seatPatron, startCooking, startServing } from "../booth";
-import { ACTOR_Y, COOK_FLOOR_MS, COOK_SPOT, COOK_TAVERN_SHRINK_PER_LEVEL_MS, DOOR_X, FLOOR_Y, PURCHASE_AMOUNT } from "./constants";
+import { ACTOR_Y, COOK_FLOOR_MS, COOK_SPOT, COOK_TAVERN_SHRINK_PER_LEVEL_MS, DOOR_X, FLOOR_Y } from "./constants";
 import type { Booth, StaffRuntime } from "./types";
 import type { TavernScene } from "./TavernScene";
 
-export type WorkLine = "seat" | "serve" | "cook" | "buy";
+export type WorkLine = "seat" | "serve" | "cook";
 
 /** 领座时跑堂站在客人前面（桌子在门的左边）的距离。 */
 const LEAD_GAP = 36;
@@ -49,7 +49,7 @@ export class ProductionMethods {
   /** 领座：跑堂先走到门口接人，再走在客人前面领到桌边；客人落座后跑堂才离开。返回是否接了这单。 */
   startSeat(this: TavernScene, e: Employee): boolean {
     const rt = this.staffRt.get(e.id);
-    if (this.settling || !rt || rt.task || this.inventory <= 0) return false;
+    if (this.settling || !rt || rt.task || this.isGathering(e.id)) return false;
     const first = this.queue[0];
     if (!first?.char.arrived) return false;
     const emptyBooths = this.booths
@@ -150,29 +150,30 @@ export class ProductionMethods {
     });
   }
 
-  /** 烹饪：先接等得最久的一桌；客人想吃的菜在今日菜单上就做这道，否则按菜单轮转。返回是否起锅。 */
+  /** 烹饪：先接等得最久的一桌；优先做客人想吃且在菜单上、食材齐备的菜，否则按菜单轮转。返回是否起锅。 */
   startCook(this: TavernScene, e: Employee): boolean {
     const rt = this.staffRt.get(e.id);
-    if (this.settling || !rt || rt.task) return false;
+    if (this.settling || !rt || rt.task || this.isGathering(e.id)) return false;
     const menu = this.getMenuDishes();
     if (menu.length === 0) return false;
     const index = nextBoothToCook(this.booths);
     if (index === -1) return false;
     const booth = this.booths[index];
-    if (this.inventory <= 0) {
+    const cookable = menu.filter((dish) => hasRecipe(this.inventory, dish.recipe));
+    if (cookable.length === 0) {
       const who = leaveUnserved(booth);
       this.stockLost += 1;
       const guest = who?.kind?.name ?? "食客";
       this.walkPatronOut(booth, who?.kind ?? null, true);
       this.sessionLost += 1;
       this.pendingRepLoss += 1;
-      this.log(`灵材不足，${guest}没吃上菜便离开了`);
-      this.showHint("灵材不足，客人走了——下次先多备货");
+      this.log(`食材不足，${guest}没吃上菜便离开了`);
+      this.showHint("食材不足，客人走了——去主界面【采集】补些食材");
       return false;
     }
 
-    const wished = menu.find((dish) => dish.id === booth.patronWish);
-    const chosen = wished ?? menu[this.dishCursor++ % menu.length];
+    const wished = cookable.find((dish) => dish.id === booth.patronWish);
+    const chosen = wished ?? cookable[this.dishCursor++ % cookable.length];
     const duration = getStaffDuration(
       getEffectiveStars(e, "cook"),
       chosen.cookMs,
@@ -181,7 +182,7 @@ export class ProductionMethods {
       this.level,
       getStoveSpeedFactor(this.stoveLevel),
     );
-    this.inventory -= 1;
+    this.inventory = consumeRecipe(this.inventory, chosen.recipe);
     // 神识决定这道菜的成色，直接体现在售价上
     const quality = getCookQuality(getEffectiveStars(e, "cook"));
     startCooking(booth, { dish: chosen, cookId: e.id, quality, now: this.time.now, duration });
@@ -207,7 +208,7 @@ export class ProductionMethods {
   /** 传菜：跑堂走到灶台取菜，再端到客人桌上。返回是否接了这单。 */
   startServe(this: TavernScene, e: Employee): boolean {
     const rt = this.staffRt.get(e.id);
-    if (this.settling || !rt || rt.task) return false;
+    if (this.settling || !rt || rt.task || this.isGathering(e.id)) return false;
     const index = nextBoothToServe(this.booths);
     if (index === -1) return false;
     const booth = this.booths[index];
@@ -260,23 +261,5 @@ export class ProductionMethods {
       if (task.kind === "seat") this.finishSeat(e, rt, time);
       else this.finishServe(e, rt, time);
     }
-  }
-
-  /** 准备阶段采购：瞬间到货。灵石不足时赊账，费用照扣。 */
-  startPurchase(this: TavernScene) {
-    if (!this.canManage()) {
-      this.showHint("营业结束后才能操作");
-      return;
-    }
-    if (this.settling) return;
-    const price = this.purchasePrice();
-    const credit = this.coins < price;
-    this.coins -= price;
-    this.displayedCoins = this.coins;
-    this.inventory += PURCHASE_AMOUNT;
-    this.log(`${credit ? "灵石不足，赊账采购灵材" : "采购灵材"} +${PURCHASE_AMOUNT}`);
-    const buyers = this.workforce().filter((w) => w.jobs.some((j) => j.job === "buy" && j.on) && this.staffRt.get(w.id)?.char.visible);
-    this.workSay(buyers[Math.floor(Math.random() * buyers.length)] ?? this.shopkeeper, "buy", true);
-    this.save();
   }
 }

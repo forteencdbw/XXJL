@@ -19,8 +19,6 @@ export class HudMethods {
     if (business) this.playerLabel.setPosition(this.playerChar.x, this.playerChar.y - 120);
 
     this.coinsText.setText(`灵石：${this.displayedCoins}`);
-    this.inventoryText.setText(`灵材：${this.inventory}`);
-    this.inventoryText.setColor(this.inventory <= 0 ? "#ff9a8a" : "#a8d8b0");
     this.levelText.setText(`酒楼等级：${this.level}`);
     const queue = getQueueStatus({
       queued: this.queue.length,
@@ -124,11 +122,10 @@ export class HudMethods {
       home ? `第 ${this.day} 日 · 天气：${this.weather.name}` : cultivating ? `修炼 · 天气：${this.weather.name}` : "",
     );
 
-    this.purchaseButton.setText(`备货 ${this.purchasePrice()}灵石`);
     this.upgradeButton.setText(`营造 Lv${this.level}`);
     // 营业中与待结算只读：入口还能进，操作按钮会自己拦
     const readonly = this.session !== "idle";
-    [this.staffButton, this.upgradeButton, this.bankButton, this.purchaseButton].forEach((button) =>
+    [this.staffButton, this.upgradeButton, this.bankButton, this.warehouseButton].forEach((button) =>
       button.setAlpha(readonly ? 0.55 : 1),
     );
   }

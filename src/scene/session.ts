@@ -25,6 +25,7 @@ import {
   getSessionDurationMs,
   getStreakBonus,
   GOAL_STREAK_TARGET,
+  hasRecipe,
   isDaylight,
   isFestivalDay,
   loseReputation,
@@ -34,7 +35,7 @@ import {
   REP_GAIN_SERVED,
   updateMeta,
 } from "../logic";
-import { CAMERA_CLOSED_X, CAMERA_OPEN_X, FLOOR_Y, MAX_EVENTS_PER_SESSION, PURCHASE_AMOUNT, PURCHASE_TARGET_STOCK, SCREEN_H, SCREEN_W } from "./constants";
+import { CAMERA_CLOSED_X, CAMERA_OPEN_X, FLOOR_Y, MAX_EVENTS_PER_SESSION, SCREEN_H, SCREEN_W } from "./constants";
 import type { TavernScene } from "./TavernScene";
 
 export class SessionMethods {
@@ -152,29 +153,6 @@ export class SessionMethods {
     else if (this.view === "cultivation") this.seatForNight();
   }
 
-  /** 倒计时结束、店里停业后的采购：只在准备阶段自动补货。 */
-  tickClosedProcurement(this: TavernScene) {
-    if (this.settling || this.overlay || this.bankrupt) return;
-    const buyer = this.bestBuyer();
-    if (!buyer) return;
-    // 酒楼越大，备货目标越高，避免高等级时 10 份存货撑不过一局
-    const target = PURCHASE_TARGET_STOCK + this.level * GAME.staff.buyerTargetStockPerLevel;
-    if (this.inventory >= target) return;
-    const price = this.purchasePrice();
-    let bought = 0;
-    while (this.inventory < target && this.coins >= price) {
-      this.coins -= price;
-      this.displayedCoins = this.coins;
-      this.inventory += PURCHASE_AMOUNT;
-      bought += PURCHASE_AMOUNT;
-      this.staffDidWork(buyer);
-    }
-    if (bought > 0) {
-      this.displayedCoins = this.coins;
-      this.log(`采买伙计补货 +${bought} 灵材`);
-    }
-  }
-
   // ===== 视图切换 =====
   /** 回主界面：营业可以在后台继续跑。 */
   enterHome(this: TavernScene) {
@@ -224,6 +202,10 @@ export class SessionMethods {
           rt.task = null;
           rt.char.setCarrying(false);
           rt.char.setMeditating(false);
+          if (this.isGathering(e.id)) {
+            rt.char.setVisible(false);
+            continue;
+          }
           const home = this.staffHome(e);
           rt.char.teleportTo(home.x, home.y);
         }
@@ -283,7 +265,8 @@ export class SessionMethods {
 
   startSession(this: TavernScene) {
     if (this.session !== "idle" || this.bankrupt) return;
-    if (this.getMenuDishes().length === 0 || this.inventory <= 0 || this.transitioning) return;
+    const menu = this.getMenuDishes();
+    if (menu.length === 0 || !menu.some((dish) => hasRecipe(this.inventory, dish.recipe)) || this.transitioning) return;
     this.destroyOverlay();
     this.stopCelebration();
     this.transitioning = true;
@@ -321,6 +304,10 @@ export class SessionMethods {
         rt.char.setCarrying(false);
         rt.char.setMeditating(false);
         rt.char.setDepth(20);
+        if (this.isGathering(e.id)) {
+          rt.char.setVisible(false);
+          continue;
+        }
         const h = this.staffHome(e);
         rt.char.teleportTo(h.x, h.y);
       }

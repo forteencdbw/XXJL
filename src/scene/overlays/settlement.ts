@@ -52,7 +52,7 @@ export class SettlementOverlayMethods {
       `流失食客：${this.sessionLost} 位`,
     ];
     if (this.stockLost > 0) {
-      summary.push(`灵材不足流失：${this.stockLost} 位（下次先备货）`);
+      summary.push(`食材不足流失：${this.stockLost} 位（下次先去采集）`);
     }
     if (this.queueLost > 0) {
       summary.push(`排队溢出流失：${this.queueLost} 位（门口排满，先招待）`);

@@ -153,7 +153,7 @@ export function departBooth(b: BoothData, now: number): DepartResult | null {
   return result;
 }
 
-/** 等菜时灵材见底 → 客人没吃上就走。返回走的是谁。 */
+/** 等菜时食材见底 → 客人没吃上就走。返回走的是谁。 */
 export function leaveUnserved(b: BoothData): { kind: PatronKind | null; name: string | null } | null {
   if (b.state !== "awaitingCook") return null;
   const who = { kind: b.patronKind, name: b.patronName };

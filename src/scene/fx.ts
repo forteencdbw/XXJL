@@ -172,7 +172,7 @@ export class FxMethods {
   }
 
   celebrationChars(this: TavernScene): Character[] {
-    return [this.playerChar, ...this.staffChars()];
+    return [this.playerChar, ...this.staffChars()].filter((char) => char.visible);
   }
 
   emitSparkles(this: TavernScene) {

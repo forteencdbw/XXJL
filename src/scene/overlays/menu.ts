@@ -1,8 +1,8 @@
 // 二级页面：开张前选今日菜单与目标。
 import Phaser from "phaser";
 import { playSfx } from "../../audio";
-import { DISHES, GOAL_STREAK_TARGET, getDailyGoalOptions, getDailyRent, getDishFans, getFloorRent, getStreakBonus, isFestivalDay } from "../../logic";
-import { PURCHASE_AMOUNT, SCREEN_H, SCREEN_W, XIAN_FONT } from "../constants";
+import { DISHES, GOAL_STREAK_TARGET, INGREDIENT_BY_ID, getDailyGoalOptions, getDailyRent, getDishFans, getFloorRent, getStreakBonus, hasRecipe, isFestivalDay, totalIngredients } from "../../logic";
+import { SCREEN_H, SCREEN_W, XIAN_FONT } from "../constants";
 import type { TavernScene } from "../TavernScene";
 
 export class MenuOverlayMethods {
@@ -59,7 +59,7 @@ export class MenuOverlayMethods {
       this.add.text(
         40,
         142,
-        `今日目标二选一 · 库存 ${this.inventory} · 日租 ${getDailyRent(this.level) + getFloorRent(this.floorsBuilt)} 灵石${
+        `今日目标二选一 · 食材 ${totalIngredients(this.inventory)} 份 · 日租 ${getDailyRent(this.level) + getFloorRent(this.floorsBuilt)} 灵石${
           isFestivalDay(this.day) ? " · 灯会赏 ×1.5" : ""
         }`,
         { fontSize: "16px", color: "#e0c060" },
@@ -140,7 +140,7 @@ export class MenuOverlayMethods {
       const y = 316 + i * 96;
       const selected = this.selectedDishIds.has(dish.id);
       const row = this.add
-        .rectangle(40, y, 640, 82, selected ? 0x3a1a14 : 0x14100c)
+        .rectangle(40, y, 640, 92, selected ? 0x3a1a14 : 0x14100c)
         .setOrigin(0, 0)
         .setStrokeStyle(2, selected ? 0xd9b45a : 0x4a3a2a);
       row.setInteractive({ useHandCursor: true }).on("pointerdown", () => {
@@ -158,15 +158,26 @@ export class MenuOverlayMethods {
         ),
       );
       const fans = getDishFans(dish.id);
+      const stocked = hasRecipe(this.inventory, dish.recipe);
+      const recipeText = dish.recipe
+        .map((id) => `${INGREDIENT_BY_ID[id].name} ${this.inventory[id] ?? 0}`)
+        .join(" / ");
       layer.add(
         this.add.text(
           60,
           y + 50,
-          `售价 ${this.dishPrice(dish)} 灵石 · 烹饪 ${(dish.cookMs / 1000).toFixed(1)}s${
+          `${this.dishPrice(dish)} 灵石 · ${(dish.cookMs / 1000).toFixed(1)}s · 需 ${recipeText}${
             fans.length ? ` · ${fans.join("/")}爱吃` : ""
           }`,
-          { fontSize: "17px", color: "#cccccc" },
+          { fontSize: "16px", color: stocked ? "#cccccc" : "#ff9a8a" },
         ),
+      );
+      layer.add(
+        this.add.text(60, y + 72, dish.desc, {
+          fontSize: "12px",
+          color: "#8a8a8a",
+          wordWrap: { width: 540 },
+        }),
       );
       // 每道菜一个小碗：菜单至少有“菜”，而不是只有一行价格
       const icon = this.add.graphics();
@@ -243,9 +254,12 @@ export class MenuOverlayMethods {
       );
     }
 
-    if (this.inventory <= 0) {
+    const menuDishes = this.getMenuDishes();
+    const count = menuDishes.length;
+    const ready = menuDishes.some((dish) => hasRecipe(this.inventory, dish.recipe));
+    if (count > 0 && !ready) {
       layer.add(
-        this.add.text(40, 982, "库存为 0：先点下面「备货」再开张，否则客人来了没菜可做", {
+        this.add.text(40, 1010, "所选菜品的食材不齐：去主界面【采集】补食材，或到【仓库】看库存", {
           fontSize: "17px",
           color: "#ff9a8a",
           wordWrap: { width: 640 },
@@ -253,26 +267,8 @@ export class MenuOverlayMethods {
       );
     }
 
-    const buyPrice = this.purchasePrice();
-    const buy = this.add
-      .text(40, 1056, `备货 +${PURCHASE_AMOUNT}（${buyPrice} 灵石）`, {
-        fontSize: "20px",
-        color: "#ffffff",
-        backgroundColor: "#3a4a5a",
-        padding: { x: 14, y: 8 },
-      })
-      .setInteractive({ useHandCursor: true })
-      .on("pointerup", () => {
-        playSfx("click");
-        this.startPurchase();
-        this.buildMenuOverlay();
-      });
-    this.expandHitArea(buy, 12);
-    layer.add(buy);
-
-    const count = this.getMenuDishes().length;
-    const canStart = count > 0 && this.inventory > 0;
-    const startLabel = count === 0 ? "至少选一道菜" : this.inventory <= 0 ? "库存为 0，先备货" : `开张大吉（已选 ${count} 道）`;
+    const canStart = count > 0 && ready;
+    const startLabel = count === 0 ? "至少选一道菜" : !ready ? "食材不足，先去采集" : `开张大吉（已选 ${count} 道）`;
     const start = this.add.text(40, 1120, startLabel, {
       fontSize: "24px",
       color: canStart ? "#ffffff" : "#777777",

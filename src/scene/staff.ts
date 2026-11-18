@@ -3,7 +3,7 @@ import { playSfx } from "../audio";
 import { JOBS, JOB_NAMES, SHOPKEEPER_ID, gainExp, getEffectiveStars, getHireCost, getStaffCap, getStaffWage, getTotalStars } from "../logic";
 import type { Employee, Job } from "../logic";
 import { Character } from "./Character";
-import { COOK_HOME, HAWKER_HOME, NIGHT_SEAT, NIGHT_STAFF_SEATS, SERVER_HOME } from "./constants";
+import { COOK_HOME, NIGHT_SEAT, NIGHT_STAFF_SEATS, SERVER_HOME } from "./constants";
 import type { TavernScene } from "./TavernScene";
 
 export class StaffMethods {
@@ -16,10 +16,15 @@ export class StaffMethods {
     return e.jobs.find((j) => j.on)?.job ?? null;
   }
 
+  /** 这个人是否正在采集点（冷却结束前不能派活、改分工或辞退）。 */
+  isGathering(this: TavernScene, id: number): boolean {
+    return Object.values(this.gathering).some((g) => g.employeeId === id);
+  }
+
   /** 空闲站位：第一优先工作的区域，同区多人依次错开。 */
   staffHome(this: TavernScene, e: Employee): { x: number; y: number } {
     const job = this.firstJob(e);
-    const base = job === "seat" ? SERVER_HOME : job === "cook" ? COOK_HOME : HAWKER_HOME;
+    const base = job === "seat" ? SERVER_HOME : COOK_HOME;
     const sameArea = this.workforce().filter((o) => this.firstJob(o) === job);
     return { x: base.x + Math.max(0, sameArea.indexOf(e)) * 26, y: base.y };
   }
@@ -33,8 +38,8 @@ export class StaffMethods {
     this.staffRt.set(SHOPKEEPER_ID, { char: this.playerChar, task: null, floor: 0 });
     for (const e of this.employees) {
       const job = this.firstJob(e);
-      const look = job === "seat" ? "server" : job === "cook" ? "cook" : "hawker";
-      const color = look === "server" ? 0x3a7a5a : look === "cook" ? 0x7a4a3a : 0x8a6a3a;
+      const look = job === "seat" ? "server" : "cook";
+      const color = look === "server" ? 0x3a7a5a : 0x7a4a3a;
       const home = this.staffHome(e);
       const char = new Character(this, home.x, home.y, color, 0x2b2b2b, false, look);
       char.displayName = e.name;
@@ -43,6 +48,8 @@ export class StaffMethods {
     }
     const home = this.staffHome(this.shopkeeper);
     this.playerChar.teleportTo(home.x, home.y);
+    // 在外采集的人不站在店里
+    for (const e of this.workforce()) if (this.isGathering(e.id)) this.staffRt.get(e.id)?.char.setVisible(false);
     // 准备阶段在修炼视图里改名册，新名单直接到法坛打坐
     if (this.view === "cultivation" && this.session !== "running") this.seatForNight();
   }
@@ -50,6 +57,10 @@ export class StaffMethods {
   /** 夜修：掌柜坐在法坛正中，伙计在身后排成一两排，都盘腿吐息。 */
   seatForNight(this: TavernScene) {
     this.workforce().forEach((e, i) => {
+      if (this.isGathering(e.id)) {
+        this.staffRt.get(e.id)?.char.setVisible(false);
+        return;
+      }
       const rt = this.staffRt.get(e.id);
       if (!rt) return;
       const seat = i === 0 ? { dx: 0, dy: 0 } : NIGHT_STAFF_SEATS[i - 1];
@@ -80,9 +91,9 @@ export class StaffMethods {
     if (gainExp(e)) this.log(`${e.name}升到 ${e.level} 级，营业结束后可去伙计页加点`);
   }
 
-  /** 空闲的人按自己的工作顺序，从上往下取第一件能做的事。跑堂先传菜再领座；采买只在准备阶段做。 */
+  /** 空闲的人按自己的工作顺序，从上往下取第一件能做的事。跑堂先传菜再领座。 */
   assignStaffWork(this: TavernScene) {
-    const team = this.workforce();
+    const team = this.workforce().filter((e) => !this.isGathering(e.id));
     // 没人勾跑堂时人人兜底，避免客人卡在门口、菜凉在灶台上
     const noRunner = !team.some((e) => e.jobs.some((j) => j.job === "seat" && j.on));
     const jobsOf = (e: Employee) => {
@@ -102,12 +113,6 @@ export class StaffMethods {
         else if (job === "cook") this.startCook(e);
       }
     }
-  }
-
-  /** 勾了采买的人里机缘有效星数最高的那位，决定采购折扣；没人勾为 null。 */
-  bestBuyer(this: TavernScene): Employee | null {
-    const buyers = this.workforce().filter((e) => e.jobs.some((j) => j.job === "buy" && j.on));
-    return buyers.reduce<Employee | null>((best, e) => (!best || getEffectiveStars(e, "buy") > getEffectiveStars(best, "buy") ? e : best), null);
   }
 
   /** 一句话说明当前分工：每项工作有几人在做，没人做菜时提醒营业会卡住。 */
@@ -158,6 +163,11 @@ export class StaffMethods {
       return;
     }
     if (e.id === SHOPKEEPER_ID) return;
+    if (this.isGathering(e.id)) {
+      this.staffNotice = `${e.name}正在采集，归队后才能辞退`;
+      this.staffNoticeGood = false;
+      return;
+    }
     this.employees = this.employees.filter((o) => o !== e);
     this.pendingFireId = null;
     this.rebuildStaffChars();

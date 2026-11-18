@@ -4,16 +4,18 @@ import {
   DISHES,
   EMPTY_META,
   FLOOR_UNLOCKS,
+  GATHERING_SPOTS,
+  INGREDIENTS,
   SHOPKEEPER_ID,
   STARTING_COINS,
-  STARTING_INVENTORY,
   createShopkeeper,
   getRealmIndex,
   sanitizeEmployees,
+  startingStock,
 } from "./logic";
-import type { DailyGoal, Employee, MetaStats, RootElement } from "./logic";
+import type { DailyGoal, Employee, GatherAssignment, IngredientStock, MetaStats, RootElement } from "./logic";
 
-export const SAVE_VERSION = 4;
+export const SAVE_VERSION = 5;
 
 export interface RegularGuest {
   name: string;
@@ -25,7 +27,10 @@ export interface RegularGuest {
 export interface SaveData {
   v: typeof SAVE_VERSION;
   coins: number;
-  inventory: number;
+  /** 按食材 id 分别计数 */
+  ingredients: IngredientStock;
+  /** 采集点 id → 当前占用；冷却按 startedAt 的现实时间差恢复 */
+  gathering: Record<string, GatherAssignment>;
   level: number;
   stoveLevel: number;
   signLevel: number;
@@ -73,7 +78,8 @@ export function newSave(carry: SaveCarry = {}): SaveData {
   return {
     v: SAVE_VERSION,
     coins: STARTING_COINS,
-    inventory: STARTING_INVENTORY,
+    ingredients: startingStock(),
+    gathering: {},
     level: 1,
     stoveLevel: 0,
     signLevel: 0,
@@ -129,6 +135,38 @@ export function parseSave(raw: unknown): SaveData | null {
   const employees = sanitizeEmployees(data.employees);
   const candidates = sanitizeEmployees(data.candidates);
   const maxId = Math.max(0, ...[...employees, ...candidates].map((e) => e.id));
+  // 食材按 config 的清单逐项取数，未知食材丢弃、缺失补 0
+  const stockRec = rec(data.ingredients);
+  const ingredients = Object.fromEntries(
+    INGREDIENTS.map((i) => [i.id, count(stockRec?.[i.id])]),
+  ) as IngredientStock;
+  // 采集占用：员工必须存在、食材必须属于该采集点；同一个员工只认第一处
+  const staffIds = new Set([SHOPKEEPER_ID, ...employees.map((e) => e.id)]);
+  const gatheringRaw = rec(data.gathering);
+  const gathering: Record<string, GatherAssignment> = {};
+  if (gatheringRaw) {
+    const seen = new Set<number>();
+    for (const spot of GATHERING_SPOTS) {
+      const g = rec(gatheringRaw[spot.id]);
+      if (!g) continue;
+      const employeeId = Math.floor(num(g.employeeId, -1));
+      if (
+        !staffIds.has(employeeId) ||
+        seen.has(employeeId) ||
+        typeof g.ingredientId !== "string" ||
+        !spot.ingredients.includes(g.ingredientId) ||
+        !Number.isFinite(g.startedAt)
+      ) {
+        continue;
+      }
+      seen.add(employeeId);
+      gathering[spot.id] = {
+        employeeId,
+        ingredientId: g.ingredientId,
+        startedAt: num(g.startedAt, 0),
+      };
+    }
+  }
   const goal = rec(data.dailyGoal);
   const meta = rec(data.meta);
   const metaStats: MetaStats = meta
@@ -161,7 +199,8 @@ export function parseSave(raw: unknown): SaveData | null {
   return {
     v: SAVE_VERSION,
     coins: num(data.coins, base.coins),
-    inventory: count(data.inventory),
+    ingredients,
+    gathering,
     level,
     stoveLevel: count(data.stoveLevel),
     signLevel: count(data.signLevel),

@@ -56,8 +56,6 @@ import {
   pickPatronKind,
   pickPatronName,
   pickRandomEvent,
-  getPurchaseDiscount,
-  getPurchasePrice,
   getRealmIndex,
   getSignUpgradeCost,
   getRepGain,
@@ -98,6 +96,15 @@ import {
   pickPatronWish,
   skyColorAt,
   updateMeta,
+  startingStock,
+  totalIngredients,
+  hasRecipe,
+  consumeRecipe,
+  adjustIngredient,
+  getGatherYield,
+  isGatherReady,
+  pickRewardIngredient,
+  pickLossIngredient,
 } from "./logic";
 
 describe("雅座与升级", () => {
@@ -192,8 +199,7 @@ describe("员工", () => {
     expect(getEffectiveStars({ root: ["fire"], stars }, "cook")).toBe(13);
     expect(getEffectiveStars({ root: ["wood", "fire"], stars }, "cook")).toBe(12);
     expect(getEffectiveStars({ root: ["wood", "fire"], stars }, "seat")).toBe(5);
-    expect(getEffectiveStars({ root: ["metal", "water", "fire"], stars }, "buy")).toBe(4);
-    expect(getEffectiveStars({ root: ["metal", "wood", "water", "fire"], stars }, "buy")).toBe(3);
+    expect(getEffectiveStars({ root: ["metal", "water", "fire"], stars }, "seat")).toBe(6);
   });
 
   it("默认工作顺序按有效星数排，灵根也算", () => {
@@ -243,10 +249,10 @@ describe("员工", () => {
   it("上移工作顺序", () => {
     const e = rollCandidate(1, () => 0);
     const order = e.jobs.map((j) => j.job);
-    moveJobUp(e, 2);
-    expect(e.jobs.map((j) => j.job)).toEqual([order[0], order[2], order[1]]);
+    moveJobUp(e, 1);
+    expect(e.jobs.map((j) => j.job)).toEqual([order[1], order[0]]);
     moveJobUp(e, 0);
-    expect(e.jobs.map((j) => j.job)).toEqual([order[0], order[2], order[1]]);
+    expect(e.jobs.map((j) => j.job)).toEqual([order[1], order[0]]);
   });
 
   it("属性越高越快、做得越好", () => {
@@ -258,7 +264,7 @@ describe("员工", () => {
     expect(getCookQuality(10)).toBeCloseTo(1.2);
   });
 
-  it("掌柜：五项 4 星、双灵根，默认烹饪、跑堂、采买全勾", () => {
+  it("掌柜：五项 4 星、双灵根，默认烹饪、跑堂全勾", () => {
     const k = createShopkeeper();
     expect(k.id).toBe(0);
     expect(k.stars).toEqual({ gengu: 4, wuxing: 4, shenshi: 4, jiyuan: 4, qigan: 4 });
@@ -266,7 +272,6 @@ describe("员工", () => {
     expect(k.jobs).toEqual([
       { job: "cook", on: true },
       { job: "seat", on: true },
-      { job: "buy", on: true },
     ]);
   });
 
@@ -281,21 +286,47 @@ describe("员工", () => {
     expect(e.level).toBe(40);
     expect(e.exp).toBe(0);
     expect(e.stars).toEqual({ gengu: 10, wuxing: 1, shenshi: 1, jiyuan: 1, qigan: 1 });
-    expect(e.jobs.map((j) => j.job)).toEqual(["cook", "seat", "buy"]);
-    expect(e.jobs.map((j) => j.on)).toEqual([true, false, false]);
+    expect(e.jobs.map((j) => j.job)).toEqual(["cook", "seat"]);
+    expect(e.jobs.map((j) => j.on)).toEqual([true, false]);
   });
 });
 
-describe("采购", () => {
-  it("精明提供采买折扣", () => {
-    expect(getPurchasePrice(0)).toBe(5);
-    expect(getPurchasePrice(1)).toBe(5); // 5 * 0.95 = 4.75 → 5
-    expect(getPurchasePrice(4)).toBeLessThan(getPurchasePrice(0));
+describe("食材与采集", () => {
+  it("开局有灵蔬，其余食材补 0", () => {
+    const stock = startingStock();
+    expect(stock.lingshu).toBe(6);
+    expect(stock.daoguo).toBe(0);
+    expect(totalIngredients(stock)).toBe(6);
   });
 
-  it("折扣有上限，价格不低于 1", () => {
-    expect(getPurchaseDiscount(100)).toBe(0.5);
-    expect(getPurchasePrice(100)).toBe(3); // 5 * 0.5
+  it("配方齐备才可做；起锅每种扣 1，不会扣成负数", () => {
+    const stock = { lingshu: 2, lingmi: 1, shanjun: 0 };
+    expect(hasRecipe(stock, ["lingmi", "shanjun"])).toBe(false);
+    expect(hasRecipe(stock, ["lingshu"])).toBe(true);
+    const after = consumeRecipe(stock, ["lingshu"]);
+    expect(after.lingshu).toBe(1);
+    expect(consumeRecipe({ lingshu: 0 }, ["lingshu"]).lingshu).toBe(0);
+    expect(adjustIngredient(after, "lingshu", 3).lingshu).toBe(4);
+  });
+
+  it("采集产量随机缘上升，稀有食材更少，至少 1 份", () => {
+    expect(getGatherYield(1, "lingshu")).toBe(3); // 2 + 0.5 → 3
+    expect(getGatherYield(10, "lingshu")).toBe(7);
+    expect(getGatherYield(10, "daoguo")).toBe(4); // 7 × 0.6 ≈ 4
+    expect(getGatherYield(0, "daoguo")).toBe(1);
+  });
+
+  it("冷却按现实时间算", () => {
+    expect(isGatherReady(0, 4 * 60 * 1000)).toBe(false);
+    expect(isGatherReady(0, 5 * 60 * 1000)).toBe(true);
+  });
+
+  it("奖励抽食材、损失只抽有存货的", () => {
+    const picked = new Set<string>();
+    for (let i = 0; i < 100; i++) picked.add(pickRewardIngredient(() => i / 100));
+    expect(picked.size).toBeGreaterThan(1);
+    expect(pickLossIngredient({ lingshu: 0, lingmi: 2 }, () => 0.999)).toBe("lingmi");
+    expect(pickLossIngredient({}, () => 0)).toBeNull();
   });
 });
 
@@ -556,13 +587,16 @@ describe("随机事件", () => {
     }
   });
 
-  it("结算后灵材不为负，灵石可扣成欠款", () => {
+  it("结算后食材不为负，灵石可扣成欠款", () => {
     const wind = RANDOM_EVENTS.find((e) => e.id === "wind")!;
-    expect(applyEvent(wind, { coins: 10, ingredients: 1 })).toEqual({ coins: 10, ingredients: 0 });
+    expect(applyEvent(wind, { coins: 10, stock: { lingshu: 1 } }, "lingshu")).toEqual({
+      coins: 10,
+      stock: { lingshu: 0 },
+    });
     const thief = RANDOM_EVENTS.find((e) => e.id === "thief")!;
-    expect(applyEvent(thief, { coins: 3, ingredients: 2 }).coins).toBe(-1);
+    expect(applyEvent(thief, { coins: 3, stock: {} }, null).coins).toBe(-1);
     const rain = RANDOM_EVENTS.find((e) => e.id === "rain")!;
-    expect(applyEvent(rain, { coins: 0, ingredients: 0 }).ingredients).toBe(3);
+    expect(applyEvent(rain, { coins: 0, stock: { lingshu: 0 } }, "lingshu").stock.lingshu).toBe(3);
   });
 });
 

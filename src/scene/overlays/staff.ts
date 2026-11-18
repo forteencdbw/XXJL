@@ -2,7 +2,7 @@
 import Phaser from "phaser";
 import { playSfx } from "../../audio";
 import { GAME } from "../../config";
-import { getEffectiveStars, getExpToNext, getHireCost, getRootBonus, getRootName, getStaffCap, getStaffWage, getTotalStars, JOB_ELEMENT, JOB_NAMES, JOB_STAT, JOBS, ELEMENT_NAMES, moveJobUp, rollCandidate, SHOPKEEPER_ID, spendStatPoint, STAT_NAMES, STATS } from "../../logic";
+import { getEffectiveStars, getExpToNext, getHireCost, getRootBonus, getRootName, getStaffCap, getStaffWage, getTotalStars, JOB_ELEMENT, JOB_NAMES, JOB_STAT, JOBS, ELEMENT_NAMES, formatCountdown, moveJobUp, rollCandidate, SHOPKEEPER_ID, spendStatPoint, STAT_NAMES, STATS, GATHER_COOLDOWN_MS } from "../../logic";
 import type { Employee, Stat } from "../../logic";
 import type { TavernScene } from "../TavernScene";
 
@@ -97,7 +97,19 @@ export class StaffOverlayMethods {
       layer.add(this.add.text(56, y + 10, e.name, { fontSize: "22px", color: keeper ? "#ffe6a8" : "#ffffff" }));
       layer.add(this.add.text(160, y + 14, `${e.level} 级 · ${getRootName(e.root)}`, { fontSize: "17px", color: "#d9b45a" }));
       const order = e.jobs.filter((slot) => slot.on).map((slot, k) => `${k + 1}.${JOB_NAMES[slot.job]}`);
-      layer.add(this.add.text(56, y + 46, order.length ? order.join("  ") : "没有分工", { fontSize: "17px", color: order.length ? "#b8d8c8" : "#ff9a8a" }));
+      const away = Object.values(this.gathering).find((g) => g.employeeId === e.id);
+      layer.add(
+        this.add.text(
+          56,
+          y + 46,
+          away
+            ? `采集中 · 剩 ${formatCountdown(Math.max(0, away.startedAt + GATHER_COOLDOWN_MS - Date.now()))} 归队`
+            : order.length
+              ? order.join("  ")
+              : "没有分工",
+          { fontSize: "17px", color: away ? "#ffd98a" : order.length ? "#b8d8c8" : "#ff9a8a" },
+        ),
+      );
       layer.add(this.add.text(56, y + 78, keeper ? "不领工资 · 不能辞退" : `日薪 ${getStaffWage(e)} 灵石`, { fontSize: "15px", color: "#bbbbbb" }));
       if (e.statPoints > 0) {
         layer.add(
@@ -115,7 +127,8 @@ export class StaffOverlayMethods {
   buildStaffDetail(this: TavernScene, e: Employee) {
     const layer = this.staffOverlayLayer(e.name);
     const keeper = e.id === SHOPKEEPER_ID;
-    const editable = this.canManage();
+    const away = Object.values(this.gathering).find((g) => g.employeeId === e.id);
+    const editable = this.canManage() && !away;
     this.addChip(layer, 560, 62, "返回名单", "#33405a", () => {
       this.pendingFireId = null;
       this.staffNotice = "";
@@ -135,6 +148,14 @@ export class StaffOverlayMethods {
         color: e.statPoints > 0 ? "#ffd25a" : "#c8b8a0",
       }),
     );
+    if (away) {
+      layer.add(
+        this.add.text(40, 160, `采集中 · 剩 ${formatCountdown(Math.max(0, away.startedAt + GATHER_COOLDOWN_MS - Date.now()))} 归队，期间不能调分工或辞退`, {
+          fontSize: "15px",
+          color: "#ffd98a",
+        }),
+      );
+    }
 
     STATS.forEach((stat, i) => {
       const y = 186 + i * 92;
@@ -142,9 +163,12 @@ export class StaffOverlayMethods {
       this.addStarBar(layer, 56, y + 14, stat, e.stars[stat]);
       const job = JOBS.find((j) => JOB_STAT[j] === stat);
       const bonus = job ? getRootBonus(e, job) : 0;
-      const effect = !job
-        ? "留给修行，暂无经营作用"
-        : `管${JOB_NAMES[job]}${bonus > 0 ? ` · ${ELEMENT_NAMES[JOB_ELEMENT[job]]}灵根 +${bonus}，按 ${getEffectiveStars(e, job)} 星算` : ""}`;
+      const effect =
+        stat === "jiyuan"
+          ? "管采集产量（机缘越高，每次采得越多）"
+          : !job
+            ? "留给修行，暂无经营作用"
+            : `管${JOB_NAMES[job]}${bonus > 0 ? ` · ${ELEMENT_NAMES[JOB_ELEMENT[job]]}灵根 +${bonus}，按 ${getEffectiveStars(e, job)} 星算` : ""}`;
       layer.add(this.add.text(56, y + 48, effect, { fontSize: "15px", color: bonus > 0 ? "#9fe870" : "#a8b8c8" }));
       if (editable && e.statPoints > 0 && e.stars[stat] < GAME.staff.maxStars) {
         this.addChip(layer, 616, y + 22, "+", "#7a5a1a", () => {
