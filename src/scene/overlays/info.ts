@@ -1,7 +1,7 @@
 // 二级页面：玩法说明、账簿成就、存档导入导出。
 import { REALMS, getAchievements } from "../../logic";
 import { parseSave } from "../../save";
-import { decodeSaveCode, encodeSaveCode } from "../../savecode";
+import { CODE_PREFIX, decodeSaveCode, encodeSaveCode } from "../../savecode";
 import { SAVE_KEY } from "../constants";
 import type { TavernScene } from "../TavernScene";
 
@@ -131,7 +131,7 @@ export class InfoOverlayMethods {
     hint.textContent =
       mode === "export"
         ? "复制整段导出码保存。换设备或清空浏览器后，在这里选「导入存档」恢复。"
-        : "粘贴 LS4. 开头的导出码。导入会覆盖本机当前进度。";
+        : `粘贴 ${CODE_PREFIX} 开头的导出码。导入会覆盖本机当前进度。`;
     hint.style.cssText = "font-size:14px;color:#bbbbbb;line-height:1.5;margin-bottom:10px;";
     const textarea = document.createElement("textarea");
     textarea.value = mode === "export" ? encodeSaveCode(this.buildSaveData()) : "";
