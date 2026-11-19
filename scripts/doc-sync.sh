@@ -11,21 +11,23 @@ echo "===== $(date '+%F %T') ====="
 if [ -n "$(git status --porcelain)" ]; then echo "工作区不干净，跳过"; exit 0; fi
 git checkout main
 git pull --ff-only
-before=$(git rev-parse HEAD)
-
-tclaude -p "$(cat scripts/doc-sync-prompt.md)" \
+out=$(tclaude -p "$(cat scripts/doc-sync-prompt.md)" \
   --permission-mode acceptEdits \
   --allowedTools "Read" "Glob" "Grep" "Edit" "Write" \
     "Bash(git log:*)" "Bash(git diff:*)" "Bash(git status:*)" "Bash(git show:*)" \
-    "Bash(git add:*)" "Bash(git commit:*)" \
-  --max-budget-usd 3
+  --max-budget-usd 3)
+echo "$out"
 
-[ "$(git rev-parse HEAD)" = "$before" ] && { echo "无改动"; exit 0; }
+changed=$(git status --porcelain)
+[ -z "$changed" ] && { echo "无改动"; exit 0; }
 
-# 安全闸：新提交里出现非 .md 文件，或工作区残留改动，一律回滚不推送
-if git diff --name-only "$before" HEAD | grep -qv '\.md$' || [ -n "$(git status --porcelain)" ]; then
-  echo "检测到非文档改动，回滚："; git diff --stat "$before" HEAD
-  git reset --hard "$before"; exit 1
+# 安全闸：出现非 .md 改动（含新建文件）一律丢弃，不提交
+if echo "$changed" | grep -qv '\.md$'; then
+  echo "检测到非文档改动，丢弃："; echo "$changed"
+  git checkout -- . && git clean -fd -q; exit 1
 fi
+msg=$(echo "$out" | sed -n 's/^COMMIT: *//p' | head -1)
+git add -A
+git commit -qm "${msg:-文档巡检：同步文档与代码}"
 git push origin main
-echo "已推送：$(git log --oneline "$before"..HEAD)"
+echo "已推送：$(git log --oneline -1)"
