@@ -97,6 +97,7 @@ export class SessionMethods {
         playSfx("coin");
         this.showCoinPopup(this.tablePosition(index).x, FLOOR_Y - 120, price);
         this.sessionServed += 1;
+        this.notifyTask("serve");
         this.sessionRevenue += price;
         if (matched) {
           this.sessionWishes += 1;
@@ -357,6 +358,7 @@ export class SessionMethods {
       this.eventTimes = getEventSchedule(eventCount, Math.random);
       this.eventsThisSession = 0;
       this.grantDailyGift();
+      this.notifyTask("start_session");
       playSfx("open");
       this.log("开张大吉，今日营业开始");
       this.showDayBanner();
@@ -495,6 +497,7 @@ export class SessionMethods {
       return;
     }
     this.coins += payout.coins;
+    if (payout.met) this.notifyTask("goal_met");
     this.log(
       payout.met
         ? `第 ${this.day - 1} 日目标达成：${goal.label}，赏 ${payout.coins} 灵石`

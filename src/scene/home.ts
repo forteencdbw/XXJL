@@ -134,11 +134,37 @@ export class HomeMethods {
     this.homeCultivationSub = cultivation.sub;
     this.homeCultivationSub.setText("法坛打坐 · 随时进出");
 
-    const gather = makeCard(680, "采集", () => this.buildGatheringOverlay(), 120);
+    const gather = makeCard(680, "采集", () => {
+      this.notifyTask("open_gather");
+      this.buildGatheringOverlay();
+    }, 120);
     this.homeGatherCard = gather.card;
     this.homeGatherTitle = gather.titleText;
     this.homeGatherSub = gather.sub;
     this.homeGatherSub.setText("派伙计采食材 · 现实时间冷却");
+
+    // 右上角任务小条：一行指路，点开全屏任务页。
+    // 底框固定大小可点，文字只负责显示——Text 每次换文案会留下旧的命中区。
+    this.taskTrackerBg = this.add
+      .rectangle(696, 176, 360, 36, 0x0d0a08, 0.82)
+      .setOrigin(1, 0)
+      .setStrokeStyle(1, 0x8a6a3a, 0.5)
+      .setScrollFactor(0)
+      .setDepth(30.8)
+      .setInteractive({ useHandCursor: true })
+      .on("pointerup", () => {
+        playSfx("click");
+        this.buildTaskOverlay();
+      });
+    this.taskTracker = this.add
+      .text(686, 182, "", {
+        fontSize: "16px",
+        color: "#c8b8a0",
+        fontFamily: XIAN_FONT,
+      })
+      .setOrigin(1, 0)
+      .setScrollFactor(0)
+      .setDepth(31);
   }
 
   /** 主界面【营业】卡：未开业进菜单，营业中回到店内，已打烊进结算。 */

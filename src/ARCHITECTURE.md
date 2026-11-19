@@ -10,6 +10,7 @@ Phaser 3 + TypeScript 竖屏经营游戏。领域词汇见根目录 `GLOSSARY.md
 | `logic.ts` | 纯规则函数，不依赖 Phaser/DOM，`logic.test.ts` 覆盖。读 `config.ts`。 |
 | `booth.ts` | **雅座生命周期**（纯逻辑）：领座→等菜→烹饪→待传→传菜→用膳→离店的全部状态切换、清空、选下一桌、桌卡文字。场景不直接改雅座字段，只调这里。`booth.test.ts` 覆盖。 |
 | `save.ts` | **存档编解码**（纯逻辑）：`newSave`（新档/破产重开，所有开局数值）、`parseSave`（读档与导入共用的清洗，版本不符返回 null）、`SAVE_VERSION`。`save.test.ts` 覆盖。 |
+| `tasks.ts` | **主线任务**（纯逻辑）：任务链、动作/状态目标、领取推进、读档清洗。`tasks.test.ts` 覆盖。 |
 | `main.ts` | 入口：校验配置后启动 Phaser。 |
 | `scene/` | 唯一的 Phaser 场景 `TavernScene`，按功能拆成多个文件（见下）。 |
 | `ads.ts` | **广告桩**：唯一的广告入口 `showRewardedAd(): Promise<boolean>`；本期模拟等待后返回成功，接真实 SDK 只改这里。 |
@@ -40,6 +41,7 @@ Phaser 3 + TypeScript 竖屏经营游戏。领域词汇见根目录 `GLOSSARY.md
 | 主界面门面与【营业】【修炼】【采集】入口卡 | `scene/home.ts` |
 | 员工（含掌柜）领座、烹饪、传菜的走路与动画（雅座状态切换调 `src/booth.ts`） | `scene/production.ts` |
 | 员工派活顺序、站位、夜修打坐座位、成长、雇佣/辞退/工资 | `scene/staff.ts` |
+| 任务进度记账、任务页、主界面任务小条、领取奖励 | `scene/tasks.ts`（各系统的 `notifyTask` 调用点在对应文件里） |
 | 食客生成、进场方式、常客、随机事件 | `scene/patrons.ts` |
 | 价格/天气/利是在场景侧的换算，菜单列表 | `scene/rules.ts` |
 | 存档在场景侧：打包成存档、赋回场景、读写 localStorage（清洗与默认值在 `src/save.ts`；未上线前改结构就升版本号，不做迁移） | `scene/save.ts` |

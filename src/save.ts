@@ -15,8 +15,10 @@ import {
   startingStock,
 } from "./logic";
 import type { DailyGoal, Employee, GatherAssignment, IngredientStock, MetaStats, RootElement } from "./logic";
+import { newTaskState, sanitizeTaskState } from "./tasks";
+import type { TaskState } from "./tasks";
 
-export const SAVE_VERSION = 6;
+export const SAVE_VERSION = 7;
 
 export interface RegularGuest {
   name: string;
@@ -34,6 +36,8 @@ export interface SaveData {
   ingredients: IngredientStock;
   /** 采集点 id → 当前占用；冷却按 startedAt 的现实时间差恢复 */
   gathering: Record<string, GatherAssignment>;
+  /** 主线任务：当前任务、目标进度、已完成清单 */
+  tasks: TaskState;
   level: number;
   stoveLevel: number;
   signLevel: number;
@@ -74,6 +78,7 @@ export interface SaveCarry {
   lastGiftDate?: string;
   giftStreak?: number;
   jade?: number;
+  tasks?: TaskState;
 }
 
 /** 新档（含破产重开）：第 1 日从主界面开始。所有开局数值只在这里。 */
@@ -85,6 +90,7 @@ export function newSave(carry: SaveCarry = {}): SaveData {
     jade: carry.jade ?? STARTING_JADE,
     ingredients: startingStock(),
     gathering: {},
+    tasks: carry.tasks ? sanitizeTaskState(carry.tasks) : newTaskState(),
     level: 1,
     stoveLevel: 0,
     signLevel: 0,
@@ -207,6 +213,7 @@ export function parseSave(raw: unknown): SaveData | null {
     jade: count(data.jade),
     ingredients,
     gathering,
+    tasks: sanitizeTaskState(data.tasks),
     level,
     stoveLevel: count(data.stoveLevel),
     signLevel: count(data.signLevel),

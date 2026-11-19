@@ -14,6 +14,7 @@ export class SaveMethods {
       jade: this.jade,
       ingredients: this.inventory,
       gathering: this.gathering,
+      tasks: this.taskState,
       level: this.level,
       stoveLevel: this.stoveLevel,
       signLevel: this.signLevel,
@@ -48,6 +49,7 @@ export class SaveMethods {
     this.jade = data.jade;
     this.inventory = { ...data.ingredients };
     this.gathering = { ...data.gathering };
+    this.taskState = { ...data.tasks, completed: [...data.tasks.completed] };
     this.level = data.level;
     this.stoveLevel = data.stoveLevel;
     this.signLevel = data.signLevel;
@@ -99,6 +101,7 @@ export class SaveMethods {
       lastGiftDate: this.lastGiftDate,
       giftStreak: this.giftStreak,
       jade: this.jade,
+      tasks: this.taskState,
     });
   }
 

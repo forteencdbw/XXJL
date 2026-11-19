@@ -66,6 +66,7 @@ export class GatheringOverlayMethods {
       rt.char.setVisible(false);
     }
     this.staffDidWork(e);
+    this.notifyTask("gather");
     const name = INGREDIENT_BY_ID[ingredientId].name;
     const lines = GAME.gathering.lines;
     const line = lines[Math.floor(Math.random() * lines.length) % lines.length];

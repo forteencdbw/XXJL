@@ -35,6 +35,98 @@ export const GAME = {
     session: 1,
   },
 
+  /**
+   * 主线任务：按数组顺序线性解锁，同一时刻只有一个当前任务。
+   * objective.kind 见 src/tasks.ts 的 TaskGoalKind；target 为目标值。
+   * reward 可给灵石、仙玉与指定食材。
+   */
+  tasks: [
+    {
+      id: "open_shop",
+      title: "开张大吉",
+      desc: "点【营业】打开今日菜单，选好菜后开张；倒计时归零就会打烊。",
+      objective: { kind: "start_session", text: "开张营业", target: 1 },
+      reward: { coins: 10 },
+    },
+    {
+      id: "first_order",
+      title: "第一单",
+      desc: "客人入座后，掌勺做菜、跑堂传菜，吃完结账就算服务一位。",
+      objective: { kind: "serve", text: "服务客人", target: 1 },
+      reward: { coins: 10, ingredients: { lingshu: 2 } },
+    },
+    {
+      id: "gather_food",
+      title: "备菜",
+      desc: "食材只能采集：打开【采集】，选一种食材，再点一名空闲伙计。",
+      objective: { kind: "gather", text: "派一次采集", target: 1 },
+      reward: { coins: 10, ingredients: { lingmi: 2 } },
+    },
+    {
+      id: "warehouse",
+      title: "家底",
+      desc: "主界面副屏的【仓库】里，食材页能看每种食材的库存与介绍。",
+      objective: { kind: "open_warehouse", text: "打开仓库", target: 1 },
+      reward: { coins: 5 },
+    },
+    {
+      id: "hire_one",
+      title: "添人手",
+      desc: "【伙计】页点招聘，雇一位伙计；工资每天结算，别雇太多。",
+      objective: { kind: "hire", text: "雇一位伙计", target: 1 },
+      reward: { coins: 15 },
+    },
+    {
+      id: "assign_jobs",
+      title: "排班",
+      desc: "点开一位员工，勾选分工、用 ↑ 调顺序：谁做菜、谁跑堂。",
+      objective: { kind: "job_change", text: "调整一次分工", target: 1 },
+      reward: { coins: 10 },
+    },
+    {
+      id: "level_two",
+      title: "升堂",
+      desc: "在【营造】里把酒楼扩建到 Lv2：多一张雅座、解锁新菜。",
+      objective: { kind: "level", text: "酒楼升到 Lv2", target: 2 },
+      reward: { coins: 20 },
+    },
+    {
+      id: "daily_goal",
+      title: "交差",
+      desc: "每天在菜单页选一个目标；达成（不是半赏）就能拿到赏金。",
+      objective: { kind: "goal_met", text: "达成一次每日目标", target: 1 },
+      reward: { coins: 15, ingredients: { zhulu: 1 } },
+    },
+    {
+      id: "floor_two",
+      title: "起楼",
+      desc: "先把酒楼升到 Lv3，再在【营造】里起二楼，楼上也能坐客。",
+      objective: { kind: "floors", text: "建成二楼", target: 1 },
+      reward: { coins: 30, jade: 1 },
+    },
+    {
+      id: "loan",
+      title: "周转",
+      desc: "第 3 天起，可在【灵石商行】借小借，分 12 期还；量力而行。",
+      objective: { kind: "loan", text: "借一次款", target: 1 },
+      reward: { coins: 20 },
+    },
+    {
+      id: "reputation",
+      title: "小有名气",
+      desc: "服务客人会积累声望；达到 180 点，称号变成「小有名气」。",
+      objective: { kind: "reputation", text: "声望达到 180", target: 180 },
+      reward: { coins: 40, jade: 1 },
+    },
+    {
+      id: "long_run",
+      title: "长线经营",
+      desc: "继续把酒楼升到 Lv6。主线到此暂告一段落，后续版本继续。",
+      objective: { kind: "level", text: "酒楼升到 Lv6", target: 6 },
+      reward: { coins: 60, jade: 2 },
+    },
+  ],
+
   /** 全局装饰时钟：只影响天色与状态栏显示，不影响玩法 */
   clock: {
     /** 现实几点算天亮 */
@@ -459,6 +551,21 @@ export function validateConfig(cfg: GameConfig): string[] {
     });
   });
   if (cfg.gathering.cooldownMs < 1000) errors.push("gathering.cooldownMs 至少 1000 毫秒");
+  const goalKinds = new Set([
+    "start_session", "serve", "open_gather", "gather", "open_warehouse",
+    "hire", "job_change", "goal_met", "loan", "level", "floors", "reputation",
+  ]);
+  const taskIds = new Set(cfg.tasks.map((t) => t.id));
+  if (taskIds.size !== cfg.tasks.length) errors.push("tasks 里有重复的 id");
+  cfg.tasks.forEach((task, i) => {
+    if (!task.id) errors.push(`tasks[${i}] 缺少 id`);
+    if (!goalKinds.has(task.objective.kind)) errors.push(`tasks[${i}].objective.kind「${task.objective.kind}」不认识`);
+    if (!(task.objective.target > 0)) errors.push(`tasks[${i}].objective.target 要大于 0`);
+    if (!task.objective.text) errors.push(`tasks[${i}].objective.text 不能为空`);
+    for (const id of Object.keys(task.reward.ingredients ?? {})) {
+      if (!ingredientIds.has(id)) errors.push(`tasks[${i}].reward 引用了不存在的食材「${id}」`);
+    }
+  });
   if (cfg.patronMove.walkSpeed <= 0 || cfg.patronMove.angryFactor <= 0 || cfg.patronMove.entranceSlow <= 0)
     errors.push("patronMove 的速度与倍率都要大于 0");
   cfg.patronKinds.forEach((k, i) => {

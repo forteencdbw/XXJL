@@ -233,6 +233,7 @@ export class StaffOverlayMethods {
     }
     this.pendingFireId = null;
     this.rebuildStaffChars();
+    this.notifyTask("job_change");
     this.save();
     this.buildStaffDetail(e);
   }

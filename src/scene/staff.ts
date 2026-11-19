@@ -148,6 +148,7 @@ export class StaffMethods {
     this.candidates = this.candidates.filter((o) => o !== c);
     this.employees.push(c);
     this.rebuildStaffChars();
+    this.notifyTask("hire");
     this.save();
     this.staffNotice = `已雇${c.name}（${cost} 灵石）`;
     this.staffNoticeGood = true;

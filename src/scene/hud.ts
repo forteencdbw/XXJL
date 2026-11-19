@@ -125,6 +125,7 @@ export class HudMethods {
     // 主界面：门面 + 两张入口卡 + 管理入口；开着页面时收起，避免命中区压到面板
     this.setHomeVisible(home && !this.overlay);
     this.refreshHomeCards();
+    this.refreshTaskTracker();
     this.setClosedNavVisible(home && !this.overlay);
     this.navTitle.setText(
       home ? `第 ${this.day} 日 · 天气：${this.weather.name}` : cultivating ? `修炼 · 天气：${this.weather.name}` : "",

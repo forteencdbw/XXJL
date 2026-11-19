@@ -6,6 +6,7 @@ import type { TavernScene } from "../TavernScene";
 export class WarehouseOverlayMethods {
   buildWarehouseOverlay(this: TavernScene) {
     const layer = this.openSubsystemPage("仓库");
+    this.notifyTask("open_warehouse");
     // 标签页：以后加别的分类时在这里并排
     layer.add(
       this.add

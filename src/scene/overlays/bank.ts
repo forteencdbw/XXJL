@@ -75,6 +75,7 @@ export class BankOverlayMethods {
     this.coins += def.principal;
     this.displayedCoins = this.coins;
     this.activeLoans.push({ name: def.name, remaining: def.totalRepay, periodsLeft: LOAN_PERIODS });
+    this.notifyTask("loan");
     this.save();
     playSfx("coin");
     this.log(`向灵石商行${def.name}，得 ${def.principal} 灵石，分 ${LOAN_PERIODS} 期偿还`);

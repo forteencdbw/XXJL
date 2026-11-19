@@ -12,8 +12,9 @@ describe("存档编解码", () => {
 
   it("破产重开继承仙缘、性别、灵根、账簿与利是，其余归零", () => {
     const meta = { days: 9, served: 50, revenue: 900, bestRevenue: 200, bestServed: 12, goalsMet: 4, maxRealm: 1, topDays: [] };
-    const s = newSave({ ascensions: 2, playerGender: "female", shopkeeperRoot: ["fire"], meta, lastGiftDate: "2026-11-01", giftStreak: 3, jade: 7 });
-    expect(s).toMatchObject({ ascensions: 2, playerGender: "female", meta, lastGiftDate: "2026-11-01", giftStreak: 3, day: 1, coins: newSave().coins, jade: 7 });
+    const tasks = { activeId: "gather_food", progress: 0, completed: ["open_shop", "first_order"] };
+    const s = newSave({ ascensions: 2, playerGender: "female", shopkeeperRoot: ["fire"], meta, lastGiftDate: "2026-11-01", giftStreak: 3, jade: 7, tasks });
+    expect(s).toMatchObject({ ascensions: 2, playerGender: "female", meta, lastGiftDate: "2026-11-01", giftStreak: 3, day: 1, coins: newSave().coins, jade: 7, tasks });
     expect(s.shopkeeper.root).toEqual(["fire"]);
   });
 
@@ -46,6 +47,7 @@ describe("存档编解码", () => {
       activeLoans: [{ name: "小额", remaining: 30, periodsLeft: 2.7 }, { name: 3 }],
       regulars: [{ name: "王二", kindId: "mortal", wish: "stirfry", visits: 0 }, { name: "缺字段" }],
       dailyGoal: { kind: "bad", label: "x" },
+      tasks: { activeId: "nope", progress: 999, completed: ["open_shop", "bad", "open_shop"] },
       lastGiftDate: "昨天",
     })!;
     expect(s.coins).toBe(newSave().coins);
@@ -62,6 +64,9 @@ describe("存档编解码", () => {
     expect(s.activeLoans).toEqual([{ name: "小额", remaining: 30, periodsLeft: 2 }]);
     expect(s.regulars).toEqual([{ name: "王二", kindId: "mortal", wish: "stirfry", visits: 1 }]);
     expect(s.dailyGoal).toBeNull();
+    expect(s.tasks.completed).toEqual(["open_shop"]);
+    expect(s.tasks.activeId).toBe("first_order");
+    expect(s.tasks.progress).toBe(1);
     expect(s.lastGiftDate).toBeUndefined();
   });
 
