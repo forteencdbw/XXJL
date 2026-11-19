@@ -2,3 +2,4 @@ node_modules/
 dist/
 *.tsbuildinfo
 verify-tmp.mjs
+logs/
