@@ -26,8 +26,8 @@ Phaser 3 + TypeScript 竖屏经营游戏。领域词汇见根目录 `GLOSSARY.md
 - **加新方法**：放进对应功能文件的 `XxxMethods` 类里，首参 `this: TavernScene`。
 - **加新功能文件**：导出 `XxxMethods`，再在 `TavernScene.ts` 的 import、`interface TavernScene extends …` 和 mixin 列表里各加一处。
 - **加新状态字段**：只在 `TavernScene.ts` 的类里声明（不要写 `private`，其他文件要访问）。
-- **玩法计时一律用 `this.time.now`（场景时钟）或 `this.time` 计时器、`this.tweens` 补间**：打开任何页面都不再暂停营业（`worldPaused` 已移除）。两处例外：**现实时钟**（天色、状态栏时辰）只允许 `SessionMethods.realNow()` 读 `new Date()`，且只用于表现；**采集冷却**（`scene/overlays/gathering.ts`）直接读 `Date.now()`，因为要求关页面也继续走，见 ADR-0017。
-- **加新子系统页面**：用 `this.openSubsystemPage(标题)` 开页（黑底、标题、底部关闭条、暂停都在里面），往返回的 layer 里加内容即可；`destroyOverlay` 会自动恢复。菜单、结算这类非子系统弹窗不走它。
+- **玩法计时一律用 `this.time.now`（场景时钟）或 `this.time` 计时器、`this.tweens` 补间**：打开任何页面都不再暂停营业（`worldPaused` 已移除）。两处例外：**现实时钟**（天色、状态栏时辰）只允许 `SessionMethods.realNow()` 读 `new Date()`，且只用于表现；**采集冷却**（`scene/overlays/gathering.ts`，以及 `logic.ts` 的 `isGatherReady`、主界面与伙计页的采集倒计时）直接读 `Date.now()`，因为要求关页面也继续走，见 ADR-0017。
+- **加新子系统页面**：用 `this.openSubsystemPage(标题)` 开页（黑底、标题、底部关闭条都在里面，**不暂停**营业），往返回的 layer 里加内容即可。菜单、结算这类非子系统弹窗不走它。
 
 ## 想改什么，看哪个文件
 
