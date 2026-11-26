@@ -55,7 +55,7 @@ Phaser 3 + TypeScript 竖屏经营游戏。领域词汇见根目录 `GLOSSARY.md
 | 天气粒子、灵气、蒸汽、闲聊等常驻氛围 | `scene/ambient.ts` |
 | 点人物弹出的人物卡 | `scene/focus.ts` |
 | 选菜单页（配方、缺料提示） | `scene/overlays/menu.ts` |
-| 采集页（三个采集点、现实时间冷却、派员工、动作循环、看广告得仙玉、采集加速） | `scene/overlays/gathering.ts`（冷却清理、广告与两处加速方法也在这里） |
+| 采集页（列表页 + 采集点详情页的动态山水、现实时间冷却、派员工、动作循环、看广告得仙玉、采集加速） | `scene/overlays/gathering.ts`（冷却清理、广告与两处加速方法也在这里；山水静态底图在 `scene/textures.ts`） |
 | 仓库（目前只有「食材」标签页，按种列库存与介绍） | `scene/overlays/warehouse.ts` |
 | 营造页（扩建/起楼/灶台/门幡） | `scene/overlays/build.ts` |
 | 伙计名单、个人详情（加点、分工）、招聘页 | `scene/overlays/staff.ts` |

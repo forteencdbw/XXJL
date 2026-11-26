@@ -136,6 +136,7 @@ export class HomeMethods {
 
     const gather = makeCard(680, "采集", () => {
       this.notifyTask("open_gather");
+      this.gatheringSpot = null;
       this.buildGatheringOverlay();
     }, 120);
     this.homeGatherCard = gather.card;

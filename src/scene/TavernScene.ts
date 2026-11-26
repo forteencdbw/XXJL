@@ -55,6 +55,10 @@ export class TavernScene extends Phaser.Scene {
   taskToastFor: string | null = null;
   /** 采集页里每个点当前选中的食材（重建页面时保留）。 */
   gatheringSelection: Record<string, string> = {};
+  /** 采集页正在看的采集点详情；null 是列表页。 */
+  gatheringSpot: string | null = null;
+  /** 详情页里点中的伙计；不在空闲名单里时默认选机缘最高的。 */
+  gatheringPick: number | null = null;
   /** 当前打开的采集页；用于冷却结束时原地刷新。 */
   gatheringOverlayLayer?: Phaser.GameObjects.Container;
   level = 1;

@@ -1,8 +1,273 @@
-// 程序生成贴图：光晕、纸纹、菜品、水墨标题/内景/打烊画。
+// 程序生成贴图：光晕、纸纹、菜品、水墨标题/内景/打烊画、采集点山水。
 import Phaser from "phaser";
 import type { TavernScene } from "./TavernScene";
 
+type Ctx = CanvasRenderingContext2D;
+type Pt = [number, number];
+
+function pxRect(c: Ctx, x: number, y: number, w: number, h: number, col: string) {
+  c.fillStyle = col;
+  c.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h));
+}
+
+/** 像素多边形：逐行填，保留硬边；edge 给左右边缘随机点一层亮色。 */
+function pixelPoly(c: Ctx, pts: Pt[], col: string, edge?: string) {
+  const ys = pts.map((p) => p[1]);
+  const minY = Math.floor(Math.min(...ys));
+  const maxY = Math.floor(Math.max(...ys));
+  for (let y = minY; y <= maxY; y++) {
+    const xs: number[] = [];
+    for (let i = 0; i < pts.length; i++) {
+      const [x1, y1] = pts[i];
+      const [x2, y2] = pts[(i + 1) % pts.length];
+      if ((y1 <= y && y2 >= y) || (y2 <= y && y1 >= y)) {
+        if (y1 === y2) {
+          xs.push(x1, x2);
+        } else {
+          xs.push(x1 + ((y - y1) / (y2 - y1)) * (x2 - x1));
+        }
+      }
+    }
+    if (xs.length < 2) continue;
+    const x0 = Math.floor(Math.min(...xs));
+    const x1 = Math.ceil(Math.max(...xs));
+    pxRect(c, x0, y, Math.max(1, x1 - x0), 1, col);
+    if (edge && Math.random() > 0.55) {
+      pxRect(c, x0, y, 1, 1, edge);
+      pxRect(c, x1 - 1, y, 1, 1, edge);
+    }
+  }
+}
+
+/** 天空分带，交界处抖几行像素当过渡。 */
+function skyBands(c: Ctx, W: number, bands: [number, string][], bottom: number) {
+  bands.forEach(([y0, col], i) => {
+    const y1 = i + 1 < bands.length ? bands[i + 1][0] : bottom;
+    pxRect(c, 0, y0, W, y1 - y0, col);
+  });
+  for (let i = 1; i < bands.length; i++) {
+    const [y0, col] = bands[i];
+    const prev = bands[i - 1][1];
+    for (let d = -3; d <= 3; d++) {
+      for (let x = 0; x < W; x++) {
+        const p = (d + 4) / 8; // 越往下越偏新色
+        if (Math.random() < 0.5) pxRect(c, x, y0 + d, 1, 1, Math.random() < p ? col : prev);
+      }
+    }
+  }
+}
+
+/** 山脊：几条正弦叠出起伏，从脊线填到 bottom；top 是脊线一层亮边。 */
+function ridge(c: Ctx, W: number, baseY: number, amp: number, seed: number, col: string, bottom: number, top?: string) {
+  for (let x = 0; x < W; x++) {
+    const n = 0.5 * Math.sin(x * 0.021 + seed) + 0.3 * Math.sin(x * 0.057 + seed * 2.3) + 0.2 * Math.sin(x * 0.13 + seed * 3.7);
+    const y = Math.round(baseY - amp * n);
+    pxRect(c, x, y, 1, bottom - y, col);
+    if (top && Math.random() < 0.7) pxRect(c, x, y, 1, 1, top);
+  }
+}
+
+/** 横向一条薄雾：在 y0..y0+h 撒淡色像素，中间密两边疏。 */
+function mistBand(c: Ctx, W: number, y0: number, h: number, cols: string[], density: number) {
+  for (let i = 0; i < W * h * density; i++) {
+    const t = Math.random();
+    const y = y0 + h * (0.5 + (Math.random() - 0.5) * t);
+    pxRect(c, Math.random() * W, y, 1 + Math.floor(Math.random() * 3), 1, cols[Math.floor(Math.random() * cols.length)]);
+  }
+}
+
+function disc(c: Ctx, cx: number, cy: number, r: number, col: string, chance = 1) {
+  for (let y = -r; y <= r; y++) {
+    for (let x = -r; x <= r; x++) {
+      if (x * x + y * y <= r * r && Math.random() < chance) pxRect(c, cx + x, cy + y, 1, 1, col);
+    }
+  }
+}
+
+/** 采集点背景画布尺寸（像素），页面里放大 2 倍显示。 */
+export const GATHER_SCENE_W = 320;
+export const GATHER_SCENE_H = 280;
+
+function drawHerbGarden(c: Ctx) {
+  const W = GATHER_SCENE_W;
+  const H = GATHER_SCENE_H;
+  skyBands(c, W, [[0, "#c4d8d0"], [40, "#d2e0d6"], [80, "#dfe7da"], [112, "#e9ebdc"]], H);
+  disc(c, 252, 44, 17, "#f2ecd6", 0.5);
+  disc(c, 252, 44, 12, "#f8f2de");
+  ridge(c, W, 112, 34, 1.2, "#aec6bc", H, "#bcd0c6");
+  mistBand(c, W, 108, 16, ["#e2e9de", "#d6e2d8"], 0.35);
+  ridge(c, W, 146, 26, 4.1, "#8aac9e", H, "#9cbaac");
+  mistBand(c, W, 142, 14, ["#dbe5da", "#c8d8cc"], 0.3);
+  ridge(c, W, 176, 12, 2.6, "#62896f", H, "#729a7c");
+  // 梯田药畦：一层层向前，每层一道土埂、一排药苗
+  const terraces = [184, 206, 230, 256];
+  terraces.forEach((ty, i) => {
+    const lip = (x: number) => Math.round(ty + 3 * Math.sin(x * 0.018 + i * 1.7));
+    for (let x = 0; x < W; x++) {
+      const y = lip(x);
+      pxRect(c, x, y, 1, H - y, i % 2 ? "#57783f" : "#5d7f44");
+      pxRect(c, x, y, 1, 1, "#8aac62");
+      if (Math.random() < 0.5) pxRect(c, x, y + 1, 1, 1, "#729450");
+    }
+    // 前一层的土墙阴影
+    if (i > 0) for (let x = 0; x < W; x++) pxRect(c, x, lip(x) - 2, 1, 2, "#3e5a32");
+    // 药苗：小 V 形，偶尔开花或结红果（灵参）
+    for (let x = 4 + (i % 2) * 4; x < W - 4; x += 9) {
+      const y = lip(x) + 6 + Math.round(Math.random() * 2);
+      pxRect(c, x, y - 2, 1, 3, "#3f6a34");
+      pxRect(c, x - 2, y - 3, 2, 1, "#8fc06a");
+      pxRect(c, x + 1, y - 4, 2, 1, "#8fc06a");
+      pxRect(c, x - 1, y - 2, 1, 1, "#6fa050");
+      const r = Math.random();
+      if (r < 0.12) pxRect(c, x, y - 5, 1, 1, "#c8402e");
+      else if (r < 0.22) pxRect(c, x, y - 5, 1, 1, "#ecd27a");
+      else if (r < 0.28) pxRect(c, x, y - 5, 1, 1, "#e6a0b4");
+    }
+  });
+  // 石灯笼
+  const lx = 38;
+  const ly = 204;
+  pxRect(c, lx - 7, ly - 2, 14, 3, "#5a625c");
+  pxRect(c, lx - 2, ly - 16, 4, 14, "#7e8880");
+  pxRect(c, lx - 6, ly - 26, 12, 10, "#8a948c");
+  pxRect(c, lx - 3, ly - 23, 6, 5, "#f0dc98");
+  pxRect(c, lx - 9, ly - 29, 18, 3, "#5a625c");
+  pxRect(c, lx - 4, ly - 32, 8, 3, "#6e7870");
+  pxRect(c, lx - 1, ly - 34, 2, 2, "#5a625c");
+  // 前景几块山石
+  for (const [rx, ry, rw] of [[290, 270, 18], [12, 274, 14], [168, 276, 10]] as const) {
+    pxRect(c, rx, ry - 6, rw, 8, "#6e766e");
+    pxRect(c, rx + 2, ry - 8, rw - 5, 2, "#8a928a");
+  }
+}
+
+function drawStream(c: Ctx) {
+  const W = GATHER_SCENE_W;
+  const H = GATHER_SCENE_H;
+  skyBands(c, W, [[0, "#c2d6d6"], [44, "#d0e0dc"], [88, "#dee8e0"]], H);
+  disc(c, 70, 40, 11, "#f6f0dc");
+  ridge(c, W, 104, 30, 0.4, "#a8c2c0", H, "#b8d0cc");
+  mistBand(c, W, 100, 18, ["#e0e9e4", "#d2e0dc"], 0.35);
+  ridge(c, W, 138, 22, 5.3, "#7fa496", H, "#90b4a4");
+  mistBand(c, W, 134, 12, ["#d8e4dc", "#c6d8d0"], 0.3);
+  // 对岸草坡与芦苇
+  ridge(c, W, 160, 6, 3.1, "#628e70", H, "#78a482");
+  for (let x = 2; x < W; x += 5 + Math.floor(Math.random() * 4)) {
+    const h = 6 + Math.floor(Math.random() * 6);
+    pxRect(c, x, 168 - h, 1, h, "#4e7458");
+    if (Math.random() < 0.4) pxRect(c, x - 1, 168 - h, 1, 2, "#a89a6a");
+  }
+  // 溪水：深浅几道横带，边缘一层亮线
+  pxRect(c, 0, 168, W, 56, "#86b6b8");
+  for (const [y, col] of [[172, "#78a8ac"], [182, "#8cbcbc"], [194, "#74a4a8"], [206, "#8ebebe"], [216, "#7aaaae"]] as const) {
+    for (let x = 0; x < W; x++) if (Math.random() < 0.7) pxRect(c, x, y + Math.round(Math.sin(x * 0.05 + y) * 1.5), 1, 2, col);
+  }
+  pxRect(c, 0, 168, W, 1, "#b8dcd8");
+  // 近岸卵石滩
+  for (let x = 0; x < W; x++) {
+    const y = Math.round(224 + Math.sin(x * 0.03) * 2);
+    pxRect(c, x, y, 1, H - y, "#c4baa0");
+    pxRect(c, x, y, 1, 1, "#e0dcc8");
+  }
+  for (let i = 0; i < 900; i++) pxRect(c, Math.random() * W, 226 + Math.random() * 54, 1, 1, Math.random() < 0.5 ? "#b2a88e" : "#d2caae");
+  for (let i = 0; i < 34; i++) {
+    const rx = Math.random() * W;
+    const ry = 232 + Math.random() * 44;
+    const rw = 4 + Math.floor(Math.random() * 7);
+    const col = ["#8e928a", "#a4a498", "#7a7e78", "#b4b0a2"][i % 4];
+    pxRect(c, rx, ry, rw, 3, col);
+    pxRect(c, rx + 1, ry - 1, rw - 2, 1, col);
+    pxRect(c, rx + 1, ry - 1, 2, 1, "#d8d6cc");
+  }
+  // 小木桥：从近岸斜搭到对岸
+  pixelPoly(c, [[228, 228], [270, 228], [262, 166], [244, 166]], "#7a5a3a", "#8e6c48");
+  for (let y = 170; y < 228; y += 4) {
+    const t = (y - 166) / 62;
+    pxRect(c, 244 - 16 * t, y, 18 + 24 * t, 1, "#5a402a");
+  }
+  pxRect(c, 226, 196, 2, 34, "#4a3424");
+  pxRect(c, 270, 196, 2, 34, "#4a3424");
+  pxRect(c, 243, 156, 2, 12, "#4a3424");
+  pxRect(c, 262, 156, 2, 12, "#4a3424");
+  // 垂柳：树干与树冠，柳丝另画成动的
+  pxRect(c, 26, 120, 7, 108, "#4a3e30");
+  pxRect(c, 24, 214, 11, 14, "#3e3428");
+  pxRect(c, 33, 140, 14, 3, "#4a3e30");
+  pxRect(c, 14, 150, 12, 3, "#4a3e30");
+  for (let i = 0; i < 260; i++) {
+    const a = Math.random() * Math.PI;
+    const r = Math.random() * 30;
+    pxRect(c, 30 + Math.cos(a) * r * 1.4, 128 - Math.sin(a) * r * 0.6, 2, 2, Math.random() < 0.5 ? "#5e8a4a" : "#74a05a");
+  }
+}
+
+function drawBamboo(c: Ctx) {
+  const W = GATHER_SCENE_W;
+  const H = GATHER_SCENE_H;
+  skyBands(c, W, [[0, "#c6dad0"], [50, "#d4e2d4"], [100, "#e0e8d8"]], H);
+  // 三层竹林：远淡近深，越近越粗
+  const stalks = (n: number, w: number, col: string, node: string, leaf: string, top: number) => {
+    for (let i = 0; i < n; i++) {
+      const x = Math.random() * W;
+      const t = top + Math.random() * 30;
+      pxRect(c, x, t, w, H - t, col);
+      for (let y = t + 10 + Math.random() * 10; y < H; y += 18 + Math.random() * 6) pxRect(c, x - 1, y, w + 2, 1, node);
+      for (let k = 0; k < 3; k++) {
+        const ly = t + Math.random() * 60;
+        const dir = Math.random() < 0.5 ? -1 : 1;
+        for (let j = 0; j < 3; j++) pxRect(c, x + dir * (3 + j * 3), ly + j, 4, 1, leaf);
+      }
+    }
+  };
+  stalks(46, 2, "#b0c8b8", "#c2d6c8", "#a4c0ac", 0);
+  mistBand(c, W, 120, 40, ["#e2eadf", "#d6e2d6"], 0.25);
+  stalks(26, 3, "#86ac92", "#9cc0a6", "#78a284", 10);
+  mistBand(c, W, 180, 30, ["#dbe5d8", "#cddcce"], 0.2);
+  // 地面与石径
+  for (let x = 0; x < W; x++) {
+    const y = Math.round(232 + Math.sin(x * 0.04) * 2);
+    pxRect(c, x, y, 1, H - y, "#5e7050");
+    if (Math.random() < 0.6) pxRect(c, x, y, 1, 1, "#7a8e64");
+  }
+  for (let i = 0; i < 500; i++) pxRect(c, Math.random() * W, 236 + Math.random() * 44, 1, 1, Math.random() < 0.5 ? "#52643f" : "#6a7c58");
+  // 石径：近大远小，弯向林间小亭
+  for (const [sx, sy, sw] of [[150, 274, 22], [176, 262, 18], [196, 252, 15], [214, 244, 12], [226, 238, 10]] as const) {
+    pxRect(c, sx, sy - 3, sw, 4, "#8e9488");
+    pxRect(c, sx + 1, sy - 4, sw - 2, 1, "#aab0a4");
+  }
+  // 小亭：石台、红柱、翘角黛瓦
+  pxRect(c, 222, 230, 52, 5, "#8a9086");
+  pxRect(c, 224, 228, 48, 2, "#a8aea2");
+  for (const x of [228, 246, 266]) pxRect(c, x, 196, 2, 32, "#8a3a2a");
+  pxRect(c, 226, 206, 44, 2, "#6a2a20");
+  pixelPoly(c, [[248, 176], [214, 196], [282, 196]], "#3e4248", "#5a6068");
+  pxRect(c, 210, 194, 6, 2, "#3e4248");
+  pxRect(c, 280, 194, 6, 2, "#3e4248");
+  pxRect(c, 208, 192, 3, 2, "#3e4248");
+  pxRect(c, 285, 192, 3, 2, "#3e4248");
+  pxRect(c, 247, 172, 2, 4, "#c8a050");
+  for (let y = 182; y < 196; y += 3) {
+    const half = Math.floor(((y - 176) / 20) * 34);
+    pxRect(c, 248 - half, y, half * 2, 1, "#4c5058");
+  }
+}
+
 export class TextureMethods {
+  /** 采集点详情页的静态山水底（320×280，最近邻放大）；会动的部分在采集页里另画。 */
+  ensureGatherSceneTexture(this: TavernScene, spotId: string): string {
+    const key = `gather-scene-${spotId}`;
+    if (this.textures.exists(key)) return key;
+    const tex = this.textures.createCanvas(key, GATHER_SCENE_W, GATHER_SCENE_H);
+    if (!tex) return key;
+    const c = tex.getContext();
+    if (spotId === "stream") drawStream(c);
+    else if (spotId === "bamboo") drawBamboo(c);
+    else drawHerbGarden(c);
+    tex.refresh();
+    tex.setFilter(Phaser.Textures.FilterMode.NEAREST);
+    return key;
+  }
+
   /** 生成一张柔和的径向光晕，供月光、灯笼、灶火共用；比叠加同心圆干净。 */
   ensureGlowTexture(this: TavernScene) {
     if (this.textures.exists("soft-glow")) return;
@@ -234,34 +499,7 @@ export class TextureMethods {
         px(Math.random() * 360, y0 + Math.random() * 18, 1, 1, Math.random() > 0.55 ? "#1a2638" : "#131e2e");
       }
     }
-    // 山的像素三角：逐行填，保留硬边
-    const tri = (pts: [number, number][], col: string, edge?: string) => {
-      const ys = pts.map((p) => p[1]);
-      const minY = Math.floor(Math.min(...ys));
-      const maxY = Math.floor(Math.max(...ys));
-      for (let y = minY; y <= maxY; y++) {
-        const xs: number[] = [];
-        for (let i = 0; i < pts.length; i++) {
-          const [x1, y1] = pts[i];
-          const [x2, y2] = pts[(i + 1) % pts.length];
-          if ((y1 <= y && y2 >= y) || (y2 <= y && y1 >= y)) {
-            if (y1 === y2) {
-              xs.push(x1, x2);
-            } else {
-              xs.push(x1 + ((y - y1) / (y2 - y1)) * (x2 - x1));
-            }
-          }
-        }
-        if (xs.length < 2) continue;
-        const x0 = Math.floor(Math.min(...xs));
-        const x1 = Math.ceil(Math.max(...xs));
-        px(x0, y, Math.max(1, x1 - x0), 1, col);
-        if (edge && Math.random() > 0.55) {
-          px(x0, y, 1, 1, edge);
-          px(x1 - 1, y, 1, 1, edge);
-        }
-      }
-    };
+    const tri = (pts: [number, number][], col: string, edge?: string) => pixelPoly(c, pts, col, edge);
     tri(
       [
         [0, 430],

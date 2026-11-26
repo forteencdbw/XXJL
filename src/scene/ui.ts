@@ -252,14 +252,14 @@ export class UiMethods {
   }
 
   /** 副屏底部的大号关闭条：不再要求点中小字「关闭」。 */
-  addOverlayClose(this: TavernScene, layer: Phaser.GameObjects.Container, y: number, label = "关闭") {
+  addOverlayClose(this: TavernScene, layer: Phaser.GameObjects.Container, y: number, label = "关闭", onClose = () => this.destroyOverlay()) {
     layer.add(
       this.add
         .rectangle(40, y, 640, 80, 0x33251b)
         .setOrigin(0, 0)
         .setStrokeStyle(2, 0x8a6a3a)
         .setInteractive({ useHandCursor: true })
-        .on("pointerup", () => this.destroyOverlay()),
+        .on("pointerup", onClose),
     );
     layer.add(
       this.add.text(360, y + 40, label, { fontSize: "24px", color: "#f5e6c8" }).setOrigin(0.5),
@@ -429,13 +429,13 @@ export class UiMethods {
    * 打开一个子系统页面：清掉旧页，铺黑底、写标题、底部放关闭条。
    * 子系统页面**不暂停**营业——倒计时与店内模拟照常推进。
    */
-  openSubsystemPage(this: TavernScene, title: string, closeLabel = "关闭"): Phaser.GameObjects.Container {
+  openSubsystemPage(this: TavernScene, title: string, closeLabel = "关闭", onClose?: () => void): Phaser.GameObjects.Container {
     this.destroyOverlay();
     const cam = this.cameras.main;
     const layer = this.add.container(cam.scrollX, cam.scrollY).setDepth(100);
     layer.add(this.add.rectangle(0, 0, SCREEN_W, SCREEN_H, 0x000000, 0.97).setOrigin(0, 0).setInteractive());
     layer.add(this.add.text(40, 58, title, { fontSize: "36px", color: "#ffe6a8", fontFamily: XIAN_FONT }));
-    this.addOverlayClose(layer, 1150, closeLabel);
+    this.addOverlayClose(layer, 1150, closeLabel, onClose);
     this.overlay = layer;
     return layer;
   }
