@@ -67,7 +67,7 @@ export class HudMethods {
       this.sessionText.setText(`第 ${this.day} 日 · 天气：${this.weather.name} · ${goal.label}`);
       // 状态栏常驻回访提示：今天还没领利是就写「待领」，领过则显示连续天数
       const giftPending = this.lastGiftDate !== this.todayKey;
-      this.goalText.setText(giftPending ? "今日利是待领" : this.giftStreak > 0 ? `连开 ${this.giftStreak} 天` : "");
+      this.goalText.setText(giftPending ? "今日利是待领" : this.giftStreak > 0 ? `开店 ${this.giftStreak} 天` : "");
       this.goalText.setColor(giftPending ? "#ffd98a" : "#a89472");
     }
     this.chronicleText.setText(

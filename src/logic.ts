@@ -717,27 +717,16 @@ export function getDailyWeather(dateKey: string): WeatherDef {
 // ===== 开市利是：本机每天第一次开店的一次性奖励 =====
 export const GIFT_STREAK_CAP = C.dailyGift.streakCap;
 
-function dateDayNumber(key: string): number | null {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(key);
-  if (!match) return null;
-  return Math.floor(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])) / 86400000);
-}
-
-/** 连续开店天数：同一天保持，隔一天 +1，断一天从 1 重来。 */
+/** 累计开店天数：同一天保持，换一天就 +1，断签不重置（ADR-0020 不惩罚离开）。 */
 export function getGiftStreak(
   lastDate: string | null | undefined,
   today: string,
   streak: number,
 ): number {
-  const todayNo = dateDayNumber(today);
-  const lastNo = lastDate ? dateDayNumber(lastDate) : null;
-  if (todayNo === null) return Math.max(1, streak);
-  if (lastNo === null || todayNo < lastNo) return 1;
-  if (todayNo === lastNo) return Math.max(1, streak);
-  return todayNo === lastNo + 1 ? Math.max(1, streak) + 1 : 1;
+  return lastDate === today ? Math.max(1, streak) : Math.max(0, streak) + 1;
 }
 
-/** 连续越久赏越多，封顶 7 天；按酒楼等级小幅增长，不让它变成主要收入。 */
+/** 累计越久赏越多，封顶 7 天；按酒楼等级小幅增长，不让它变成主要收入。 */
 export function getDailyGift(
   streak: number,
   level: number,

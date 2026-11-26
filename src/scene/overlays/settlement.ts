@@ -42,7 +42,7 @@ export class SettlementOverlayMethods {
     const netIncome = this.sessionRevenue - totalWage - totalLoan - totalRent;
     const summary = [
       ...(this.lastGift
-        ? [`开市利是：连续 ${this.lastGift.streak} 天 · +${this.lastGift.coins} 灵石`]
+        ? [`开市利是：累计 ${this.lastGift.streak} 天 · +${this.lastGift.coins} 灵石`]
         : []),
       `声望：${getRepLevelInfo(this.reputation).title} · +${this.repGainedToday} / −${this.repLostToday} → ${this.reputation}`,
       `工资合计：${totalWage} 灵石`,

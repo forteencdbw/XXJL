@@ -71,9 +71,9 @@ export class RuleMethods {
       .map(([id, n]) => `${INGREDIENT_BY_ID[id].name}×${n}`)
       .join("、");
     this.log(
-      `开市利是（连续第 ${this.giftStreak} 天）：+${gift.coins} 灵石${giftText ? `、+${giftText}` : ""}`,
+      `开市利是（累计第 ${this.giftStreak} 天）：+${gift.coins} 灵石${giftText ? `、+${giftText}` : ""}`,
     );
-    this.showEventToast(`开市利是 · 连续第 ${this.giftStreak} 天 +${gift.coins} 灵石`, true);
+    this.showEventToast(`开市利是 · 累计第 ${this.giftStreak} 天 +${gift.coins} 灵石`, true);
     // 一次性跨日奖励立即落盘：营业中刷新会回退本局，但不能重领利是
     this.writeSave(this.buildSaveData());
   }

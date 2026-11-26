@@ -726,13 +726,11 @@ describe("天气与开市利是", () => {
     expect(getWishPrice(100, false, false)).toBe(100);
   });
 
-  it("连续开店：同日不变、隔日 +1、断一天归 1", () => {
+  it("累计开店：同日不变、换日 +1、断签不重置", () => {
     expect(getGiftStreak("2026-10-26", "2026-10-26", 4)).toBe(4);
     expect(getGiftStreak("2026-10-25", "2026-10-26", 4)).toBe(5);
-    expect(getGiftStreak("2026-10-24", "2026-10-26", 4)).toBe(1);
+    expect(getGiftStreak("2026-10-12", "2026-10-26", 4)).toBe(5);
     expect(getGiftStreak(undefined, "2026-10-26", 0)).toBe(1);
-    expect(getGiftStreak("2026-02-28", "2026-03-01", 2)).toBe(3);
-    expect(getGiftStreak("bogus", "2026-10-26", 2)).toBe(1);
   });
 
   it("开市利是随连续天数与酒楼等级增长，赏额封顶", () => {

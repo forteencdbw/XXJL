@@ -440,13 +440,13 @@ export const GAME = {
 
   /** 开市利是（本机每天第一次开店） */
   dailyGift: {
-    /** 连续天数最多算到几天 */
+    /** 累计开店天数最多算到几天 */
     streakCap: 7,
-    /** 灵石 = coinsBase + coinsPerStreakDay × 连续天数 + coinsPerLevel × 等级 */
+    /** 灵石 = coinsBase + coinsPerStreakDay × 累计天数 + coinsPerLevel × 等级 */
     coinsBase: 15,
     coinsPerStreakDay: 5,
     coinsPerLevel: 2,
-    /** 连续满几天起送食材 */
+    /** 累计满几天起送食材 */
     ingredientsFromStreak: 3,
     /** 送多少份随机食材 */
     ingredients: 2,
