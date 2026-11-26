@@ -63,4 +63,5 @@ Phaser 3 + TypeScript 竖屏经营游戏。领域词汇见根目录 `GLOSSARY.md
 | 设置页（音量滑条；玩法、账簿、存档入口） | `scene/overlays/settings.ts`；音量读写在 `audio.ts` |
 | 灵石商行 | `scene/overlays/bank.ts` |
 | 结算弹窗 | `scene/overlays/settlement.ts` |
+| 营业中快照的写入与恢复（刷新＝提前打烊） | `scene/save.ts` 的 `sessionSnapshot` / `restoreInterruptedSession` |
 | 玩法说明、账簿、存档导入导出 | `scene/overlays/info.ts` |

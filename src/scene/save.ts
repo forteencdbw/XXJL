@@ -1,7 +1,7 @@
 // 存档在场景这一侧：把场景状态打包成存档、把存档赋回场景、读写 localStorage。
 // 新档默认值与读档清洗在 src/save.ts（纯逻辑，有单测）。
 import { newSave, parseSave, SAVE_VERSION } from "../save";
-import type { SaveData } from "../save";
+import type { SaveData, SessionSnapshot } from "../save";
 import { SAVE_KEY } from "./constants";
 import type { TavernScene } from "./TavernScene";
 
@@ -39,6 +39,18 @@ export class SaveMethods {
       lastGiftDate: this.lastGiftDate,
       giftStreak: this.giftStreak,
       floorsBuilt: this.floorsBuilt,
+      session: this.session === "running" ? this.sessionSnapshot() : undefined,
+    };
+  }
+
+  /** 营业中的存档快照：恢复后按提前打烊结算这一局，已结账的收入不丢。 */
+  sessionSnapshot(this: TavernScene): SessionSnapshot {
+    return {
+      day: this.day,
+      goal: this.sessionGoal,
+      revenue: this.sessionRevenue,
+      served: this.sessionServed,
+      wishes: this.sessionWishes,
     };
   }
 
@@ -74,12 +86,24 @@ export class SaveMethods {
     this.lastGiftDate = data.lastGiftDate;
     this.giftStreak = data.giftStreak;
     this.floorsBuilt = data.floorsBuilt;
+    this.restoreInterruptedSession(data.session);
   }
 
-  /** 只存已结算、未开业的准备阶段；营业中与待结算都不落盘。 */
+  /** 上次关页时还在营业：恢复当天的收入与统计，标成已打烊，进营业视图即结算。 */
+  restoreInterruptedSession(this: TavernScene, s: SessionSnapshot | undefined) {
+    if (!s || s.day !== this.day) return;
+    this.sessionRevenue = s.revenue;
+    this.sessionServed = s.served;
+    this.sessionWishes = s.wishes;
+    this.sessionGoal = s.goal;
+    this.session = "ended";
+    this.showEventToast("上次营业中途离开，已按提前打烊处理", true);
+  }
+
+  /** 准备阶段与营业中都会落盘；营业中存的是进行时快照（刷新＝提前打烊）。待结算不落盘。 */
   save(this: TavernScene) {
     if (this.suppressSave) return;
-    if (this.session !== "idle") return;
+    if (this.session === "ended") return;
     this.writeSave(this.buildSaveData());
   }
 

@@ -18,6 +18,22 @@ describe("存档编解码", () => {
     expect(s.shopkeeper.root).toEqual(["fire"]);
   });
 
+  it("营业中快照：收入与当日目标存得下、脏数据被清洗", () => {
+    const goal = { kind: "revenue" as const, label: "本日收入", target: 80, rewardCoins: 12 };
+    const s = newSave();
+    s.session = { day: 1, goal, revenue: 55, served: 3, wishes: 1 };
+    expect(parseSave(JSON.parse(JSON.stringify(s)))?.session).toEqual(s.session);
+    const dirty = { ...s, session: { day: 0, goal: { kind: "nope" }, revenue: -5, served: "x" } };
+    expect(parseSave(JSON.parse(JSON.stringify(dirty)))?.session).toEqual({
+      day: 1,
+      goal: null,
+      revenue: 0,
+      served: 0,
+      wishes: 0,
+    });
+    expect(parseSave(JSON.parse(JSON.stringify(newSave())))?.session).toBeUndefined();
+  });
+
   it("新档原样存再读回来不变", () => {
     const s = newSave({ playerGender: "female" });
     expect(parseSave(JSON.parse(JSON.stringify(s)))).toEqual(JSON.parse(JSON.stringify(s)));

@@ -20,11 +20,44 @@ import type { TaskState } from "./tasks";
 
 export const SAVE_VERSION = 7;
 
+function sanitizeGoal(raw: unknown): DailyGoal | null {
+  const g = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : null;
+  if (!g || (g.kind !== "revenue" && g.kind !== "wish") || typeof g.label !== "string" || !g.label) return null;
+  return {
+    kind: g.kind,
+    label: g.label,
+    target: Math.max(1, Math.floor(Number.isFinite(g.target) ? Number(g.target) : 1)),
+    rewardCoins: Math.max(0, Math.floor(Number(g.rewardCoins) || 0)),
+  };
+}
+
+function sanitizeSession(raw: unknown): SessionSnapshot | undefined {
+  const s = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : null;
+  if (!s) return undefined;
+  const n = (v: unknown) => Math.max(0, Math.floor(Number.isFinite(v) ? Number(v) : 0));
+  return {
+    day: Math.max(1, n(s.day)),
+    goal: sanitizeGoal(s.goal),
+    revenue: n(s.revenue),
+    served: n(s.served),
+    wishes: n(s.wishes),
+  };
+}
+
 export interface RegularGuest {
   name: string;
   kindId: string;
   wish: string;
   visits: number;
+}
+
+/** 营业中的进行时：天数与当日目标就跟着这一局走，恢复后照常结算。 */
+export interface SessionSnapshot {
+  day: number;
+  goal: DailyGoal | null;
+  revenue: number;
+  served: number;
+  wishes: number;
 }
 
 export interface SaveData {
@@ -63,6 +96,8 @@ export interface SaveData {
   /** 当日目标快照：读档后不能因等级变化换目标，否则同一目标会显示两个数。 */
   dailyGoal: DailyGoal | null;
   goalStreak: number;
+  /** 营业中的快照：刷新/关页后按"提前打烊"结算这一天（ADR-0020）。只在营业中写入。 */
+  session?: SessionSnapshot;
   /** 最近一次领开市利是的本机日期（YYYY-MM-DD）与连续天数。 */
   lastGiftDate?: string;
   giftStreak: number;
@@ -178,7 +213,8 @@ export function parseSave(raw: unknown): SaveData | null {
       };
     }
   }
-  const goal = rec(data.dailyGoal);
+  const goal = sanitizeGoal(data.dailyGoal);
+  const session = sanitizeSession(data.session);
   const meta = rec(data.meta);
   const metaStats: MetaStats = meta
     ? {
@@ -246,15 +282,8 @@ export function parseSave(raw: unknown): SaveData | null {
       )
       .slice(0, 6)
       .map((r) => ({ name: r.name, kindId: r.kindId, wish: r.wish, visits: Math.max(1, count(r.visits)) })),
-    dailyGoal:
-      goal && (goal.kind === "revenue" || goal.kind === "wish") && typeof goal.label === "string" && goal.label.length > 0
-        ? {
-            kind: goal.kind,
-            label: goal.label,
-            target: Math.max(1, Math.floor(num(goal.target, 1))),
-            rewardCoins: count(goal.rewardCoins),
-          }
-        : null,
+    dailyGoal: goal,
+    session,
     goalStreak: count(data.goalStreak),
     lastGiftDate:
       typeof data.lastGiftDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(data.lastGiftDate)

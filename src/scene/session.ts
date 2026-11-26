@@ -114,6 +114,7 @@ export class SessionMethods {
         );
         const rare = (r.kind?.priceFactor ?? 1) >= GAME.rarePriceFactor;
         this.gainReputationFor(rare);
+        if (this.session === "running") this.save();
       }
     });
 
@@ -358,6 +359,8 @@ export class SessionMethods {
       this.eventsThisSession = 0;
       this.grantDailyGift();
       this.notifyTask("start_session");
+      // 开局先落一次快照：之后中途关页也能按提前打烊收回这天的收入
+      this.save();
       playSfx("open");
       this.log("开张大吉，今日营业开始");
       this.showDayBanner();
