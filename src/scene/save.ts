@@ -97,7 +97,7 @@ export class SaveMethods {
     this.sessionWishes = s.wishes;
     this.sessionGoal = s.goal;
     this.session = "ended";
-    this.showEventToast("上次营业中途离开，已按提前打烊处理", true);
+    this.interruptedSession = true;
   }
 
   /** 准备阶段与营业中都会落盘；营业中存的是进行时快照（刷新＝提前打烊）。待结算不落盘。 */

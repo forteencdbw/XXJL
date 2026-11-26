@@ -130,6 +130,8 @@ export class TavernScene extends Phaser.Scene {
   day = 1;
   ascensions = 0;
   suppressSave = false;
+  /** 读档恢复了一局被打断的营业，建完 UI 后提示一次。 */
+  interruptedSession = false;
   sessionGoal: DailyGoal | null = null;
   /** 当天目标在进入这一天时锁定，之后升级装潢不会临时抬高目标。 */
   dailyGoal: DailyGoal | null = null;
@@ -294,9 +296,13 @@ export class TavernScene extends Phaser.Scene {
     this.refreshPlayerAura();
     this.bindCameraDrag();
     this.view = "home";
-    this.session = "idle";
+    // 读档恢复到"已打烊"的一局时不要覆盖成 idle（create 里 session 默认就是 idle）
     this.positionUi(false);
     this.refreshHud();
+    if (this.interruptedSession) {
+      this.interruptedSession = false;
+      this.showEventToast("上次营业中途离开，已按提前打烊处理", true);
+    }
     this.time.addEvent({ delay: 700, loop: true, callback: () => this.emitCookingSteam() });
     this.time.addEvent({ delay: 1100, loop: true, callback: () => this.emitFirefly() });
     this.time.addEvent({ delay: 5600, loop: true, callback: () => this.ambientBark() });
