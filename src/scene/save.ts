@@ -23,6 +23,7 @@ export class SaveMethods {
       employees: this.employees,
       candidates: this.candidates,
       candidatesDay: this.candidatesDay,
+      recruitPity: this.recruitPity,
       nextStaffId: this.nextStaffId,
       borrowedIds: [...this.borrowedIds],
       activeLoans: this.activeLoans,
@@ -70,6 +71,7 @@ export class SaveMethods {
     this.employees = data.employees;
     this.candidates = data.candidates;
     this.candidatesDay = data.candidatesDay;
+    this.recruitPity = data.recruitPity;
     this.nextStaffId = data.nextStaffId;
     this.borrowedIds = new Set(data.borrowedIds);
     this.activeLoans = data.activeLoans;

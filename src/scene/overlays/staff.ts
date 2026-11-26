@@ -2,7 +2,7 @@
 import Phaser from "phaser";
 import { playSfx } from "../../audio";
 import { GAME } from "../../config";
-import { getEffectiveStars, getExpToNext, getHireCost, getRootBonus, getRootName, getStaffCap, getStaffWage, getTotalStars, JOB_ELEMENT, JOB_NAMES, JOB_STAT, JOBS, ELEMENT_NAMES, formatCountdown, moveJobUp, rollCandidate, SHOPKEEPER_ID, spendStatPoint, STAT_NAMES, STATS, GATHER_COOLDOWN_MS } from "../../logic";
+import { getEffectiveStars, getExpToNext, getHireCost, getRootBonus, getRootName, getStaffCap, getStaffWage, getTotalStars, JOB_ELEMENT, JOB_NAMES, JOB_STAT, JOBS, ELEMENT_NAMES, formatCountdown, moveJobUp, rollCandidateBatch, SHOPKEEPER_ID, spendStatPoint, STAT_NAMES, STATS, GATHER_COOLDOWN_MS } from "../../logic";
 import type { Employee, Stat } from "../../logic";
 import type { TavernScene } from "../TavernScene";
 
@@ -244,8 +244,10 @@ export class StaffOverlayMethods {
     if (!force && this.candidatesDay === this.day) return;
     this.candidatesDay = this.day;
     const used = new Set(this.employees.map((e) => e.name));
-    this.candidates = Array.from({ length: GAME.staff.candidatesPerDay }, () => {
-      const c = rollCandidate(this.nextStaffId++, Math.random);
+    const batch = rollCandidateBatch(this.nextStaffId, GAME.staff.candidatesPerDay, this.recruitPity, Math.random);
+    this.nextStaffId += batch.candidates.length;
+    this.recruitPity = batch.pity;
+    this.candidates = batch.candidates.map((c) => {
       // 同名会让见闻录分不清是谁，撞名就换一个还没用过的
       if (used.has(c.name)) c.name = GAME.staff.names.find((n) => !used.has(n)) ?? c.name;
       used.add(c.name);
@@ -265,7 +267,8 @@ export class StaffOverlayMethods {
       this.add.text(
         40,
         108,
-        full ? `人手已满（${this.employees.length}/${cap}），先辞退一位或扩建酒楼` : `已雇 ${this.employees.length}/${cap} · 每天来一批新面孔`,
+        `${full ? `人手已满（${this.employees.length}/${cap}），先辞退一位或扩建酒楼` : `已雇 ${this.employees.length}/${cap} · 每天来一批新面孔`}
+再刷 ${GAME.staff.pityBatches - this.recruitPity} 批内必出天灵根`,
         { fontSize: "16px", color: full ? "#ff9a8a" : "#e0c060" },
       ),
     );

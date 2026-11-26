@@ -981,6 +981,26 @@ export function rollCandidate(id: number, rand: () => number): Employee {
   return { id, name, root, stars, level: 1, exp: 0, statPoints: 0, jobs: defaultJobs({ root, stars }) };
 }
 
+/**
+ * 刷一批候选人并推进招聘保底：出了天灵根计数归零，否则 +1；
+ * 这一批是连续第 pityBatches 批时，最后一位强制改成天灵根（ADR-0020：稀有资质必须有时间保底）。
+ */
+export function rollCandidateBatch(
+  firstId: number,
+  count: number,
+  pity: number,
+  rand: () => number,
+): { candidates: Employee[]; pity: number } {
+  const candidates = Array.from({ length: count }, (_, i) => rollCandidate(firstId + i, rand));
+  const hasTop = (c: Employee) => c.root.length === 1;
+  if (!candidates.some(hasTop) && pity + 1 >= S.pityBatches) {
+    const last = candidates[candidates.length - 1];
+    last.root = pickElements(1, rand);
+    last.jobs = defaultJobs(last);
+  }
+  return { candidates, pity: candidates.some(hasTop) ? 0 : pity + 1 };
+}
+
 /** 从当前等级升下一级要多少经验。 */
 export function getExpToNext(level: number): number {
   return S.expBase + S.expPerLevel * (level - 1);

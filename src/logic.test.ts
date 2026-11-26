@@ -1,3 +1,4 @@
+import { GAME } from "./config";
 import { describe, expect, it } from "vitest";
 import {
   DISHES,
@@ -85,6 +86,7 @@ import {
   defaultJobs,
   STATS,
   rollCandidate,
+  rollCandidateBatch,
   sanitizeEmployees,
   getStaffWage,
   getStoveSpeedFactor,
@@ -426,6 +428,23 @@ describe("顾客到店与天色", () => {
     expect(Math.max(...times)).toBeLessThan(11 * 4 * 4000);
   });
 
+});
+
+describe("招聘保底", () => {
+  // 0.9 让灵根总落在杂灵根档，模拟一直刷不出天灵根
+  const unlucky = () => 0.9;
+  it("连续没出天灵根时计数 +1，第 pityBatches 批必出一位", () => {
+    const pityBatches = GAME.staff.pityBatches;
+    const early = rollCandidateBatch(1, 3, pityBatches - 2, unlucky);
+    expect(early.candidates.some((c) => c.root.length === 1)).toBe(false);
+    expect(early.pity).toBe(pityBatches - 1);
+    const forced = rollCandidateBatch(1, 3, pityBatches - 1, unlucky);
+    expect(forced.candidates.filter((c) => c.root.length === 1)).toHaveLength(1);
+    expect(forced.pity).toBe(0);
+  });
+  it("自然出了天灵根就归零", () => {
+    expect(rollCandidateBatch(1, 3, 7, () => 0).pity).toBe(0);
+  });
 });
 
 describe("菜品与昼夜", () => {

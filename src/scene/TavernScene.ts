@@ -78,6 +78,8 @@ export class TavernScene extends Phaser.Scene {
   employees: Employee[] = [];
   candidates: Employee[] = [];
   candidatesDay = 0;
+  /** 招聘保底计数：连续多少批没出天灵根。 */
+  recruitPity = 0;
   nextStaffId = 1;
   staffRt = new Map<number, StaffRuntime>();
   /** 第一次点「辞退」只变成「确认辞退」，防误触。 */

@@ -82,6 +82,8 @@ export interface SaveData {
   /** 今日招聘候选人与生成它们的天数。 */
   candidates: Employee[];
   candidatesDay: number;
+  /** 招聘保底：连续多少批没出天灵根。 */
+  recruitPity: number;
   nextStaffId: number;
   borrowedIds: string[];
   activeLoans: { name: string; remaining: number; periodsLeft: number }[];
@@ -134,6 +136,7 @@ export function newSave(carry: SaveCarry = {}): SaveData {
     employees: [],
     candidates: [],
     candidatesDay: 0,
+    recruitPity: 0,
     nextStaffId: 1,
     borrowedIds: [],
     activeLoans: [],
@@ -258,6 +261,7 @@ export function parseSave(raw: unknown): SaveData | null {
     employees,
     candidates,
     candidatesDay: count(data.candidatesDay),
+    recruitPity: count(data.recruitPity),
     nextStaffId: Math.max(maxId + 1, count(data.nextStaffId)),
     borrowedIds: strings(data.borrowedIds),
     activeLoans: arr(data.activeLoans)

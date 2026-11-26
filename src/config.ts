@@ -373,6 +373,8 @@ export const GAME = {
     candidatesPerDay: 3,
     /** 当场再刷新一次候选人的费用（灵石） */
     refreshCost: 5,
+    /** 招聘保底：连续这么多批没出天灵根，这一批必出一位（每日批与付费刷新都计数） */
+    pityBatches: 15,
     /** 雇佣费用 =（hireCostBase + hireCostPerStar × 总星数）× 灵根身价 */
     hireCostBase: 10,
     hireCostPerStar: 1.33,
@@ -601,6 +603,7 @@ export function validateConfig(cfg: GameConfig): string[] {
   if (st.expBase < 1) errors.push("staff.expBase 至少为 1");
   if (st.maxLevel < 1) errors.push("staff.maxLevel 至少为 1");
   if (st.candidatesPerDay < 1) errors.push("staff.candidatesPerDay 至少为 1");
+  if (st.pityBatches < 1) errors.push("staff.pityBatches 至少为 1");
   if (cfg.tavern.floorPriceMultipliers.length < 3) errors.push("tavern.floorPriceMultipliers 需要 3 项（1F/2F/3F）");
   if (cfg.tavern.floorPatienceMultipliers.length < 3) errors.push("tavern.floorPatienceMultipliers 需要 3 项（1F/2F/3F）");
   return errors;
