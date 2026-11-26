@@ -1,6 +1,6 @@
 // 二级页面：灵石商行借贷。
 import { playSfx } from "../../audio";
-import { BANKRUPT_STREAK, LOANS, LOAN_PERIODS } from "../../logic";
+import { LOANS, LOAN_PERIODS } from "../../logic";
 import type { LoanDef } from "../../logic";
 import type { TavernScene } from "../TavernScene";
 
@@ -9,7 +9,7 @@ export class BankOverlayMethods {
   buildBankOverlay(this: TavernScene) {
     const layer = this.openSubsystemPage("灵石商行");
     layer.add(
-      this.add.text(40, 116, `在贷 ${this.activeLoans.length} 笔 · 连亏 ${this.negativeStreak}/${BANKRUPT_STREAK} 日`, {
+      this.add.text(40, 116, `在贷 ${this.activeLoans.length} 笔${this.coins < 0 ? ` · 欠债 ${this.negativeStreak} 日` : ""}`, {
         fontSize: "15px",
         color: "#bbbbbb",
       }),

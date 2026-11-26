@@ -30,7 +30,7 @@ export interface RegularGuest {
 export interface SaveData {
   v: typeof SAVE_VERSION;
   coins: number;
-  /** 看广告攒的加速货币；破产与飞升都保留 */
+  /** 看广告攒的加速货币；飞升保留 */
   jade: number;
   /** 按食材 id 分别计数 */
   ingredients: IngredientStock;
@@ -69,7 +69,7 @@ export interface SaveData {
   floorsBuilt: number;
 }
 
-/** 新档要从上一份继承的东西：破产重开时保留仙缘、掌柜本人、账簿与利是记录；全新存档都不传。 */
+/** 新档要从上一份继承的东西：荒废旧档重开时保留仙缘、掌柜本人、账簿与利是记录；全新存档都不传。 */
 export interface SaveCarry {
   ascensions?: number;
   playerGender?: "male" | "female";
@@ -81,7 +81,7 @@ export interface SaveCarry {
   tasks?: TaskState;
 }
 
-/** 新档（含破产重开）：第 1 日从主界面开始。所有开局数值只在这里。 */
+/** 新档：第 1 日从主界面开始。所有开局数值只在这里。 */
 export function newSave(carry: SaveCarry = {}): SaveData {
   const shopkeeper = createShopkeeper();
   return {

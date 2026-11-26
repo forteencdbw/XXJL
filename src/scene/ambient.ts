@@ -21,7 +21,7 @@ export class AmbientMethods {
 
   /** 当日天气的粒子：晴=流萤，灵雾=低雾，落英=花瓣，夜雨=雨丝。三个视图共用。 */
   emitWeather(this: TavernScene) {
-    if (this.settling || this.view === "menu" || this.bankrupt) return;
+    if (this.settling || this.view === "menu") return;
     const mode = this.weather.visual;
     const cam = this.cameras.main;
     const x = cam.scrollX + Phaser.Math.Between(30, 690);

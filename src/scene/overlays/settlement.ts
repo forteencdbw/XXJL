@@ -1,10 +1,10 @@
-// 结算弹窗与破产弹窗。
-import { BANKRUPT_STREAK, DISHES, GOAL_STREAK_TARGET, getDailySpecial, getRepLevelInfo, getUpgradeCost, isFestivalDay } from "../../logic";
+// 结算弹窗。
+import { DISHES, GOAL_STREAK_TARGET, getDailySpecial, getRepLevelInfo, getUpgradeCost, isFestivalDay } from "../../logic";
 import { CARD_W, SCREEN_H, SCREEN_W, STATUS_BAR_H, XIAN_FONT } from "../constants";
 import type { TavernScene } from "../TavernScene";
 
 export class SettlementOverlayMethods {
-  /** 结算/破产共用弹窗外壳：只遮主屏的 30% 遮罩 + 上半屏卡片 + 入场动画。 */
+  /** 结算弹窗外壳：只遮主屏的 30% 遮罩 + 上半屏卡片 + 入场动画。 */
   buildPopupCard(this: TavernScene, cardHeight: number, depth: number) {
     this.destroyOverlay();
     const cam = this.cameras.main;
@@ -48,7 +48,7 @@ export class SettlementOverlayMethods {
       `工资合计：${totalWage} 灵石`,
       `店面租金：${totalRent} 灵石`,
       `商行还账：${totalLoan} 灵石`,
-      `余下：${this.coins} 灵石（连亏 ${this.negativeStreak}/${BANKRUPT_STREAK} 日）`,
+      `余下：${this.coins} 灵石${this.coins < 0 ? `（欠债 ${this.negativeStreak} 日：不能扩建雇人，常客不来）` : ""}`,
       `流失食客：${this.sessionLost} 位`,
     ];
     if (this.stockLost > 0) {
@@ -216,39 +216,6 @@ export class SettlementOverlayMethods {
           fontFamily: XIAN_FONT,
         })
         .setOrigin(0.5),
-    );
-  }
-
-  /** 连续亏空到上限后的破产结算，锁死所有操作。 */
-  buildBankruptOverlay(this: TavernScene) {
-    const { panel, left } = this.buildPopupCard(300, 150);
-    panel.add(this.add.text(left, 22, "酒楼倒闭", { fontSize: "36px", color: "#ff6b6b" }));
-    panel.add(this.add.text(left, 90, `连续 ${BANKRUPT_STREAK} 日入不敷出，`, { fontSize: "19px", color: "#dddddd" }));
-    panel.add(this.add.text(left, 120, "灵石商行上门封了铺子。", { fontSize: "19px", color: "#dddddd" }));
-    panel.add(
-      this.add.text(left, 164, `酒楼等级 ${this.level} · 欠款 ${Math.abs(Math.min(this.coins, 0))} 灵石`, {
-        fontSize: "19px",
-        color: "#dddddd",
-      }),
-    );
-    panel.add(
-      this.add.text(
-        left,
-        this.ascensions > 0 ? 194 : 200,
-        this.ascensions > 0 ? `仙缘 ${this.ascensions} 重仍在，重开后带走。` : "一切从头再来。",
-        { fontSize: "16px", color: this.ascensions > 0 ? "#c8a8ff" : "#999999" },
-      ),
-    );
-    panel.add(
-      this.add
-        .text(left, 226, "重开酒楼", {
-          fontSize: "20px",
-          color: "#ffffff",
-          backgroundColor: "#5a2a2a",
-          padding: { x: 16, y: 10 },
-        })
-        .setInteractive({ useHandCursor: true })
-        .on("pointerdown", () => location.reload()),
     );
   }
 }

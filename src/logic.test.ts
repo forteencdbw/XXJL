@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  BANKRUPT_STREAK,
   DISHES,
   EMPTY_META,
   GIFT_STREAK_CAP,
@@ -361,7 +360,7 @@ describe("灵石商行", () => {
   });
 });
 
-describe("顾客到店与破产阈值", () => {
+describe("顾客到店与天色", () => {
   it("营业倒计时：4 秒一刻，开门到打烊共 4 分钟", () => {
     expect(getSessionDurationMs()).toBe(240000);
     expect(formatCountdown(240000)).toBe("4:00");
@@ -427,9 +426,6 @@ describe("顾客到店与破产阈值", () => {
     expect(Math.max(...times)).toBeLessThan(11 * 4 * 4000);
   });
 
-  it("破产阈值为连续 5 回合", () => {
-    expect(BANKRUPT_STREAK).toBe(5);
-  });
 });
 
 describe("菜品与昼夜", () => {

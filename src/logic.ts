@@ -26,7 +26,6 @@ export const STARTING_JADE = C.start.jade;
 export const UPGRADE_BASE_COST = C.tavern.upgradeBaseCost;
 export const UPGRADE_COST_MULTIPLIER = C.tavern.upgradeCostMultiplier;
 export const LOAN_PERIODS = C.bank.periods;
-export const BANKRUPT_STREAK = C.bank.bankruptStreak;
 export const NIGHT_COLOR = 0x1b2440;
 
 // ===== 食材与采集 =====

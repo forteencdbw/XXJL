@@ -9,7 +9,7 @@ Phaser 3 + TypeScript 竖屏经营游戏。领域词汇见根目录 `GLOSSARY.md
 | `config.ts` | **所有玩法数值**（`GAME`）与加载校验。调数值只改这里。 |
 | `logic.ts` | 纯规则函数，不依赖 Phaser/DOM，`logic.test.ts` 覆盖。读 `config.ts`。 |
 | `booth.ts` | **雅座生命周期**（纯逻辑）：领座→等菜→烹饪→待传→传菜→用膳→离店的全部状态切换、清空、选下一桌、桌卡文字。场景不直接改雅座字段，只调这里。`booth.test.ts` 覆盖。 |
-| `save.ts` | **存档编解码**（纯逻辑）：`newSave`（新档/破产重开，所有开局数值）、`parseSave`（读档与导入共用的清洗，版本不符返回 null）、`SAVE_VERSION`。`save.test.ts` 覆盖。 |
+| `save.ts` | **存档编解码**（纯逻辑）：`newSave`（新档，所有开局数值）、`parseSave`（读档与导入共用的清洗，版本不符返回 null）、`SAVE_VERSION`。`save.test.ts` 覆盖。 |
 | `tasks.ts` | **主线任务**（纯逻辑）：任务链、动作/状态目标、领取推进、读档清洗。`tasks.test.ts` 覆盖。 |
 | `main.ts` | 入口：校验配置后启动 Phaser。 |
 | `scene/` | 唯一的 Phaser 场景 `TavernScene`，按功能拆成多个文件（见下）。 |
@@ -37,7 +37,7 @@ Phaser 3 + TypeScript 竖屏经营游戏。领域词汇见根目录 `GLOSSARY.md
 | 布局坐标、屏幕尺寸、玩法常量别名 | `scene/constants.ts` |
 | 雅座/排队食客/存档结构等类型 | `scene/types.ts` |
 | 小人外观、动画、气泡、走路 | `scene/Character.ts` |
-| 营业倒计时、后台推进、硬停、延后结算（工资/还贷/目标/破产）、主界面/营业/修炼视图切换、现实天色 | `scene/session.ts` |
+| 营业倒计时、后台推进、硬停、延后结算（工资/还贷/目标/欠债天数）、主界面/营业/修炼视图切换、现实天色 | `scene/session.ts` |
 | 主界面门面与【营业】【修炼】【采集】入口卡 | `scene/home.ts` |
 | 员工（含掌柜）领座、烹饪、传菜的走路与动画（雅座状态切换调 `src/booth.ts`） | `scene/production.ts` |
 | 员工派活顺序、站位、夜修打坐座位、成长、雇佣/辞退/工资 | `scene/staff.ts` |
@@ -62,5 +62,5 @@ Phaser 3 + TypeScript 竖屏经营游戏。领域词汇见根目录 `GLOSSARY.md
 | 修为子系统入口（占位） | `scene/overlays/cultivation.ts` |
 | 设置页（音量滑条；玩法、账簿、存档入口） | `scene/overlays/settings.ts`；音量读写在 `audio.ts` |
 | 灵石商行 | `scene/overlays/bank.ts` |
-| 结算弹窗、破产弹窗 | `scene/overlays/settlement.ts` |
+| 结算弹窗 | `scene/overlays/settlement.ts` |
 | 玩法说明、账簿、存档导入导出 | `scene/overlays/info.ts` |

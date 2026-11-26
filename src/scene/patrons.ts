@@ -250,9 +250,10 @@ export class PatronMethods {
   /** 系统生成一位到店顾客：队列有空位就走进来排队，排满则直接离开。 */
   spawnPatron(this: TavernScene, time: number) {
     const unlocked = this.unlockedDishIds();
-    const regularPool = this.regulars.filter(
-      (r) => !this.regularsToday.has(r.name) && unlocked.includes(r.wish),
-    );
+    // 欠债时店穷了，老客不登门（ADR-0020）
+    const regularPool = this.coins < 0
+      ? []
+      : this.regulars.filter((r) => !this.regularsToday.has(r.name) && unlocked.includes(r.wish));
     const forceRegular = this.regularDueToday && regularPool.length > 0;
     const regular = forceRegular
       ? regularPool[0]

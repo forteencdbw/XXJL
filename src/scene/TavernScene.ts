@@ -38,7 +38,7 @@ import { TaskMethods } from "./tasks";
 
 export class TavernScene extends Phaser.Scene {
   coins = STARTING_COINS;
-  /** 看广告攒的仙玉：只用于加速，破产与飞升都保留。 */
+  /** 看广告攒的仙玉：压缩时间用，飞升保留。 */
   jade = STARTING_JADE;
   /** 广告播放中，防止重复点。 */
   adBusy = false;
@@ -101,7 +101,6 @@ export class TavernScene extends Phaser.Scene {
   view: SceneView = "home";
   /** 本局状态：未开业 / 倒计时中 / 已打烊待结算。营业与画面独立，切走也会继续跑。 */
   session: SessionPhase = "idle";
-  bankrupt = false;
   /** 时间倍速（Debug 用）：场景时钟、计时器与补间一起加快。 */
   timeSpeed = 1;
   lastRawTime = 0;
@@ -359,7 +358,6 @@ export class TavernScene extends Phaser.Scene {
 
 
   update() {
-    if (this.bankrupt) return;
     // 场景时钟（Debug 倍速会加快），不用 update 传进来的现实时间
     const time = this.time.now;
     // 覆盖层始终对齐相机可见区域，避免营业↔打烊镜头平移时错位

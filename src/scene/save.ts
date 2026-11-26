@@ -76,9 +76,9 @@ export class SaveMethods {
     this.floorsBuilt = data.floorsBuilt;
   }
 
-  /** 只存已结算、未开业的准备阶段；营业中、待结算与破产都不落盘。 */
+  /** 只存已结算、未开业的准备阶段；营业中与待结算都不落盘。 */
   save(this: TavernScene) {
-    if (this.suppressSave || this.bankrupt) return;
+    if (this.suppressSave) return;
     if (this.session !== "idle") return;
     this.writeSave(this.buildSaveData());
   }
@@ -89,20 +89,6 @@ export class SaveMethods {
     } catch {
       // 隐私模式或存储已满：放弃本次存档，不影响当前对局
     }
-  }
-
-  /** 新周目存档（破产重开）：保留仙缘、掌柜本人（性别、灵根）、账簿与利是记录，其余从头来。 */
-  freshSave(this: TavernScene): SaveData {
-    return newSave({
-      ascensions: this.ascensions,
-      playerGender: this.playerGender,
-      shopkeeperRoot: this.shopkeeper.root,
-      meta: this.meta,
-      lastGiftDate: this.lastGiftDate,
-      giftStreak: this.giftStreak,
-      jade: this.jade,
-      tasks: this.taskState,
-    });
   }
 
   /** 读档并赋回场景；没有存档、损坏或版本不符时按新档开局。返回是否读到了有效存档。 */

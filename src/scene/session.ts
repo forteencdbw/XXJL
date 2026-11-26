@@ -4,7 +4,6 @@ import { playSfx } from "../audio";
 import { clearBooth, departBooth } from "../booth";
 import { GAME } from "../config";
 import {
-  BANKRUPT_STREAK,
   DISHES,
   gainReputation,
   getArrivalSchedule,
@@ -41,7 +40,7 @@ import type { TavernScene } from "./TavernScene";
 export class SessionMethods {
   /** 准备阶段（已结算、未开业）才能操作管理；营业中与待结算只读。 */
   canManage(this: TavernScene): boolean {
-    return this.session === "idle" && !this.settling && !this.bankrupt;
+    return this.session === "idle" && !this.settling;
   }
 
   // ===== 营业（后台倒计时）=====
@@ -158,7 +157,7 @@ export class SessionMethods {
   // ===== 视图切换 =====
   /** 回主界面：营业可以在后台继续跑。 */
   enterHome(this: TavernScene) {
-    if (this.bankrupt) return;
+    if (false) return;
     const apply = () => {
       this.destroyOverlay();
       this.stopCelebration();
@@ -189,7 +188,7 @@ export class SessionMethods {
 
   /** 进营业视图；如果这一局已经打烊，进来即结算。 */
   enterBusinessView(this: TavernScene) {
-    if (this.bankrupt || this.transitioning) return;
+    if (this.transitioning) return;
     const apply = () => {
       this.view = "business";
       this.settling = false;
@@ -232,7 +231,7 @@ export class SessionMethods {
 
   /** 进修炼视图；营业可以继续在后台跑，这时法坛上没有人。 */
   enterCultivationView(this: TavernScene) {
-    if (this.bankrupt || this.transitioning) return;
+    if (this.transitioning) return;
     const apply = () => {
       this.view = "cultivation";
       this.settling = false;
@@ -259,14 +258,14 @@ export class SessionMethods {
 
   // ===== 回合 =====
   openMenu(this: TavernScene) {
-    if (this.session !== "idle" || this.bankrupt || this.transitioning) return;
+    if (this.session !== "idle" || this.transitioning) return;
     this.refreshTodayWeather();
     this.view = "menu";
     this.buildMenuOverlay();
   }
 
   startSession(this: TavernScene) {
-    if (this.session !== "idle" || this.bankrupt) return;
+    if (this.session !== "idle") return;
     const menu = this.getMenuDishes();
     if (menu.length === 0 || !menu.some((dish) => hasRecipe(this.inventory, dish.recipe)) || this.transitioning) return;
     this.destroyOverlay();
@@ -402,9 +401,9 @@ export class SessionMethods {
     this.pendingRepLoss = 0;
   }
 
-  /** 玩家打开已打烊的一局：扣工资/租金、发目标奖励、天数 +1、破产判定。 */
+  /** 玩家打开已打烊的一局：扣工资/租金、发目标奖励、天数 +1、记欠债天数。 */
   settleFinishedSession(this: TavernScene) {
-    if (this.session !== "ended" || this.settling || this.bankrupt) return;
+    if (this.session !== "ended" || this.settling) return;
     this.focusTimer?.remove();
     this.focusTimer = undefined;
     this.focusing = false;
@@ -433,17 +432,13 @@ export class SessionMethods {
       day: Math.max(1, this.day - 1),
       level: this.level,
     });
-    this.updateBankruptStreak();
+    // 余额为负即欠债：不清档，只是不能扩张、常客不来（ADR-0020）
+    this.negativeStreak = this.coins < 0 ? this.negativeStreak + 1 : 0;
     // 结算完成后这一局就结束了；待结算状态不落盘
     this.session = "idle";
-    if (this.bankrupt) {
-      this.buildBankruptOverlay();
-      this.writeSave(this.freshSave());
-    } else {
-      this.startCelebration();
-      this.buildSettlementOverlay();
-      this.save();
-    }
+    this.startCelebration();
+    this.buildSettlementOverlay();
+    this.save();
   }
 
   /** 每回合按剩余本息均摊一期。 */
@@ -508,19 +503,6 @@ export class SessionMethods {
       this.log(`三日之约达成：连达 ${GOAL_STREAK_TARGET} 天，额外赏 ${streakBonus.coins} 灵石`);
     }
     this.displayedCoins = this.coins;
-  }
-
-  /** 连续 5 个回合结束为负余额即破产。 */
-  updateBankruptStreak(this: TavernScene) {
-    if (this.coins < 0) {
-      this.negativeStreak += 1;
-      if (this.negativeStreak >= BANKRUPT_STREAK) {
-        this.bankrupt = true;
-        this.log("连续五日亏空，酒楼倒闭了");
-      }
-    } else {
-      this.negativeStreak = 0;
-    }
   }
 
   // ===== 现实天色 =====

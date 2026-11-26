@@ -72,7 +72,7 @@ export class TaskMethods {
   refreshTaskTracker(this: TavernScene) {
     if (!this.taskTracker || !this.taskTrackerBg) return;
     const task = activeTask(this.taskState);
-    const visible = !!task && this.view === "home" && !this.overlay && !this.bankrupt && !this.suppressSave;
+    const visible = !!task && this.view === "home" && !this.overlay && !this.suppressSave;
     this.taskTracker.setVisible(visible);
     this.taskTrackerBg.setVisible(visible);
     if (!task) return;

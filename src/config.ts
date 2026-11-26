@@ -477,8 +477,6 @@ export const GAME = {
     ],
     /** 分几期还 */
     periods: 12,
-    /** 连续几天余额为负即破产 */
-    bankruptStreak: 5,
   },
 
   /** 随机事件 */

@@ -19,7 +19,8 @@ export class HudMethods {
     this.playerLabel.setVisible(business && this.playerChar.visible && !this.playerChar.isSpeaking());
     if (business) this.playerLabel.setPosition(this.playerChar.x, this.playerChar.y - 120);
 
-    this.coinsText.setText(`灵石：${this.displayedCoins}`);
+    // 欠债时数字标红
+    this.coinsText.setText(`灵石：${this.displayedCoins}`).setColor(this.displayedCoins < 0 ? "#ff8a7a" : "#ffe6a8");
     this.jadeText.setText(`仙玉：${this.jade}`);
     this.levelText.setText(`酒楼等级：${this.level}`);
     const queue = getQueueStatus({
