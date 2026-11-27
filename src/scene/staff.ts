@@ -37,11 +37,10 @@ export class StaffMethods {
     this.staffRt.clear();
     this.staffRt.set(SHOPKEEPER_ID, { char: this.playerChar, task: null, floor: 0 });
     for (const e of this.employees) {
-      const job = this.firstJob(e);
-      const look = job === "seat" ? "server" : "cook";
-      const color = look === "server" ? 0x3a7a5a : 0x7a4a3a;
+      const look = this.firstJob(e) === "seat" ? "server" : "cook";
       const home = this.staffHome(e);
-      const char = new Character(this, home.x, home.y, color, 0x2b2b2b, false, look);
+      // 外貌（衣服/发色/发长）按这个人自己，身份道具仍按第一项分工
+      const char = new Character(this, home.x, home.y, e.look.body, e.look.hair, e.look.longHair, look);
       char.displayName = e.name;
       char.setVisible(false);
       this.staffRt.set(e.id, { char, task: null, floor: 0 });

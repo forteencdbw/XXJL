@@ -34,6 +34,19 @@ describe("存档编解码", () => {
     expect(parseSave(JSON.parse(JSON.stringify(newSave())))?.session).toBeUndefined();
   });
 
+  it("伙计外貌存得住；旧档没有外貌时按 id 补一个且稳定", () => {
+    const s = newSave();
+    const base = { id: 5, name: "小七", root: ["fire"], stars: { gengu: 4, shenshi: 4, jiyuan: 4, wuxing: 4, qigan: 4 }, level: 1, exp: 0, statPoints: 0, jobs: [] };
+    s.employees = [{ ...base, look: { body: 0x3a7a5a, hair: 0x1a1a22, longHair: true } } as never];
+    const read = parseSave(JSON.parse(JSON.stringify(s)))!;
+    expect(read.employees[0].look).toEqual({ body: 0x3a7a5a, hair: 0x1a1a22, longHair: true });
+    s.employees = [base as never];
+    const old1 = parseSave(JSON.parse(JSON.stringify(s)))!;
+    const old2 = parseSave(JSON.parse(JSON.stringify(s)))!;
+    expect(old1.employees[0].look).toEqual(old2.employees[0].look);
+    expect(old1.employees[0].look.body).toBeTypeOf("number");
+  });
+
   it("新档原样存再读回来不变", () => {
     const s = newSave({ playerGender: "female" });
     expect(parseSave(JSON.parse(JSON.stringify(s)))).toEqual(JSON.parse(JSON.stringify(s)));

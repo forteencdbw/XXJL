@@ -4,6 +4,11 @@ import { playSfx } from "../../audio";
 import { GAME } from "../../config";
 import { getEffectiveStars, getExpToNext, getHireCost, getRootBonus, getRootName, getStaffCap, getStaffWage, getTotalStars, JOB_ELEMENT, JOB_NAMES, JOB_STAT, JOBS, ELEMENT_NAMES, formatCountdown, moveJobUp, rollCandidateBatch, SHOPKEEPER_ID, spendStatPoint, STAT_NAMES, STATS, GATHER_COOLDOWN_MS } from "../../logic";
 import type { Employee, Stat } from "../../logic";
+import { Character } from "../Character";
+import { SCREEN_W } from "../constants";
+
+/** 头像下的小字：灵根档位。 */
+const ROOT_TIER = ["", "天灵根", "双灵根", "三灵根", "四灵根", "五行杂灵根"];
 import type { TavernScene } from "../TavernScene";
 
 export class StaffOverlayMethods {
@@ -256,41 +261,141 @@ export class StaffOverlayMethods {
     this.save();
   }
 
-  /** 二级页面：招聘。每天一批候选人，可付费再刷。 */
-  buildRecruitOverlay(this: TavernScene) {
+  /** 头像：放大后只露头肩，用几何遮罩裁成方框；选中描金边。 */
+  addHeadshot(
+    this: TavernScene,
+    layer: Phaser.GameObjects.Container,
+    x: number,
+    y: number,
+    size: number,
+    e: Employee,
+    selected: boolean,
+    onTap: () => void,
+  ) {
+    layer.add(
+      this.add
+        .rectangle(x, y, size, size, 0x1a2230)
+        .setStrokeStyle(selected ? 3 : 1, selected ? 0xffe6a8 : 0x3a4660)
+        .setInteractive({ useHandCursor: true })
+        .on("pointerup", onTap),
+    );
+    // 头直径约 22（含发髻约 40），缩放后把头顶到下巴放进框里
+    const scale = size / 46;
+    const char = new Character(this, x, y + 21 * scale, e.look.body, e.look.hair, e.look.longHair, "server");
+    char.usePixelArt(false);
+    char.setScale(scale).disableInteractive();
+    // 遮罩不能挂在 layer 里（invisible 的 Graphics 不参与遮罩渲染），单独记着，重画时销毁
+    const maskG = this.add.graphics().setVisible(false);
+    maskG.fillStyle(0xffffff, 1).fillRect(layer.x + x - size / 2, layer.y + y - size / 2, size, size);
+    char.setMask(maskG.createGeometryMask());
+    this.staffMasks.push(maskG);
+    layer.add(char);
+    layer.add(
+      this.add
+        .text(x, y + size / 2 + 8, ROOT_TIER[e.root.length], { fontSize: "14px", color: selected ? "#ffe6a8" : "#9aa8b8" })
+        .setOrigin(0.5, 0),
+    );
+  }
+
+  /** 二级页面：招聘。上面一排头像选人，下面是选中者的全身像与属性。 */
+  buildRecruitOverlay(this: TavernScene, index = 0) {
+    this.staffMasks.forEach((m) => m.destroy());
+    this.staffMasks = [];
     this.ensureCandidates();
     const layer = this.staffOverlayLayer("招聘");
     const cap = getStaffCap(this.level);
     const full = this.employees.length >= cap;
     const editable = this.canManage();
+    const picked = Math.min(Math.max(0, index), Math.max(0, this.candidates.length - 1));
+
     layer.add(
       this.add.text(
         40,
-        108,
-        `${full ? `人手已满（${this.employees.length}/${cap}），先辞退一位或扩建酒楼` : `已雇 ${this.employees.length}/${cap} · 每天来一批新面孔`}
-再刷 ${GAME.staff.pityBatches - this.recruitPity} 批内必出天灵根`,
+        100,
+        full ? `人手已满（${this.employees.length}/${cap}），先辞退一位或扩建酒楼` : `已雇 ${this.employees.length}/${cap} · 每天来一批新面孔`,
         { fontSize: "16px", color: full ? "#ff9a8a" : "#e0c060" },
       ),
     );
+    layer.add(
+      this.add.text(40, 126, `再刷 ${Math.max(0, GAME.staff.pityBatches - this.recruitPity)} 批内必出天灵根`, {
+        fontSize: "14px",
+        color: "#8a9aac",
+      }),
+    );
+
     if (this.candidates.length === 0) {
-      layer.add(this.add.text(360, 400, "今天的候选人都雇走了", { fontSize: "20px", color: "#888888" }).setOrigin(0.5));
-    }
-    this.candidates.forEach((c, i) => {
-      const y = 190 + i * 150;
-      const cost = getHireCost(c);
-      layer.add(this.add.rectangle(40, y, 640, 136, 0x1e2636).setOrigin(0, 0).setStrokeStyle(1, 0x3a4660));
-      layer.add(this.add.text(56, y + 12, c.name, { fontSize: "22px", color: "#ffffff" }));
-      layer.add(
-        this.add.text(170, y + 17, `${getRootName(c.root)} · 总 ${getTotalStars(c)} 星 · 日薪 ${getStaffWage(c)} 灵石`, { fontSize: "16px", color: "#bbbbbb" }),
-      );
-      STATS.forEach((stat, k) => this.addStarBar(layer, 56 + (k % 3) * 210, y + 44 + Math.floor(k / 3) * 24, stat, c.stars[stat]));
-      this.addChip(layer, 56, y + 96, `雇佣 ${cost} 灵石`, full || this.coins < cost || !editable ? "#3a3a3a" : "#3a5a3a", () => {
-        this.hireStaff(c);
-        this.buildRecruitOverlay();
+      layer.add(this.add.text(360, 480, "今天的候选人都雇走了", { fontSize: "20px", color: "#888888" }).setOrigin(0.5));
+    } else {
+      const count = this.candidates.length;
+      const size = 96;
+      const gap = 24;
+      const totalW = count * size + (count - 1) * gap;
+      this.candidates.forEach((c, i) => {
+        const x = (SCREEN_W - totalW) / 2 + size / 2 + i * (size + gap);
+        this.addHeadshot(layer, x, 230, size, c, i === picked, () => {
+          playSfx("click");
+          this.buildRecruitOverlay(i);
+        });
       });
-    });
+    }
+
+    const c = this.candidates[picked];
+    if (c) {
+      // 左：全身像（含左右切换箭头）
+      layer.add(this.add.rectangle(40, 320, 260, 480, 0x141a24).setOrigin(0, 0).setStrokeStyle(1, 0x3a4660));
+      const body = new Character(this, 170, 600, c.look.body, c.look.hair, c.look.longHair, "server");
+      body.usePixelArt(false);
+      body.setScale(3.6).disableInteractive();
+      layer.add(body);
+      if (this.candidates.length > 1) {
+        const arrow = (x: number, label: string, step: number) =>
+          layer.add(
+            this.add
+              .text(x, 560, label, { fontSize: "40px", color: "#c8b8a0" })
+              .setOrigin(0.5)
+              .setInteractive({ useHandCursor: true })
+              .on("pointerup", () => {
+                playSfx("click");
+                const n = this.candidates.length;
+                this.buildRecruitOverlay((picked + step + n) % n);
+              }),
+          );
+        arrow(64, "‹", -1);
+        arrow(276, "›", 1);
+      }
+
+      // 右：姓名、灵根、五行属性、对口加成、雇佣
+      layer.add(this.add.rectangle(320, 320, 360, 44, 0x1e2636).setOrigin(0, 0).setStrokeStyle(1, 0x3a4660));
+      layer.add(this.add.text(336, 330, `${c.name} · ${getRootName(c.root)}`, { fontSize: "20px", color: "#ffffff" }));
+      STATS.forEach((stat, k) => this.addStarBar(layer, 340, 386 + k * 46, stat, c.stars[stat]));
+      const affinity = JOBS.filter((job) => getRootBonus(c, job) > 0).map(
+        (job) => `${JOB_NAMES[job]} +${getRootBonus(c, job)} 星`,
+      );
+      layer.add(
+        this.add.text(340, 620, affinity.length ? `灵根对口：${affinity.join(" / ")}` : "灵根不对口任何工作", {
+          fontSize: "15px",
+          color: affinity.length ? "#9fe870" : "#8a9aac",
+        }),
+      );
+      const cost = getHireCost(c);
+      layer.add(this.add.rectangle(320, 650, 360, 150, 0x1e2636).setOrigin(0, 0).setStrokeStyle(1, 0x3a4660));
+      layer.add(
+        this.add.text(340, 664, `总 ${getTotalStars(c)} 星 · 日薪 ${getStaffWage(c)} 灵石
+雇佣费 ${cost} 灵石`, {
+          fontSize: "16px",
+          color: "#bbbbbb",
+          lineSpacing: 6,
+        }),
+      );
+      this.addChip(layer, 340, 740, full || this.coins < cost || !editable ? "雇佣" : `雇佣 ${cost} 灵石`, full || this.coins < cost || !editable ? "#3a3a3a" : "#3a5a3a", () => {
+        this.hireStaff(c);
+        // 雇走的人从列表消失，停在同一个位置上继续看下一位
+        this.buildRecruitOverlay(picked);
+      });
+    }
+
     const refreshCost = GAME.staff.refreshCost;
-    this.addChip(layer, 40, 660, `换一批（${refreshCost} 灵石）`, editable ? "#33405a" : "#3a3a3a", () => {
+    this.addChip(layer, 40, 850, `换一批（${refreshCost} 灵石）`, editable ? "#33405a" : "#3a3a3a", () => {
       if (!this.canManage()) {
         this.staffNotice = "营业结束后才能换一批";
         this.staffNoticeGood = false;
@@ -305,7 +410,7 @@ export class StaffOverlayMethods {
       }
       this.buildRecruitOverlay();
     });
-    this.addChip(layer, 520, 660, "返回伙计", "#33405a", () => {
+    this.addChip(layer, 520, 850, "返回伙计", "#33405a", () => {
       this.staffNotice = "";
       this.buildStaffOverlay();
     });

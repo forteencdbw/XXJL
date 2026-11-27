@@ -869,6 +869,8 @@ export function getAchievements(meta: MetaStats, ascensions: number): Achievemen
 export interface Employee {
   id: number;
   name: string;
+  /** 外貌：衣服色、发色、是否长发。招聘时定下，之后不变；店里与招聘页都按它画。 */
+  look: EmployeeLook;
   /** 灵根：生成时定下，之后不变。 */
   root: RootElement[];
   /** 五项属性（星）。 */
@@ -925,6 +927,7 @@ export function createShopkeeper(rand: () => number = Math.random): Employee {
   return {
     id: SHOPKEEPER_ID,
     name: "掌柜",
+    look: rollLook(rand),
     root: pickElements(S.shopkeeperRootCount, rand),
     stars: uniformStars(S.shopkeeperStars),
     level: 1,
@@ -969,6 +972,24 @@ export function defaultJobs(e: Pick<Employee, "root" | "stars">): Employee["jobs
 }
 
 /** 随机生成候选人：每项至少 1 星，其余星数逐颗随机分配；rand 返回 [0,1)。 */
+export interface EmployeeLook {
+  body: number;
+  hair: number;
+  longHair: boolean;
+}
+
+/** 伙计外貌的色板（纯表现，不进 config）。 */
+export const LOOK_PALETTE = {
+  bodies: [0x3a7a5a, 0x4a7ab8, 0x7a4a3a, 0x8a6a3a, 0x5a4a7a, 0x3a6a7a, 0x7a3a5a, 0x4a6a3a],
+  hairs: [0x2b2b2b, 0x4a2b1a, 0x1a1a22, 0x5a3a2a, 0x8a8a92],
+};
+
+/** 随机一个外貌。 */
+export function rollLook(rand: () => number): EmployeeLook {
+  const pick = (arr: number[]) => arr[Math.floor(rand() * arr.length) % arr.length];
+  return { body: pick(LOOK_PALETTE.bodies), hair: pick(LOOK_PALETTE.hairs), longHair: rand() < 0.5 };
+}
+
 export function rollCandidate(id: number, rand: () => number): Employee {
   const stars = uniformStars(1);
   for (let left = S.candidateTotalStars - STATS.length; left > 0; left--) {
@@ -978,7 +999,7 @@ export function rollCandidate(id: number, rand: () => number): Employee {
   }
   const name = S.names[Math.floor(rand() * S.names.length) % S.names.length];
   const root = rollRoot(rand);
-  return { id, name, root, stars, level: 1, exp: 0, statPoints: 0, jobs: defaultJobs({ root, stars }) };
+  return { id, name, look: rollLook(rand), root, stars, level: 1, exp: 0, statPoints: 0, jobs: defaultJobs({ root, stars }) };
 }
 
 /**
@@ -1048,6 +1069,7 @@ export function sanitizeEmployees(raw: unknown): Employee[] {
       return {
         id: Number.isFinite(e.id) ? Math.floor(e.id) : i + 1,
         name: e.name,
+        look: sanitizeLook(e.look, i + 1),
         root: ELEMENTS.filter((el) => e.root.includes(el)),
         stars: Object.fromEntries(STATS.map((stat) => [stat, clampStar(e.stars[stat])])) as Record<Stat, number>,
         level: Math.min(S.maxLevel, Math.max(1, count(e.level))),
@@ -1056,6 +1078,20 @@ export function sanitizeEmployees(raw: unknown): Employee[] {
         jobs,
       };
     });
+}
+
+/** 旧档没有外貌：按 id 确定性地补一个，读档结果稳定。 */
+function sanitizeLook(raw: unknown, seed: number): EmployeeLook {
+  const l = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : null;
+  const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+  const body = l ? num(l.body) : null;
+  const hair = l ? num(l.hair) : null;
+  if (body !== null && hair !== null) return { body, hair, longHair: l!.longHair === true };
+  return {
+    body: LOOK_PALETTE.bodies[seed % LOOK_PALETTE.bodies.length],
+    hair: LOOK_PALETTE.hairs[seed % LOOK_PALETTE.hairs.length],
+    longHair: seed % 2 === 1,
+  };
 }
 
 /** 每期应还金额：剩余本息按剩余期数均摊并向上取整，末期自然补齐。 */
